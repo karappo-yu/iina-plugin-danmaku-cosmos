@@ -1,0 +1,272 @@
+var overlay = iina.overlay;
+var sidebar = iina.sidebar;
+var event = iina.event;
+var console = iina.console;
+var menu = iina.menu;
+var core = iina.core;
+var file = iina.file;
+var preferences = iina.preferences;
+var mpv = iina.mpv;
+
+var danmakuEnabled = true;
+var overlayReady = false;
+var pendingDanmaku = null;
+var currentVideoUrl = null;
+var danmakuCount = 0;
+var timePosListenerID = null;
+var windowScaleListenerID = null;
+
+function filePathFromUrl(url) {
+  if (!url) return null;
+  if (url.startsWith("file://")) {
+    return decodeURIComponent(url.substring(7));
+  }
+  return url;
+}
+
+function danmakuPathForVideo(videoUrl) {
+  var path = filePathFromUrl(videoUrl);
+  if (!path) return null;
+  return path.replace(/\.[^.\/\\]+$/, ".xml");
+}
+
+function stringToHex(str) {
+  return Array.from(str).map(function (c) {
+    return c.charCodeAt(0) < 128
+      ? c.charCodeAt(0).toString(16).padStart(2, "0")
+      : encodeURIComponent(c).replace(/\%/g, "").toLowerCase();
+  }).join("");
+}
+
+function loadDanmakuForVideo(url) {
+  currentVideoUrl = url;
+
+  if (core.status.isNetworkResource) {
+    core.osd("网络资源，跳过弹幕加载");
+    if (overlayReady) overlay.postMessage("clear-danmaku", {});
+    return;
+  }
+
+  var danmakuPath = danmakuPathForVideo(url);
+  if (!danmakuPath) {
+    core.osd("无法推导弹幕路径");
+    return;
+  }
+
+  if (!file.exists(danmakuPath)) {
+    danmakuCount = 0;
+    pendingDanmaku = null;
+    if (overlayReady) overlay.postMessage("clear-danmaku", {});
+    sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled, count: 0 });
+    return;
+  }
+
+  var xmlContent = file.read(danmakuPath);
+  if (!xmlContent) {
+    core.osd("无法读取弹幕文件");
+    danmakuCount = 0;
+    pendingDanmaku = null;
+    if (overlayReady) overlay.postMessage("clear-danmaku", {});
+    sidebar.postMessage("danmaku-count", { count: 0 });
+    return;
+  }
+
+  var hexContent = stringToHex(xmlContent);
+  var payload = {
+    xmlContent: hexContent,
+    opacity: 0.7,
+    fontSize: 25,
+    speed: 680,
+  };
+
+  if (overlayReady) {
+    overlay.postMessage("load-danmaku", payload);
+    core.osd("已加载弹幕: " + danmakuPath.split("/").pop());
+    setObserver(true);
+  } else {
+    pendingDanmaku = payload;
+    core.osd("弹幕排队中…");
+  }
+}
+
+function markOverlayReady() {
+  if (overlayReady) return;
+  overlayReady = true;
+  overlay.show();
+  overlay.postMessage("ack", {});
+
+  if (pendingDanmaku) {
+    overlay.postMessage("load-danmaku", pendingDanmaku);
+    var path = danmakuPathForVideo(currentVideoUrl);
+    core.osd("已加载弹幕: " + (path ? path.split("/").pop() : ""));
+    pendingDanmaku = null;
+    setObserver(true);
+  } else if (danmakuEnabled && !core.status.idle && currentVideoUrl) {
+    loadDanmakuForVideo(currentVideoUrl);
+  } else if (danmakuEnabled && !core.status.idle && core.status.url) {
+    loadDanmakuForVideo(core.status.url);
+  }
+}
+
+function setObserver(start) {
+  if (timePosListenerID) {
+    event.off("mpv.time-pos.changed", timePosListenerID);
+    timePosListenerID = null;
+  }
+  if (windowScaleListenerID) {
+    event.off("mpv.window-scale.changed", windowScaleListenerID);
+    windowScaleListenerID = null;
+  }
+
+  if (start && !core.status.paused && overlayReady && danmakuEnabled) {
+    timePosListenerID = event.on("mpv.time-pos.changed", function (t) {
+      overlay.postMessage("time-update", { time: t });
+    });
+    windowScaleListenerID = event.on("mpv.window-scale.changed", function () {
+      overlay.postMessage("resize", {});
+    });
+    var t = mpv.getNumber("time-pos");
+    if (t !== undefined && t !== null) {
+      overlay.postMessage("time-update", { time: t });
+    }
+    overlay.postMessage("resize", {});
+  }
+}
+
+function registerSidebarHandlers() {
+  sidebar.onMessage("toggle-danmaku", function () {
+    danmakuEnabled = !danmakuEnabled;
+    overlay.postMessage("toggle-danmaku", { enabled: danmakuEnabled });
+    if (danmakuEnabled) {
+      overlay.show();
+      setObserver(true);
+      core.osd("弹幕已开启");
+    } else {
+      setObserver(false);
+      core.osd("弹幕已关闭");
+    }
+    sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled, count: danmakuCount });
+  });
+
+  sidebar.onMessage("set-opacity", function (data) {
+    overlay.postMessage("set-opacity", { opacity: data.opacity });
+  });
+
+  sidebar.onMessage("set-fontsize", function (data) {
+    overlay.postMessage("set-fontsize", { size: data.size });
+  });
+
+  sidebar.onMessage("set-speed", function (data) {
+    overlay.postMessage("set-speed", { speed: data.speed });
+  });
+
+  sidebar.onMessage("block-type", function (data) {
+    overlay.postMessage("block-type", data);
+  });
+
+  sidebar.onMessage("request-state", function () {
+    sidebar.postMessage("danmaku-state", {
+      enabled: danmakuEnabled,
+      count: danmakuCount,
+    });
+  });
+}
+
+event.on("iina.window-loaded", function () {
+  overlay.loadFile("overlay/index.html");
+  sidebar.loadFile("sidebar/index.html");
+  registerSidebarHandlers();
+});
+
+overlay.onMessage("overlay-ready", function () {
+  markOverlayReady();
+});
+
+event.on("iina.plugin-overlay-loaded", function () {
+  overlay.show();
+  setTimeout(function () {
+    if (!overlayReady) markOverlayReady();
+  }, 2000);
+});
+
+event.on("iina.file-loaded", function (url) {
+  currentVideoUrl = url;
+  danmakuCount = 0;
+  if (danmakuEnabled) loadDanmakuForVideo(url);
+});
+
+event.on("mpv.pause.changed", function () {
+  if (!overlayReady) return;
+  var paused = core.status.paused;
+  overlay.postMessage("pause-state", { paused: paused });
+  setObserver(!paused);
+});
+
+overlay.onMessage("danmaku-loaded", function (data) {
+  danmakuCount = data.count || 0;
+  console.log("Danmaku loaded, count: " + danmakuCount);
+  sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled, count: danmakuCount });
+});
+
+overlay.onMessage("danmaku-error", function (data) {
+  console.warn("Danmaku error: " + (data.message || "unknown"));
+});
+
+menu.addItem(
+  menu.item("切换弹幕显示", function () {
+    danmakuEnabled = !danmakuEnabled;
+    overlay.postMessage("toggle-danmaku", { enabled: danmakuEnabled });
+    if (danmakuEnabled) {
+      overlay.show();
+      setObserver(true);
+      core.osd("弹幕已开启");
+    } else {
+      setObserver(false);
+      core.osd("弹幕已关闭");
+    }
+    sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled, count: danmakuCount });
+  }, { keyBinding: "D" })
+);
+
+menu.addItem(
+  menu.item("手动加载弹幕文件…", function () {
+    var path = iina.utils.chooseFile("选择弹幕XML文件", {
+      allowedFileTypes: ["xml"],
+    });
+    if (!path) return;
+    var xmlContent = file.read(path);
+    if (!xmlContent) {
+      core.osd("无法读取弹幕文件");
+      return;
+    }
+    var hexContent = stringToHex(xmlContent);
+    overlay.postMessage("load-danmaku", {
+      xmlContent: hexContent,
+      opacity: 0.7,
+      fontSize: 25,
+      speed: 680,
+    });
+    core.osd("已加载弹幕: " + path.split("/").pop());
+    if (!danmakuEnabled) {
+      danmakuEnabled = true;
+      overlay.show();
+      setObserver(true);
+    }
+  })
+);
+
+menu.addItem(menu.separator());
+
+menu.addItem(
+  menu.item("显示弹幕覆盖层", function () {
+    overlay.show();
+  })
+);
+
+menu.addItem(
+  menu.item("隐藏弹幕覆盖层", function () {
+    overlay.hide();
+  })
+);
+
+console.log("Danmaku Cosmos plugin initialized");

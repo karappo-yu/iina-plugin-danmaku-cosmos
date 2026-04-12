@@ -1,0 +1,33 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: none;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#danmaku-container {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+#player {
+  width: 100%;
+  height: 100%;
+}
+
+#commentCanvas {
+  width: 100%;
+  height: 100%;
+}

@@ -1,15 +1,13 @@
 {
-  "name": "Plugin Template",
-  "identifier": "com.example.iina-plugin-template",
+  "name": "Danmaku Cosmos",
+  "identifier": "com.damaku-cosmos.iina-plugin",
   "version": "1.0.0",
-  "description": "Description here",
+  "description": "IINA弹幕显示插件，自动加载与视频同名的XML弹幕文件",
   "author": {
-    "name": "IINA Developers",
-    "email": "developers@iina.io",
-    "url": "https://iina.io"
+    "name": "Danmaku Cosmos"
   },
-  "entry": "dist/index.js",
-  "globalEntry": "dist/global.js",
+  "entry": "main.js",
+  "globalEntry": "global.js",
   "permissions": [
     "show-osd",
     "show-alert",
@@ -18,9 +16,13 @@
     "file-system"
   ],
   "sidebarTab": {
-    "name": "Tab"
+    "name": "弹幕"
   },
   "allowedDomains": ["*"],
-  "preferencesPage": "pref.html",
-  "preferenceDefaults": {}
+  "preferenceDefaults": {
+    "danmakuEnabled": true,
+    "danmakuOpacity": 0.7,
+    "danmakuFontSize": 25,
+    "danmakuSpeed": 680
+  }
 }
