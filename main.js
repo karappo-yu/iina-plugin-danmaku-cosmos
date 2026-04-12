@@ -8,7 +8,12 @@ var file = iina.file;
 var preferences = iina.preferences;
 var mpv = iina.mpv;
 
-var danmakuEnabled = true;
+var danmakuEnabled = preferences.get("danmakuEnabled");
+var currentOpacity = preferences.get("danmakuOpacity");
+var currentFontSize = preferences.get("danmakuFontSize");
+var currentSpeed = preferences.get("danmakuSpeed");
+var currentScrollDuration = preferences.get("scrollDuration");
+var currentScrollLanes = preferences.get("scrollLanes");
 var overlayReady = false;
 var pendingDanmaku = null;
 var currentVideoUrl = null;
@@ -74,9 +79,11 @@ function loadDanmakuForVideo(url) {
   var hexContent = stringToHex(xmlContent);
   var payload = {
     xmlContent: hexContent,
-    opacity: 0.7,
-    fontSize: 25,
-    speed: 680,
+    opacity: currentOpacity,
+    fontSize: currentFontSize,
+    speed: currentSpeed,
+    scrollDuration: currentScrollDuration,
+    scrollLanes: currentScrollLanes,
   };
 
   if (overlayReady) {
@@ -94,6 +101,14 @@ function markOverlayReady() {
   overlayReady = true;
   overlay.show();
   overlay.postMessage("ack", {});
+
+  overlay.postMessage("apply-settings", {
+    opacity: currentOpacity,
+    fontSize: currentFontSize,
+    speed: currentSpeed,
+    scrollDuration: currentScrollDuration,
+    scrollLanes: currentScrollLanes,
+  });
 
   if (pendingDanmaku) {
     overlay.postMessage("load-danmaku", pendingDanmaku);
@@ -136,6 +151,8 @@ function setObserver(start) {
 function registerSidebarHandlers() {
   sidebar.onMessage("toggle-danmaku", function () {
     danmakuEnabled = !danmakuEnabled;
+    preferences.set("danmakuEnabled", danmakuEnabled);
+    preferences.sync();
     overlay.postMessage("toggle-danmaku", { enabled: danmakuEnabled });
     if (danmakuEnabled) {
       overlay.show();
@@ -149,15 +166,38 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("set-opacity", function (data) {
+    currentOpacity = data.opacity;
+    preferences.set("danmakuOpacity", currentOpacity);
+    preferences.sync();
     overlay.postMessage("set-opacity", { opacity: data.opacity });
   });
 
   sidebar.onMessage("set-fontsize", function (data) {
+    currentFontSize = data.size;
+    preferences.set("danmakuFontSize", currentFontSize);
+    preferences.sync();
     overlay.postMessage("set-fontsize", { size: data.size });
   });
 
   sidebar.onMessage("set-speed", function (data) {
+    currentSpeed = data.speed;
+    preferences.set("danmakuSpeed", currentSpeed);
+    preferences.sync();
     overlay.postMessage("set-speed", { speed: data.speed });
+  });
+
+  sidebar.onMessage("set-scroll-duration", function (data) {
+    currentScrollDuration = data.duration;
+    preferences.set("scrollDuration", currentScrollDuration);
+    preferences.sync();
+    overlay.postMessage("set-scroll-duration", { duration: data.duration });
+  });
+
+  sidebar.onMessage("set-scroll-lanes", function (data) {
+    currentScrollLanes = data.lanes;
+    preferences.set("scrollLanes", currentScrollLanes);
+    preferences.sync();
+    overlay.postMessage("set-scroll-lanes", { lanes: data.lanes });
   });
 
   sidebar.onMessage("block-type", function (data) {
@@ -168,6 +208,11 @@ function registerSidebarHandlers() {
     sidebar.postMessage("danmaku-state", {
       enabled: danmakuEnabled,
       count: danmakuCount,
+      opacity: currentOpacity,
+      fontSize: currentFontSize,
+      speed: currentSpeed,
+      scrollDuration: currentScrollDuration,
+      scrollLanes: currentScrollLanes,
     });
   });
 }
@@ -215,6 +260,8 @@ overlay.onMessage("danmaku-error", function (data) {
 menu.addItem(
   menu.item("切换弹幕显示", function () {
     danmakuEnabled = !danmakuEnabled;
+    preferences.set("danmakuEnabled", danmakuEnabled);
+    preferences.sync();
     overlay.postMessage("toggle-danmaku", { enabled: danmakuEnabled });
     if (danmakuEnabled) {
       overlay.show();
@@ -242,9 +289,11 @@ menu.addItem(
     var hexContent = stringToHex(xmlContent);
     overlay.postMessage("load-danmaku", {
       xmlContent: hexContent,
-      opacity: 0.7,
-      fontSize: 25,
-      speed: 680,
+      opacity: currentOpacity,
+      fontSize: currentFontSize,
+      speed: currentSpeed,
+      scrollDuration: currentScrollDuration,
+      scrollLanes: currentScrollLanes,
     });
     core.osd("已加载弹幕: " + path.split("/").pop());
     if (!danmakuEnabled) {

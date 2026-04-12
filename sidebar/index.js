@@ -3,8 +3,10 @@ var opacitySlider = document.getElementById("opacity-slider");
 var opacityValue = document.getElementById("opacity-value");
 var fontsizeSlider = document.getElementById("fontsize-slider");
 var fontsizeValue = document.getElementById("fontsize-value");
-var speedSlider = document.getElementById("speed-slider");
-var speedValue = document.getElementById("speed-value");
+var durationSlider = document.getElementById("duration-slider");
+var durationValue = document.getElementById("duration-value");
+var lanesSlider = document.getElementById("lanes-slider");
+var lanesValue = document.getElementById("lanes-value");
 var blockScroll = document.getElementById("block-scroll");
 var blockTop = document.getElementById("block-top");
 var blockBottom = document.getElementById("block-bottom");
@@ -15,6 +17,8 @@ var state = {
   opacity: 0.7,
   fontSize: 25,
   speed: 680,
+  scrollDuration: 8000,
+  scrollLanes: 500,
   blockScroll: false,
   blockTop: false,
   blockBottom: false,
@@ -28,8 +32,10 @@ function updateUI() {
   opacityValue.textContent = Math.round(state.opacity * 100) + "%";
   fontsizeSlider.value = state.fontSize;
   fontsizeValue.textContent = state.fontSize + "px";
-  speedSlider.value = state.speed;
-  speedValue.textContent = state.speed;
+  durationSlider.value = state.scrollDuration;
+  durationValue.textContent = (state.scrollDuration / 1000).toFixed(1) + "s";
+  lanesSlider.value = state.scrollLanes;
+  lanesValue.textContent = state.scrollLanes;
   blockScroll.checked = state.blockScroll;
   blockTop.checked = state.blockTop;
   blockBottom.checked = state.blockBottom;
@@ -60,10 +66,16 @@ fontsizeSlider.addEventListener("input", function () {
   iina.postMessage("set-fontsize", { size: val });
 });
 
-speedSlider.addEventListener("input", function () {
-  var val = parseInt(speedSlider.value, 10);
-  speedValue.textContent = val;
-  iina.postMessage("set-speed", { speed: val });
+durationSlider.addEventListener("input", function () {
+  var val = parseInt(durationSlider.value, 10);
+  durationValue.textContent = (val / 1000).toFixed(1) + "s";
+  iina.postMessage("set-scroll-duration", { duration: val });
+});
+
+lanesSlider.addEventListener("input", function () {
+  var val = parseInt(lanesSlider.value, 10);
+  lanesValue.textContent = val;
+  iina.postMessage("set-scroll-lanes", { lanes: val });
 });
 
 blockScroll.addEventListener("change", sendBlockType);
@@ -73,6 +85,11 @@ blockBottom.addEventListener("change", sendBlockType);
 iina.onMessage("danmaku-state", function (data) {
   if (data.enabled !== undefined) state.enabled = data.enabled;
   if (data.count !== undefined) state.count = data.count;
+  if (data.opacity !== undefined) state.opacity = data.opacity;
+  if (data.fontSize !== undefined) state.fontSize = data.fontSize;
+  if (data.speed !== undefined) state.speed = data.speed;
+  if (data.scrollDuration !== undefined) state.scrollDuration = data.scrollDuration;
+  if (data.scrollLanes !== undefined) state.scrollLanes = data.scrollLanes;
   updateUI();
 });
 

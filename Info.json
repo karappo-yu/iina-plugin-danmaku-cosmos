@@ -23,6 +23,8 @@
     "danmakuEnabled": true,
     "danmakuOpacity": 0.7,
     "danmakuFontSize": 25,
-    "danmakuSpeed": 680
+    "danmakuSpeed": 680,
+    "scrollDuration": 8000,
+    "scrollLanes": 500
   }
 }

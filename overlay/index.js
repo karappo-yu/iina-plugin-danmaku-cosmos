@@ -4,6 +4,9 @@ var currentOpacity = 0.7;
 var isPaused = false;
 var readyTimer = null;
 var cmTime = 0;
+var scrollDuration = 8000;
+var scrollLanes = 500;
+var fixedMaxWidthRatio = 0.8;
 
 function hexToString(hex) {
   return decodeURIComponent("%" + hex.match(/.{1,2}/g).join("%"));
@@ -26,11 +29,62 @@ function patchColorSetter() {
   });
 }
 
+function patchScrollDuration() {
+  var origInit = ScrollComment.prototype.init;
+  ScrollComment.prototype.init = function (recycle) {
+    origInit.call(this, recycle);
+    this.dur = scrollDuration;
+    this.ttl = scrollDuration;
+  };
+
+  var origCssInit = CssScrollComment.prototype.init;
+  CssScrollComment.prototype.init = function (recycle) {
+    origCssInit.call(this, recycle);
+    this.dur = scrollDuration;
+    this.ttl = scrollDuration;
+  };
+}
+
+function patchFixedCommentAutoSize() {
+  var _canvas = document.createElement("canvas");
+  var _ctx = _canvas.getContext("2d");
+  var _fontFamily = "'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic','Meiryo','MS Gothic','MS Mincho',SimHei,SimSun,monospace";
+
+  function getEffectiveFontSize(commentObj) {
+    var fontStyle = document.getElementById("dm-font-style");
+    if (fontStyle) {
+      var match = fontStyle.textContent.match(/font-size:\s*(\d+)px/);
+      if (match) return parseInt(match[1], 10);
+    }
+    return commentObj.size || 25;
+  }
+
+  var origCoreInit = CoreComment.prototype.init;
+  CoreComment.prototype.init = function (recycle) {
+    origCoreInit.call(this, recycle);
+    if (this.mode !== 4 && this.mode !== 5) return;
+    if (!this.dom || !this.parent) return;
+    var containerWidth = this.parent.width;
+    if (containerWidth <= 0) return;
+    var maxWidth = containerWidth * fixedMaxWidthRatio;
+    var fontSize = getEffectiveFontSize(this);
+    _ctx.font = fontSize + "px " + _fontFamily;
+    var textWidth = _ctx.measureText(this.text || "").width;
+    if (textWidth > maxWidth && textWidth > 0) {
+      var newSize = Math.max(10, Math.floor(fontSize * maxWidth / textWidth));
+      this.dom.style.setProperty("font-size", newSize + "px", "important");
+      this.dom.style.setProperty("line-height", newSize + "px", "important");
+    }
+  };
+}
+
 function initCommentManager() {
   var container = document.getElementById("commentCanvas");
   if (!container) return;
 
   patchColorSetter();
+  patchScrollDuration();
+  patchFixedCommentAutoSize();
 
   cm = new CommentManager(container);
   cm.init();
@@ -97,21 +151,48 @@ function clearDanmaku() {
 
 function cmResize() {
   if (!cm) return;
-  var player = document.getElementById("player");
-  if (player) {
-    var scale = player.offsetWidth / 680;
-    cm.options.scroll.scale = scale;
-  }
   cm.setBounds();
 }
+
+iina.onMessage("apply-settings", function (data) {
+  if (data.opacity !== undefined) {
+    currentOpacity = data.opacity;
+    if (cm) cm.options.global.opacity = currentOpacity;
+  }
+  if (data.scrollDuration !== undefined) {
+    scrollDuration = data.scrollDuration;
+  }
+  if (data.scrollLanes !== undefined) {
+    scrollLanes = data.scrollLanes;
+    if (cm) cm.options.scroll.scale = scrollLanes / 680;
+  }
+  if (data.fontSize !== undefined && cm) {
+    var old = document.getElementById("dm-font-style");
+    if (old) old.remove();
+    var style = document.createElement("style");
+    style.id = "dm-font-style";
+    style.type = "text/css";
+    style.innerHTML = ".cmt{font-family:'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic','Meiryo','MS Gothic','MS Mincho',SimHei,SimSun,monospace !important;font-size:" + data.fontSize + "px !important;}";
+    document.getElementsByTagName("head")[0].appendChild(style);
+  }
+});
 
 iina.onMessage("load-danmaku", function (data) {
   if (data.opacity !== undefined) {
     currentOpacity = data.opacity;
   }
+  if (data.scrollDuration !== undefined) {
+    scrollDuration = data.scrollDuration;
+  }
+  if (data.scrollLanes !== undefined) {
+    scrollLanes = data.scrollLanes;
+  }
   loadDanmakuFromHex(data.xmlContent);
   if (cm && currentOpacity !== undefined) {
     cm.options.global.opacity = currentOpacity;
+  }
+  if (cm && scrollLanes !== undefined) {
+    cm.options.scroll.scale = scrollLanes / 680;
   }
 });
 
@@ -151,11 +232,17 @@ iina.onMessage("set-opacity", function (data) {
   if (cm) cm.options.global.opacity = data.opacity;
 });
 
-iina.onMessage("set-speed", function (data) {
-  if (!cm) return;
-  var player = document.getElementById("player");
-  if (player) {
-    cm.options.scroll.scale = player.offsetWidth / data.speed;
+iina.onMessage("set-scroll-duration", function (data) {
+  scrollDuration = data.duration;
+  if (cm) {
+    cm.clear();
+  }
+});
+
+iina.onMessage("set-scroll-lanes", function (data) {
+  scrollLanes = data.lanes;
+  if (cm) {
+    cm.options.scroll.scale = scrollLanes / 680;
   }
 });
 
