@@ -7,6 +7,18 @@ var cmTime = 0;
 var scrollDuration = 8000;
 var scrollLanes = 500;
 var fixedMaxWidthRatio = 0.8;
+var seekThreshold = 5.5;
+
+var _nicoStroke = "-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000,-2px 0 0 #000,2px 0 0 #000,0 -2px 0 #000,0 2px 0 #000,-1px -2px 0 #000,1px -2px 0 #000,-1px 2px 0 #000,1px 2px 0 #000,-2px -1px 0 #000,2px -1px 0 #000,-2px 1px 0 #000,2px 1px 0 #000";
+var _nicoFontFamily = "'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic','Meiryo','MS Gothic','MS Mincho',SimHei,SimSun,monospace";
+
+function buildCmtCSS(fontSize) {
+  var css = ".cmt{font-family:" + _nicoFontFamily + " !important;text-shadow:" + _nicoStroke + " !important;white-space:pre !important;}";
+  if (fontSize) {
+    css += ".cmt{font-size:" + fontSize + "px !important;}";
+  }
+  return css;
+}
 
 function hexToString(hex) {
   return decodeURIComponent("%" + hex.match(/.{1,2}/g).join("%"));
@@ -48,7 +60,6 @@ function patchScrollDuration() {
 function patchFixedCommentAutoSize() {
   var _canvas = document.createElement("canvas");
   var _ctx = _canvas.getContext("2d");
-  var _fontFamily = "'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic','Meiryo','MS Gothic','MS Mincho',SimHei,SimSun,monospace";
 
   function getEffectiveFontSize(commentObj) {
     var fontStyle = document.getElementById("dm-font-style");
@@ -68,7 +79,7 @@ function patchFixedCommentAutoSize() {
     if (containerWidth <= 0) return;
     var maxWidth = containerWidth * fixedMaxWidthRatio;
     var fontSize = getEffectiveFontSize(this);
-    _ctx.font = fontSize + "px " + _fontFamily;
+    _ctx.font = fontSize + "px " + _nicoFontFamily;
     var textWidth = _ctx.measureText(this.text || "").width;
     if (textWidth > maxWidth && textWidth > 0) {
       var newSize = Math.max(10, Math.floor(fontSize * maxWidth / textWidth));
@@ -100,7 +111,7 @@ function injectFontStyle() {
   var style = document.createElement("style");
   style.id = "dm-font-style";
   style.type = "text/css";
-  style.innerHTML = ".cmt{font-family:'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic','Meiryo','MS Gothic','MS Mincho',SimHei,SimSun,monospace !important;}";
+  style.innerHTML = buildCmtCSS();
   document.getElementsByTagName("head")[0].appendChild(style);
 }
 
@@ -154,6 +165,73 @@ function cmResize() {
   cm.setBounds();
 }
 
+function seekToTime(newTimeMs) {
+  if (!cm || !cm.timeline || cm.timeline.length === 0) return;
+
+  cm.clear();
+  cm.seek(newTimeMs);
+
+  var newTimeSec = newTimeMs / 1000;
+  var durSec = scrollDuration / 1000;
+  var candidates = [];
+
+  for (var i = 0; i < cm.timeline.length; i++) {
+    var cmtData = cm.timeline[i];
+    if (cmtData.stime > newTimeSec) break;
+    var cmtEnd = cmtData.stime + durSec;
+    if (cmtEnd <= newTimeSec) continue;
+    if (cmtData.mode !== 1 && cmtData.mode !== 2 && cmtData.mode !== 6) continue;
+    if (!cm.validate(cmtData)) continue;
+    candidates.push(cmtData);
+  }
+
+  if (candidates.length === 0) return;
+
+  var containerWidth = cm.width;
+  if (containerWidth <= 0) return;
+
+  var _canvas = document.createElement("canvas");
+  var _ctx = _canvas.getContext("2d");
+  var fontStyle = document.getElementById("dm-font-style");
+  var globalFontSize = 25;
+  if (fontStyle) {
+    var match = fontStyle.textContent.match(/font-size:\s*(\d+)px/);
+    if (match) globalFontSize = parseInt(match[1], 10);
+  }
+
+  candidates.forEach(function (cmtData) {
+    var elapsed = newTimeSec - cmtData.stime;
+    var remaining = durSec - elapsed;
+    if (remaining <= 0) return;
+
+    var fontSize = cmtData.size || globalFontSize;
+    _ctx.font = fontSize + "px " + _nicoFontFamily;
+    var textWidth = _ctx.measureText(cmtData.text || "").width;
+    var totalDistance = containerWidth + textWidth;
+    var currentX = containerWidth - (elapsed / durSec) * totalDistance;
+
+    if (currentX < -textWidth || currentX > containerWidth) return;
+
+    var cmt = cm.factory.create(cm, cmtData);
+    cm._allocateSpace(cmt);
+
+    cmt.dom.style.transition = "none";
+    cmt.dom.style.left = currentX + "px";
+    cmt._x = currentX;
+    cmt._dirtyCSS = true;
+    cmt.ttl = remaining * 1000;
+    cmt.dur = scrollDuration;
+
+    cm.runline.push(cmt);
+
+    requestAnimationFrame(function () {
+      cmt.dom.style.transition = "transform " + cmt.ttl + "ms linear";
+      cmt.x = -textWidth;
+      cmt._dirtyCSS = false;
+    });
+  });
+}
+
 iina.onMessage("apply-settings", function (data) {
   if (data.opacity !== undefined) {
     currentOpacity = data.opacity;
@@ -172,7 +250,7 @@ iina.onMessage("apply-settings", function (data) {
     var style = document.createElement("style");
     style.id = "dm-font-style";
     style.type = "text/css";
-    style.innerHTML = ".cmt{font-family:'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic','Meiryo','MS Gothic','MS Mincho',SimHei,SimSun,monospace !important;font-size:" + data.fontSize + "px !important;}";
+    style.innerHTML = buildCmtCSS(data.fontSize);
     document.getElementsByTagName("head")[0].appendChild(style);
   }
 });
@@ -203,8 +281,8 @@ iina.onMessage("clear-danmaku", function () {
 iina.onMessage("time-update", function (data) {
   if (!cm || !danmakuVisible) return;
   var t = data.time;
-  if (Math.abs(cmTime - t) > 5.5) {
-    cm.clear();
+  if (Math.abs(cmTime - t) > seekThreshold) {
+    seekToTime(Math.floor(t * 1000));
   }
   cmTime = t;
   cm.time(Math.floor(t * 1000));
@@ -254,7 +332,7 @@ iina.onMessage("set-fontsize", function (data) {
   var style = document.createElement("style");
   style.id = "dm-font-style";
   style.type = "text/css";
-  style.innerHTML = ".cmt{font-family:'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic','Meiryo','MS Gothic','MS Mincho',SimHei,SimSun,monospace !important;font-size:" + data.size + "px !important;}";
+  style.innerHTML = buildCmtCSS(data.size);
   document.getElementsByTagName("head")[0].appendChild(style);
 });
 
