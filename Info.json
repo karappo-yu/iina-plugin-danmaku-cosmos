@@ -1,0 +1,26 @@
+{
+  "name": "Plugin Template",
+  "identifier": "com.example.iina-plugin-template",
+  "version": "1.0.0",
+  "description": "Description here",
+  "author": {
+    "name": "IINA Developers",
+    "email": "developers@iina.io",
+    "url": "https://iina.io"
+  },
+  "entry": "dist/index.js",
+  "globalEntry": "dist/global.js",
+  "permissions": [
+    "show-osd",
+    "show-alert",
+    "video-overlay",
+    "network-request",
+    "file-system"
+  ],
+  "sidebarTab": {
+    "name": "Tab"
+  },
+  "allowedDomains": ["*"],
+  "preferencesPage": "pref.html",
+  "preferenceDefaults": {}
+}

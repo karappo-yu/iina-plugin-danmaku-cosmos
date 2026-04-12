@@ -1,0 +1,2 @@
+!function(){var i=iina.standaloneWindow,n=iina.overlay,d=iina.sidebar,e=iina.event,o=iina.console,a=iina.menu;o.log("Plugin is running"),i.loadFile("dist/ui/window/index.html"),a.addItem(a.item("Show Window",function(){i.open()})),e.on("iina.window-loaded",function(){n.loadFile("dist/ui/overlay/index.html"),a.addItem(a.item("Show Video Overlay",function(){n.show()})),a.addItem(a.item("Hide Video Overlay",function(){n.hide()}))}),e.on("iina.window-loaded",function(){d.loadFile("dist/ui/sidebar/index.html")})}();
+//# sourceMappingURL=index.js.map
