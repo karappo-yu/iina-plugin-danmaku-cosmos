@@ -13,14 +13,9 @@ var currentOpacity = preferences.get("danmakuOpacity");
 var currentFontSize = preferences.get("danmakuFontSize");
 var currentSpeed = preferences.get("danmakuSpeed");
 var currentScrollDuration = preferences.get("scrollDuration");
-var currentScrollLanes = preferences.get("scrollLanes");
-var currentPressureSafe = preferences.get("pressureSafeLimit");
-var currentPressureDecay = preferences.get("pressureDecayRate");
-var currentPressureFloor = preferences.get("pressureHardFloor");
 var overlayReady = false;
 var pendingDanmaku = null;
 var currentVideoUrl = null;
-var danmakuCount = 0;
 var timePosListenerID = null;
 var windowScaleListenerID = null;
 
@@ -62,20 +57,16 @@ function loadDanmakuForVideo(url) {
   }
 
   if (!file.exists(danmakuPath)) {
-    danmakuCount = 0;
     pendingDanmaku = null;
     if (overlayReady) overlay.postMessage("clear-danmaku", {});
-    sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled, count: 0 });
     return;
   }
 
   var xmlContent = file.read(danmakuPath);
   if (!xmlContent) {
     core.osd("无法读取弹幕文件");
-    danmakuCount = 0;
     pendingDanmaku = null;
     if (overlayReady) overlay.postMessage("clear-danmaku", {});
-    sidebar.postMessage("danmaku-count", { count: 0 });
     return;
   }
 
@@ -86,10 +77,6 @@ function loadDanmakuForVideo(url) {
     fontSize: currentFontSize,
     speed: currentSpeed,
     scrollDuration: currentScrollDuration,
-    scrollLanes: currentScrollLanes,
-    pressureSafeLimit: currentPressureSafe,
-    pressureDecayRate: currentPressureDecay,
-    pressureHardFloor: currentPressureFloor,
   };
 
   if (overlayReady) {
@@ -113,10 +100,6 @@ function markOverlayReady() {
     fontSize: currentFontSize,
     speed: currentSpeed,
     scrollDuration: currentScrollDuration,
-    scrollLanes: currentScrollLanes,
-    pressureSafeLimit: currentPressureSafe,
-    pressureDecayRate: currentPressureDecay,
-    pressureHardFloor: currentPressureFloor,
   });
 
   if (pendingDanmaku) {
@@ -171,7 +154,7 @@ function registerSidebarHandlers() {
       setObserver(false);
       core.osd("弹幕已关闭");
     }
-    sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled, count: danmakuCount });
+    sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled });
   });
 
   sidebar.onMessage("set-opacity", function (data) {
@@ -202,34 +185,6 @@ function registerSidebarHandlers() {
     overlay.postMessage("set-scroll-duration", { duration: data.duration });
   });
 
-  sidebar.onMessage("set-scroll-lanes", function (data) {
-    currentScrollLanes = data.lanes;
-    preferences.set("scrollLanes", currentScrollLanes);
-    preferences.sync();
-    overlay.postMessage("set-scroll-lanes", { lanes: data.lanes });
-  });
-
-  sidebar.onMessage("set-pressure-safe", function (data) {
-    currentPressureSafe = data.value;
-    preferences.set("pressureSafeLimit", currentPressureSafe);
-    preferences.sync();
-    overlay.postMessage("set-pressure-safe", { value: data.value });
-  });
-
-  sidebar.onMessage("set-pressure-decay", function (data) {
-    currentPressureDecay = data.value;
-    preferences.set("pressureDecayRate", currentPressureDecay);
-    preferences.sync();
-    overlay.postMessage("set-pressure-decay", { value: data.value });
-  });
-
-  sidebar.onMessage("set-pressure-floor", function (data) {
-    currentPressureFloor = data.value;
-    preferences.set("pressureHardFloor", currentPressureFloor);
-    preferences.sync();
-    overlay.postMessage("set-pressure-floor", { value: data.value });
-  });
-
   sidebar.onMessage("block-type", function (data) {
     overlay.postMessage("block-type", data);
   });
@@ -237,15 +192,10 @@ function registerSidebarHandlers() {
   sidebar.onMessage("request-state", function () {
     sidebar.postMessage("danmaku-state", {
       enabled: danmakuEnabled,
-      count: danmakuCount,
       opacity: currentOpacity,
       fontSize: currentFontSize,
       speed: currentSpeed,
       scrollDuration: currentScrollDuration,
-      scrollLanes: currentScrollLanes,
-      pressureSafeLimit: currentPressureSafe,
-      pressureDecayRate: currentPressureDecay,
-      pressureHardFloor: currentPressureFloor,
     });
   });
 }
@@ -269,7 +219,6 @@ event.on("iina.plugin-overlay-loaded", function () {
 
 event.on("iina.file-loaded", function (url) {
   currentVideoUrl = url;
-  danmakuCount = 0;
   if (danmakuEnabled) loadDanmakuForVideo(url);
 });
 
@@ -278,12 +227,6 @@ event.on("mpv.pause.changed", function () {
   var paused = core.status.paused;
   overlay.postMessage("pause-state", { paused: paused });
   setObserver(!paused);
-});
-
-overlay.onMessage("danmaku-loaded", function (data) {
-  danmakuCount = data.count || 0;
-  console.log("Danmaku loaded, count: " + danmakuCount);
-  sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled, count: danmakuCount });
 });
 
 overlay.onMessage("danmaku-error", function (data) {
@@ -304,7 +247,7 @@ menu.addItem(
       setObserver(false);
       core.osd("弹幕已关闭");
     }
-    sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled, count: danmakuCount });
+    sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled });
   }, { keyBinding: "D" })
 );
 
@@ -326,10 +269,6 @@ menu.addItem(
       fontSize: currentFontSize,
       speed: currentSpeed,
       scrollDuration: currentScrollDuration,
-      scrollLanes: currentScrollLanes,
-      pressureSafeLimit: currentPressureSafe,
-      pressureDecayRate: currentPressureDecay,
-      pressureHardFloor: currentPressureFloor,
     });
     core.osd("已加载弹幕: " + path.split("/").pop());
     if (!danmakuEnabled) {

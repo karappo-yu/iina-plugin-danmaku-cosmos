@@ -204,7 +204,6 @@ iina.onMessage("load-danmaku", (data) => {
   }
   allDanmaku = list.sort((a, b) => a.t - b.t);
   handleSeek(0);
-  iina.postMessage("danmaku-loaded", { count: allDanmaku.length });
 });
 
 iina.onMessage("resize", () => {

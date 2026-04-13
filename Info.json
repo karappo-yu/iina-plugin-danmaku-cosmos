@@ -24,10 +24,6 @@
     "danmakuOpacity": 0.7,
     "danmakuFontSize": 25,
     "danmakuSpeed": 680,
-    "scrollDuration": 8000,
-    "scrollLanes": 500,
-    "pressureSafeLimit": 30,
-    "pressureDecayRate": 0.005,
-    "pressureHardFloor": 0.35
+    "scrollDuration": 8000
   }
 }
