@@ -13,6 +13,7 @@ let currentOpacity = 0.8;
 let scrollDuration = 4000; // Nico 经典滚动基准时间为 4s
 let fixedDuration = 4000;
 let fontScale = 1.0;
+let maxPerSec = 20; // 限流：每秒最大弹幕数
 const _refWidth = 1920; 
 
 // --- Nico 专属颜色映射表 (Niconico Color Dict) ---
@@ -84,6 +85,42 @@ function getFreeLane(lanesArr, textW, winW, durMs, videoTimeMs, danmakuSize) {
     if (lanesArr[i] < lanesArr[earliestLane]) earliestLane = i;
   }
   return earliestLane;
+}
+
+// --- 数据端限流：按时间窗口过滤 ---
+function applyRateLimit(danmakuList, maxPerSecond) {
+  if (maxPerSecond <= 0) return danmakuList;
+
+  var result = [];
+  // 按整秒分组
+  var buckets = {};
+  for (var i = 0; i < danmakuList.length; i++) {
+    var sec = Math.floor(danmakuList[i].t);
+    if (!buckets[sec]) buckets[sec] = [];
+    buckets[sec].push(danmakuList[i]);
+  }
+
+  var keys = Object.keys(buckets).map(Number).sort(function(a, b) { return a - b; });
+  for (var k = 0; k < keys.length; k++) {
+    var bucket = buckets[keys[k]];
+    if (bucket.length <= maxPerSecond) {
+      result = result.concat(bucket);
+    } else {
+      // 超限：Fisher-Yates 随机采样，保证均匀分布而非只取前N条
+      var sampled = bucket.slice();
+      for (var j = sampled.length - 1; j > 0; j--) {
+        var pick = Math.floor(Math.random() * (j + 1));
+        var tmp = sampled[j];
+        sampled[j] = sampled[pick];
+        sampled[pick] = tmp;
+      }
+      result = result.concat(sampled.slice(0, maxPerSecond));
+    }
+  }
+
+  // 重新排序
+  result.sort(function(a, b) { return a.t - b.t; });
+  return result;
 }
 
 function createDanmaku(d, seekTime = null) {
@@ -196,6 +233,7 @@ iina.onMessage("load-danmaku", (data) => {
   if (data.fontScale) fontScale = data.fontScale;
   if (data.scrollDuration) scrollDuration = data.scrollDuration;
   if (data.opacity) currentOpacity = data.opacity;
+  if (data.maxPerSec !== undefined) maxPerSec = data.maxPerSec;
   updateLanes();
   
   // 性能极度优化：使用正则替换替代 split/join，防止超大 XML 导致内存溢出
@@ -271,6 +309,17 @@ iina.onMessage("load-danmaku", (data) => {
 
   // 严格按时间重排
   allDanmaku = list.sort((a, b) => a.t - b.t);
+
+  // 数据端限流：在渲染前直接过滤掉超限弹幕
+  if (maxPerSec > 0) {
+    var beforeCount = allDanmaku.length;
+    allDanmaku = applyRateLimit(allDanmaku, maxPerSec);
+    var filtered = beforeCount - allDanmaku.length;
+    if (filtered > 0) {
+      console.log('[Danmaku Cosmos] Rate limit: ' + beforeCount + ' → ' + allDanmaku.length + ' (filtered ' + filtered + ')');
+    }
+  }
+
   handleSeek(0);
 });
 
@@ -322,11 +371,26 @@ iina.onMessage("set-scroll-duration", (data) => {
   scrollDuration = data.duration;
 });
 
+iina.onMessage("set-max-per-sec", (data) => {
+  maxPerSec = data.maxPerSec;
+  // 限流参数变更后需要重新加载弹幕才能生效
+  // 因为过滤是在数据端完成的，已过滤掉的弹幕无法恢复
+  // 所以这里只更新参数，下次加载弹幕时自动应用
+});
+
 iina.onMessage("clear-danmaku", () => {
   container.innerHTML = '';
   activeDanmaku.clear();
   allDanmaku = [];
   currentIndex = 0;
+});
+
+iina.onMessage("apply-settings", (data) => {
+  if (data.opacity !== undefined) currentOpacity = data.opacity;
+  if (data.fontScale !== undefined) fontScale = data.fontScale;
+  if (data.scrollDuration !== undefined) scrollDuration = data.scrollDuration;
+  if (data.maxPerSec !== undefined) maxPerSec = data.maxPerSec;
+  updateLanes();
 });
 
 iina.onMessage("block-type", (data) => {

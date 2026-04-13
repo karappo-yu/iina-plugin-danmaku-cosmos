@@ -8,6 +8,8 @@ var durationValue = document.getElementById("duration-value");
 var blockScroll = document.getElementById("block-scroll");
 var blockTop = document.getElementById("block-top");
 var blockBottom = document.getElementById("block-bottom");
+var maxPerSecSlider = document.getElementById("max-per-sec-slider");
+var maxPerSecValue = document.getElementById("max-per-sec-value");
 
 var state = {
   enabled: true,
@@ -15,6 +17,7 @@ var state = {
   fontScale: 1.0,
   speed: 680,
   scrollDuration: 8000,
+  maxPerSec: 20,
   blockScroll: false,
   blockTop: false,
   blockBottom: false,
@@ -28,6 +31,8 @@ function updateUI() {
   fontsizeValue.textContent = Math.round(state.fontScale * 100) + "%";
   durationSlider.value = state.scrollDuration;
   durationValue.textContent = (state.scrollDuration / 1000).toFixed(1) + "s";
+  maxPerSecSlider.value = state.maxPerSec;
+  maxPerSecValue.textContent = state.maxPerSec === 0 ? "不限" : state.maxPerSec + "/s";
   blockScroll.checked = state.blockScroll;
   blockTop.checked = state.blockTop;
   blockBottom.checked = state.blockBottom;
@@ -67,12 +72,19 @@ blockScroll.addEventListener("change", sendBlockType);
 blockTop.addEventListener("change", sendBlockType);
 blockBottom.addEventListener("change", sendBlockType);
 
+maxPerSecSlider.addEventListener("input", function () {
+  var val = parseInt(maxPerSecSlider.value, 10);
+  maxPerSecValue.textContent = val === 0 ? "不限" : val + "/s";
+  iina.postMessage("set-max-per-sec", { maxPerSec: val });
+});
+
 iina.onMessage("danmaku-state", function (data) {
   if (data.enabled !== undefined) state.enabled = data.enabled;
   if (data.opacity !== undefined) state.opacity = data.opacity;
   if (data.fontScale !== undefined) state.fontScale = data.fontScale;
   if (data.speed !== undefined) state.speed = data.speed;
   if (data.scrollDuration !== undefined) state.scrollDuration = data.scrollDuration;
+  if (data.maxPerSec !== undefined) state.maxPerSec = data.maxPerSec;
   updateUI();
 });
 

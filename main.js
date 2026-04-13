@@ -13,6 +13,7 @@ var currentOpacity = preferences.get("danmakuOpacity");
 var currentFontScale = preferences.get("danmakuFontScale");
 var currentSpeed = preferences.get("danmakuSpeed");
 var currentScrollDuration = preferences.get("scrollDuration");
+var currentMaxPerSec = preferences.get("maxDanmakuPerSecond");
 var overlayReady = false;
 var pendingDanmaku = null;
 var currentVideoUrl = null;
@@ -77,6 +78,7 @@ function loadDanmakuForVideo(url) {
     fontScale: currentFontScale,
     speed: currentSpeed,
     scrollDuration: currentScrollDuration,
+    maxPerSec: currentMaxPerSec,
   };
 
   if (overlayReady) {
@@ -100,6 +102,7 @@ function markOverlayReady() {
     fontScale: currentFontScale,
     speed: currentSpeed,
     scrollDuration: currentScrollDuration,
+    maxPerSec: currentMaxPerSec,
   });
 
   if (pendingDanmaku) {
@@ -185,6 +188,13 @@ function registerSidebarHandlers() {
     overlay.postMessage("set-scroll-duration", { duration: data.duration });
   });
 
+  sidebar.onMessage("set-max-per-sec", function (data) {
+    currentMaxPerSec = data.maxPerSec;
+    preferences.set("maxDanmakuPerSecond", currentMaxPerSec);
+    preferences.sync();
+    overlay.postMessage("set-max-per-sec", { maxPerSec: data.maxPerSec });
+  });
+
   sidebar.onMessage("block-type", function (data) {
     overlay.postMessage("block-type", data);
   });
@@ -196,6 +206,7 @@ function registerSidebarHandlers() {
       fontScale: currentFontScale,
       speed: currentSpeed,
       scrollDuration: currentScrollDuration,
+      maxPerSec: currentMaxPerSec,
     });
   });
 }
@@ -273,6 +284,7 @@ menu.addItem(
         fontScale: currentFontScale,
         speed: currentSpeed,
         scrollDuration: currentScrollDuration,
+        maxPerSec: currentMaxPerSec,
       });
       core.osd("已发送弹幕: " + path.split("/").pop());
       if (!danmakuEnabled) {

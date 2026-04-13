@@ -156,6 +156,12 @@ body {
   cursor: pointer;
 }
 
+.hint-text {
+  font-size: 11px;
+  opacity: 0.5;
+  margin-top: 4px;
+}
+
 kbd {
   display: inline-block;
   padding: 2px 6px;

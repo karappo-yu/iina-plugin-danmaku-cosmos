@@ -57,6 +57,15 @@
         </label>
       </div>
     </div>
+
+    <div class="section">
+      <h3 class="section-title">弹幕限流</h3>
+      <div class="control-row">
+        <input type="range" id="max-per-sec-slider" data-clickable min="0" max="60" step="1" value="20" class="slider" />
+        <span id="max-per-sec-value" class="value-text">20/s</span>
+      </div>
+      <div class="hint-text">每秒最大弹幕数，0 = 不限流</div>
+    </div>
   </div>
   <script src="index.js"></script>
 </body>
