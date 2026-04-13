@@ -13,11 +13,21 @@ var pressureDecayRate = 0.005;
 var pressureHardFloor = 0.35;
 
 var _nicoFontFamily = "'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic','Meiryo','MS Gothic','MS Mincho',SimHei,SimSun,monospace";
+var _refWidth = 1920;
+
+function refToVw(px) {
+  return (px / _refWidth * 100).toFixed(4) + "vw";
+}
+
+function refToActualPx(px) {
+  var w = cm ? cm.width : (window.innerWidth || _refWidth);
+  return px / _refWidth * w;
+}
 
 function buildCmtCSS(fontSize) {
   var css = ".cmt{font-family:" + _nicoFontFamily + " !important;white-space:pre !important;}";
   if (fontSize) {
-    css += ".cmt{font-size:" + fontSize + "px !important;}";
+    css += ".cmt{font-size:" + refToVw(fontSize) + " !important;}";
   }
   return css;
 }
@@ -63,11 +73,11 @@ function patchFixedCommentAutoSize() {
   var _canvas = document.createElement("canvas");
   var _ctx = _canvas.getContext("2d");
 
-  function getEffectiveFontSize(commentObj) {
+  function getEffectiveRefSize(commentObj) {
     var fontStyle = document.getElementById("dm-font-style");
     if (fontStyle) {
-      var match = fontStyle.textContent.match(/font-size:\s*(\d+)px/);
-      if (match) return parseInt(match[1], 10);
+      var match = fontStyle.textContent.match(/font-size:\s*([\d.]+)vw/);
+      if (match) return parseFloat(match[1]) / 100 * _refWidth;
     }
     return commentObj.size || 25;
   }
@@ -80,13 +90,14 @@ function patchFixedCommentAutoSize() {
     var containerWidth = this.parent.width;
     if (containerWidth <= 0) return;
     var maxWidth = containerWidth * fixedMaxWidthRatio;
-    var fontSize = getEffectiveFontSize(this);
-    _ctx.font = fontSize + "px " + _nicoFontFamily;
+    var refSize = getEffectiveRefSize(this);
+    var actualFontSize = refToActualPx(refSize);
+    _ctx.font = actualFontSize + "px " + _nicoFontFamily;
     var textWidth = _ctx.measureText(this.text || "").width;
     if (textWidth > maxWidth && textWidth > 0) {
-      var newSize = Math.max(10, Math.floor(fontSize * maxWidth / textWidth));
-      this.dom.style.setProperty("font-size", newSize + "px", "important");
-      this.dom.style.setProperty("line-height", newSize + "px", "important");
+      var newRefSize = Math.max(10, Math.floor(refSize * maxWidth / textWidth));
+      this.dom.style.setProperty("font-size", refToVw(newRefSize), "important");
+      this.dom.style.setProperty("line-height", refToVw(newRefSize), "important");
     }
   };
 }
@@ -204,10 +215,10 @@ function seekToTime(newTimeMs) {
   var _canvas = document.createElement("canvas");
   var _ctx = _canvas.getContext("2d");
   var fontStyle = document.getElementById("dm-font-style");
-  var globalFontSize = 25;
+  var globalRefSize = 25;
   if (fontStyle) {
-    var match = fontStyle.textContent.match(/font-size:\s*(\d+)px/);
-    if (match) globalFontSize = parseInt(match[1], 10);
+    var match = fontStyle.textContent.match(/font-size:\s*([\d.]+)vw/);
+    if (match) globalRefSize = parseFloat(match[1]) / 100 * _refWidth;
   }
 
   candidates.forEach(function (cmtData) {
@@ -215,8 +226,9 @@ function seekToTime(newTimeMs) {
     var remaining = durSec - elapsed;
     if (remaining <= 0) return;
 
-    var fontSize = cmtData.size || globalFontSize;
-    _ctx.font = fontSize + "px " + _nicoFontFamily;
+    var refSize = cmtData.size || globalRefSize;
+    var actualFontSize = refToActualPx(refSize);
+    _ctx.font = actualFontSize + "px " + _nicoFontFamily;
     var textWidth = _ctx.measureText(cmtData.text || "").width;
     var totalDistance = containerWidth + textWidth;
     var currentX = containerWidth - (elapsed / durSec) * totalDistance;

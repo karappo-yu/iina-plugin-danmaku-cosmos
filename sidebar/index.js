@@ -40,7 +40,7 @@ function updateUI() {
   opacitySlider.value = state.opacity;
   opacityValue.textContent = Math.round(state.opacity * 100) + "%";
   fontsizeSlider.value = state.fontSize;
-  fontsizeValue.textContent = state.fontSize + "px";
+  fontsizeValue.textContent = state.fontSize;
   durationSlider.value = state.scrollDuration;
   durationValue.textContent = (state.scrollDuration / 1000).toFixed(1) + "s";
   lanesSlider.value = state.scrollLanes;
@@ -77,7 +77,7 @@ opacitySlider.addEventListener("input", function () {
 
 fontsizeSlider.addEventListener("input", function () {
   var val = parseInt(fontsizeSlider.value, 10);
-  fontsizeValue.textContent = val + "px";
+  fontsizeValue.textContent = val;
   iina.postMessage("set-fontsize", { size: val });
 });
 
