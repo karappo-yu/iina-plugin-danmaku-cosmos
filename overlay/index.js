@@ -94,7 +94,6 @@ function createDanmaku(d, seekTime = null) {
   el.className = 'dm-item';
   el.textContent = d.text;
   el.style.color = d.c;
-  console.log("Creating danmaku: text=" + d.text.substring(0,10) + ", color=" + d.c);
   el.style.opacity = currentOpacity;
   el.style.fontSize = 'var(--global-fs)';
 
@@ -195,7 +194,6 @@ iina.onMessage("load-danmaku", (data) => {
   while ((match = regex.exec(xmlStr)) !== null) {
     let p = match[1].split(",");
     let colorVal = parseInt(p[3]);
-    console.log("Color parsing: p[3]=" + p[3] + ", colorVal=" + colorVal + ", hex=" + colorVal.toString(16));
     if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
     list.push({
       t: parseFloat(p[0]),
