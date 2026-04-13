@@ -195,11 +195,13 @@ iina.onMessage("load-danmaku", (data) => {
     let p = match[1].split(",");
     let colorVal = parseInt(p[3]);
     if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
+    let rawText = match[2];
+    if (rawText.endsWith('</d>')) rawText = rawText.slice(0, -4);
     list.push({
       t: parseFloat(p[0]),
       m: parseInt(p[1]),
       c: "#" + colorVal.toString(16).padStart(6, '0'),
-      text: match[2].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      text: rawText.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     });
   }
   allDanmaku = list.sort((a, b) => a.t - b.t);
