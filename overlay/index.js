@@ -187,21 +187,29 @@ iina.onMessage("load-danmaku", (data) => {
   updateGlobalFontSize();
   updateLanes();
   
-  let xmlStr = decodeURIComponent("%" + data.xmlContent.match(/.{1,2}/g).join("%"));
-  const regex = /<d p="([^"]+)">([\s\S]*?)<\/d>/g;
+  const tagOpenRegex = /<d p="/g;
+  let tagMatch;
   let list = [];
-  let match;
-  while ((match = regex.exec(xmlStr)) !== null) {
-    let p = match[1].split(",");
+  while ((tagMatch = tagOpenRegex.exec(xmlStr)) !== null) {
+    const openTagEnd = xmlStr.indexOf(">", tagMatch.index + 5);
+    if (openTagEnd === -1) break;
+    const closeTag = xmlStr.indexOf("</d>", openTagEnd);
+    if (closeTag === -1) break;
+    const rawText = xmlStr.substring(openTagEnd + 1, closeTag).replace(/<\/d>/g, "");
+    const p = xmlStr.substring(tagMatch.index + 5, openTagEnd - 1).split(",");
+    if (p.length < 4) {
+      tagOpenRegex.lastIndex = closeTag + 4;
+      continue;
+    }
     let colorVal = parseInt(p[3]);
     if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
-    let rawText = match[2].replace(/<\/d>/g, '');
     list.push({
       t: parseFloat(p[0]),
       m: parseInt(p[1]),
-      c: "#" + colorVal.toString(16).padStart(6, '0'),
-      text: rawText.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      c: "#" + colorVal.toString(16).padStart(6, "0"),
+      text: rawText.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
     });
+    tagOpenRegex.lastIndex = closeTag + 4;
   }
   allDanmaku = list.sort((a, b) => a.t - b.t);
   handleSeek(0);
