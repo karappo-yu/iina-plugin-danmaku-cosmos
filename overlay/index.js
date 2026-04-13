@@ -8,7 +8,9 @@ var scrollDuration = 8000;
 var scrollLanes = 500;
 var fixedMaxWidthRatio = 0.8;
 var seekThreshold = 5.5;
-var pressureThreshold = 40;
+var pressureSafeLimit = 30;
+var pressureDecayRate = 0.005;
+var pressureHardFloor = 0.35;
 
 var _nicoFontFamily = "'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic','Meiryo','MS Gothic','MS Mincho',SimHei,SimSun,monospace";
 
@@ -102,11 +104,12 @@ function initCommentManager() {
   cm.start();
 
   cm.addEventListener("enterComment", function (cmt) {
-    var count = cm.runline.length;
-    if (count > pressureThreshold) {
-      var decay = Math.max(0.1, 1 - (count - pressureThreshold) / pressureThreshold);
-      cmt.dom.style.opacity = (cmt._alpha * cm.options.global.opacity * decay) + "";
-    }
+    var activeCount = cm.runline.length;
+    if (activeCount <= pressureSafeLimit) return;
+    var baseOpacity = cmt._alpha * cm.options.global.opacity;
+    var dynamicOpacity = baseOpacity - ((activeCount - pressureSafeLimit) * pressureDecayRate);
+    var finalOpacity = Math.max(dynamicOpacity, pressureHardFloor * cm.options.global.opacity);
+    cmt.dom.style.opacity = finalOpacity + "";
   });
 
   injectFontStyle();
@@ -257,6 +260,9 @@ iina.onMessage("apply-settings", function (data) {
     scrollLanes = data.scrollLanes;
     if (cm) cm.options.scroll.scale = scrollLanes / 680;
   }
+  if (data.pressureSafeLimit !== undefined) pressureSafeLimit = data.pressureSafeLimit;
+  if (data.pressureDecayRate !== undefined) pressureDecayRate = data.pressureDecayRate;
+  if (data.pressureHardFloor !== undefined) pressureHardFloor = data.pressureHardFloor;
   if (data.fontSize !== undefined && cm) {
     var old = document.getElementById("dm-font-style");
     if (old) old.remove();
@@ -335,6 +341,18 @@ iina.onMessage("set-scroll-lanes", function (data) {
   if (cm) {
     cm.options.scroll.scale = scrollLanes / 680;
   }
+});
+
+iina.onMessage("set-pressure-safe", function (data) {
+  pressureSafeLimit = data.value;
+});
+
+iina.onMessage("set-pressure-decay", function (data) {
+  pressureDecayRate = data.value;
+});
+
+iina.onMessage("set-pressure-floor", function (data) {
+  pressureHardFloor = data.value;
 });
 
 iina.onMessage("set-fontsize", function (data) {

@@ -14,6 +14,9 @@ var currentFontSize = preferences.get("danmakuFontSize");
 var currentSpeed = preferences.get("danmakuSpeed");
 var currentScrollDuration = preferences.get("scrollDuration");
 var currentScrollLanes = preferences.get("scrollLanes");
+var currentPressureSafe = preferences.get("pressureSafeLimit");
+var currentPressureDecay = preferences.get("pressureDecayRate");
+var currentPressureFloor = preferences.get("pressureHardFloor");
 var overlayReady = false;
 var pendingDanmaku = null;
 var currentVideoUrl = null;
@@ -84,6 +87,9 @@ function loadDanmakuForVideo(url) {
     speed: currentSpeed,
     scrollDuration: currentScrollDuration,
     scrollLanes: currentScrollLanes,
+    pressureSafeLimit: currentPressureSafe,
+    pressureDecayRate: currentPressureDecay,
+    pressureHardFloor: currentPressureFloor,
   };
 
   if (overlayReady) {
@@ -108,6 +114,9 @@ function markOverlayReady() {
     speed: currentSpeed,
     scrollDuration: currentScrollDuration,
     scrollLanes: currentScrollLanes,
+    pressureSafeLimit: currentPressureSafe,
+    pressureDecayRate: currentPressureDecay,
+    pressureHardFloor: currentPressureFloor,
   });
 
   if (pendingDanmaku) {
@@ -200,6 +209,27 @@ function registerSidebarHandlers() {
     overlay.postMessage("set-scroll-lanes", { lanes: data.lanes });
   });
 
+  sidebar.onMessage("set-pressure-safe", function (data) {
+    currentPressureSafe = data.value;
+    preferences.set("pressureSafeLimit", currentPressureSafe);
+    preferences.sync();
+    overlay.postMessage("set-pressure-safe", { value: data.value });
+  });
+
+  sidebar.onMessage("set-pressure-decay", function (data) {
+    currentPressureDecay = data.value;
+    preferences.set("pressureDecayRate", currentPressureDecay);
+    preferences.sync();
+    overlay.postMessage("set-pressure-decay", { value: data.value });
+  });
+
+  sidebar.onMessage("set-pressure-floor", function (data) {
+    currentPressureFloor = data.value;
+    preferences.set("pressureHardFloor", currentPressureFloor);
+    preferences.sync();
+    overlay.postMessage("set-pressure-floor", { value: data.value });
+  });
+
   sidebar.onMessage("block-type", function (data) {
     overlay.postMessage("block-type", data);
   });
@@ -213,6 +243,9 @@ function registerSidebarHandlers() {
       speed: currentSpeed,
       scrollDuration: currentScrollDuration,
       scrollLanes: currentScrollLanes,
+      pressureSafeLimit: currentPressureSafe,
+      pressureDecayRate: currentPressureDecay,
+      pressureHardFloor: currentPressureFloor,
     });
   });
 }
@@ -294,6 +327,9 @@ menu.addItem(
       speed: currentSpeed,
       scrollDuration: currentScrollDuration,
       scrollLanes: currentScrollLanes,
+      pressureSafeLimit: currentPressureSafe,
+      pressureDecayRate: currentPressureDecay,
+      pressureHardFloor: currentPressureFloor,
     });
     core.osd("已加载弹幕: " + path.split("/").pop());
     if (!danmakuEnabled) {

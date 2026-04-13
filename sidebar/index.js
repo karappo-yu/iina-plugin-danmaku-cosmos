@@ -7,6 +7,12 @@ var durationSlider = document.getElementById("duration-slider");
 var durationValue = document.getElementById("duration-value");
 var lanesSlider = document.getElementById("lanes-slider");
 var lanesValue = document.getElementById("lanes-value");
+var pressureSafeSlider = document.getElementById("pressure-safe-slider");
+var pressureSafeValue = document.getElementById("pressure-safe-value");
+var pressureDecaySlider = document.getElementById("pressure-decay-slider");
+var pressureDecayValue = document.getElementById("pressure-decay-value");
+var pressureFloorSlider = document.getElementById("pressure-floor-slider");
+var pressureFloorValue = document.getElementById("pressure-floor-value");
 var blockScroll = document.getElementById("block-scroll");
 var blockTop = document.getElementById("block-top");
 var blockBottom = document.getElementById("block-bottom");
@@ -19,6 +25,9 @@ var state = {
   speed: 680,
   scrollDuration: 8000,
   scrollLanes: 500,
+  pressureSafeLimit: 30,
+  pressureDecayRate: 0.005,
+  pressureHardFloor: 0.35,
   blockScroll: false,
   blockTop: false,
   blockBottom: false,
@@ -36,6 +45,12 @@ function updateUI() {
   durationValue.textContent = (state.scrollDuration / 1000).toFixed(1) + "s";
   lanesSlider.value = state.scrollLanes;
   lanesValue.textContent = state.scrollLanes;
+  pressureSafeSlider.value = state.pressureSafeLimit;
+  pressureSafeValue.textContent = state.pressureSafeLimit + "条";
+  pressureDecaySlider.value = state.pressureDecayRate;
+  pressureDecayValue.textContent = state.pressureDecayRate.toFixed(3);
+  pressureFloorSlider.value = state.pressureHardFloor;
+  pressureFloorValue.textContent = Math.round(state.pressureHardFloor * 100) + "%";
   blockScroll.checked = state.blockScroll;
   blockTop.checked = state.blockTop;
   blockBottom.checked = state.blockBottom;
@@ -78,6 +93,24 @@ lanesSlider.addEventListener("input", function () {
   iina.postMessage("set-scroll-lanes", { lanes: val });
 });
 
+pressureSafeSlider.addEventListener("input", function () {
+  var val = parseInt(pressureSafeSlider.value, 10);
+  pressureSafeValue.textContent = val + "条";
+  iina.postMessage("set-pressure-safe", { value: val });
+});
+
+pressureDecaySlider.addEventListener("input", function () {
+  var val = parseFloat(pressureDecaySlider.value);
+  pressureDecayValue.textContent = val.toFixed(3);
+  iina.postMessage("set-pressure-decay", { value: val });
+});
+
+pressureFloorSlider.addEventListener("input", function () {
+  var val = parseFloat(pressureFloorSlider.value);
+  pressureFloorValue.textContent = Math.round(val * 100) + "%";
+  iina.postMessage("set-pressure-floor", { value: val });
+});
+
 blockScroll.addEventListener("change", sendBlockType);
 blockTop.addEventListener("change", sendBlockType);
 blockBottom.addEventListener("change", sendBlockType);
@@ -90,6 +123,9 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.speed !== undefined) state.speed = data.speed;
   if (data.scrollDuration !== undefined) state.scrollDuration = data.scrollDuration;
   if (data.scrollLanes !== undefined) state.scrollLanes = data.scrollLanes;
+  if (data.pressureSafeLimit !== undefined) state.pressureSafeLimit = data.pressureSafeLimit;
+  if (data.pressureDecayRate !== undefined) state.pressureDecayRate = data.pressureDecayRate;
+  if (data.pressureHardFloor !== undefined) state.pressureHardFloor = data.pressureHardFloor;
   updateUI();
 });
 
