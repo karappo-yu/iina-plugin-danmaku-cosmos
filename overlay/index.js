@@ -85,6 +85,15 @@ function patchFixedCommentAutoSize() {
   var origCoreInit = CoreComment.prototype.init;
   CoreComment.prototype.init = function (recycle) {
     origCoreInit.call(this, recycle);
+
+    if (this.mode === 5) {
+      this.dom.style.zIndex = 30;
+    } else if (this.mode === 4) {
+      this.dom.style.zIndex = 20;
+    } else {
+      this.dom.style.zIndex = 10;
+    }
+
     if (this.mode !== 4 && this.mode !== 5) return;
     if (!this.dom || !this.parent) return;
     var containerWidth = this.parent.width;
@@ -393,8 +402,45 @@ var _resizeTimer = null;
 function handleResize() {
   if (!cm) return;
   cm.setBounds();
-  if (cmTime > 0 && cm.timeline && cm.timeline.length > 0) {
-    seekToTime(Math.floor(cmTime * 1000));
+
+  var containerWidth = cm.width;
+  if (containerWidth <= 0 || cmTime <= 0) return;
+
+  var durSec = scrollDuration / 1000;
+
+  for (var i = cm.runline.length - 1; i >= 0; i--) {
+    var cmt = cm.runline[i];
+
+    if (cmt.mode === 4 || cmt.mode === 5) continue;
+
+    var elapsed = cmTime - cmt.stime;
+    if (elapsed < 0 || elapsed >= durSec) {
+      cmt.finish();
+      cm.runline.splice(i, 1);
+      continue;
+    }
+
+    var remaining = durSec - elapsed;
+    var textWidth = cmt.dom.offsetWidth;
+    if (textWidth <= 0) continue;
+
+    var totalDistance = containerWidth + textWidth;
+    var currentX = containerWidth - (elapsed / durSec) * totalDistance;
+    var targetX = -textWidth;
+    var dx = targetX - currentX;
+
+    cmt.dom.style.transition = "none";
+    cmt.dom.style.transform = "";
+    cmt.dom.style.webkitTransform = "";
+    cmt.dom.style.left = currentX + "px";
+    cmt._x = null;
+
+    void cmt.dom.offsetWidth;
+
+    cmt.dom.style.transition = "transform " + (remaining * 1000) + "ms linear";
+    CssCompatLayer.transform(cmt.dom, "translateX(" + dx + "px)");
+    cmt._x = targetX;
+    cmt.ttl = remaining * 1000;
   }
 }
 
