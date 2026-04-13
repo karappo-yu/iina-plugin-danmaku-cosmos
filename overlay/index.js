@@ -124,13 +124,12 @@ function createDanmaku(d, seekTime = null) {
   const lanesRef = isScroll ? scrollLanes : (isTop ? topLanes : bottomLanes);
   const lane = getFreeLane(lanesRef, textW, winW, durMs, videoTimeMs, d.size);
   
-  const laneHeightVh = (100 / maxLanes); 
-  const jitter = (Math.random() - 0.5) * (laneHeightVh * 0.15); // 微小的扰动，让满屏时更自然
+  const laneHeightVh = (100 / maxLanes);
 
   if (isScroll || isTop) {
-    el.style.top = `${lane * laneHeightVh + jitter}vh`;
+    el.style.top = `${lane * laneHeightVh}vh`;
   } else if (isBottom) {
-    el.style.bottom = `${lane * laneHeightVh + jitter + 1}vh`; 
+    el.style.bottom = `${lane * laneHeightVh + 1}vh`;
   }
 
   el.style.setProperty('--dur', `${durMs}ms`);
