@@ -253,29 +253,34 @@ menu.addItem(
 
 menu.addItem(
   menu.item("手动加载弹幕文件…", function () {
-    var path = iina.utils.chooseFile("选择弹幕XML文件", {
+    iina.utils.chooseFile("选择弹幕XML文件", {
       allowedFileTypes: ["xml"],
+    }).then(function(path) {
+      if (!path) {
+        core.osd("未选择文件");
+        return;
+      }
+      var xmlContent = file.read(path);
+      if (!xmlContent) {
+        core.osd("无法读取弹幕文件");
+        return;
+      }
+      core.osd("读取到内容长度: " + xmlContent.length);
+      var hexContent = stringToHex(xmlContent);
+      overlay.postMessage("load-danmaku", {
+        xmlContent: hexContent,
+        opacity: currentOpacity,
+        fontScale: currentFontScale,
+        speed: currentSpeed,
+        scrollDuration: currentScrollDuration,
+      });
+      core.osd("已发送弹幕: " + path.split("/").pop());
+      if (!danmakuEnabled) {
+        danmakuEnabled = true;
+        overlay.show();
+        setObserver(true);
+      }
     });
-    if (!path) return;
-    var xmlContent = file.read(path);
-    if (!xmlContent) {
-      core.osd("无法读取弹幕文件");
-      return;
-    }
-    var hexContent = stringToHex(xmlContent);
-    overlay.postMessage("load-danmaku", {
-      xmlContent: hexContent,
-      opacity: currentOpacity,
-      fontScale: currentFontScale,
-      speed: currentSpeed,
-      scrollDuration: currentScrollDuration,
-    });
-    core.osd("已加载弹幕: " + path.split("/").pop());
-    if (!danmakuEnabled) {
-      danmakuEnabled = true;
-      overlay.show();
-      setObserver(true);
-    }
   })
 );
 
