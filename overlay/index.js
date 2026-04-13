@@ -39,7 +39,6 @@ function updateLanes() {
   if (newMaxLanes !== maxLanes) {
     maxLanes = newMaxLanes;
     resetLaneData();
-    updateLaneVars();
   }
 }
 
@@ -47,32 +46,28 @@ function updateGlobalFontSize() {
   const winW = window.innerWidth;
   const fontSizeVw = (currentFontSize / _refWidth * 100).toFixed(4);
   document.documentElement.style.setProperty('--global-fs', `${fontSizeVw}vw`);
-  document.documentElement.style.setProperty('--win-w', (winW / window.innerWidth * 100).toFixed(4));
 }
 
-function updateLaneVars() {
-  if (maxLanes <= 0) return;
-  const laneHeightVh = (95 / maxLanes);
-  document.documentElement.style.setProperty('--total-lanes', maxLanes);
-  document.documentElement.style.setProperty('--lane-h', laneHeightVh.toFixed(4));
-}
-
-function getFreeLane(lanesArr, durMs, videoTimeMs) {
+function getFreeLane(lanesArr, textW, winW, durMs, videoTimeMs) {
+  // 增加随机起始偏移，让弹幕分布更散更自然
   const startLane = Math.floor(Math.random() * Math.min(maxLanes, 8));
-
+  
   for (let j = 0; j < maxLanes; j++) {
     let i = (startLane + j) % maxLanes;
+    // 只有当轨道空闲时间小于当前视频时间，才分配此轨道
     if (lanesArr[i] <= videoTimeMs) {
-      lanesArr[i] = videoTimeMs + durMs + 300;
+      const speed = (winW + textW) / durMs;
+      const clearTime = textW > 0 ? (textW / speed) : durMs;
+      // 这里的 300ms 缓冲非常关键
+      lanesArr[i] = videoTimeMs + clearTime + 300; 
       return i;
     }
   }
-
+  // 全满时的保底逻辑
   let earliestLane = 0;
   for (let i = 1; i < maxLanes; i++) {
     if (lanesArr[i] < lanesArr[earliestLane]) earliestLane = i;
   }
-  lanesArr[earliestLane] = videoTimeMs + durMs + 1000;
   return earliestLane;
 }
 
@@ -82,15 +77,17 @@ function createDanmaku(d, seekTime = null) {
   const isScroll = d.m >= 1 && d.m <= 3;
   const isBottom = d.m === 4;
   const isTop = d.m === 5;
-
+  
+  // 检查屏蔽类型
   if (isScroll && window._blockScroll) return;
   if (isTop && window._blockTop) return;
   if (isBottom && window._blockBottom) return;
   const durMs = isScroll ? scrollDuration : fixedDuration;
 
+  // 使用传入的当前时间或弹幕自身时间戳
   const videoTimeMs = d.t * 1000;
   const elapsedMs = seekTime !== null ? (seekTime - d.t) * 1000 : 0;
-
+  
   if (elapsedMs >= durMs || elapsedMs < 0) return;
 
   const el = document.createElement('div');
@@ -104,21 +101,45 @@ function createDanmaku(d, seekTime = null) {
   else if (isBottom) el.classList.add('dm-bottom');
   else if (isTop) el.classList.add('dm-top');
 
-  const lanesRef = isScroll ? scrollLanes : (isTop ? topLanes : bottomLanes);
-  const lane = getFreeLane(lanesRef, durMs, videoTimeMs);
+  container.appendChild(el);
 
-  el.style.setProperty('--lane', lane);
+  const textW = el.offsetWidth;
+  const winW = window.innerWidth;
+  
+  const lanesRef = isScroll ? scrollLanes : (isTop ? topLanes : bottomLanes);
+  const lane = getFreeLane(lanesRef, textW, winW, durMs, videoTimeMs);
+  
+  const laneHeightVh = (95 / maxLanes); 
+  const jitter = (Math.random() - 0.5) * (laneHeightVh * 0.25);
+
+  if (isScroll || isTop) {
+    el.style.top = `${lane * laneHeightVh + jitter}vh`;
+  } else if (isBottom) {
+    el.style.bottom = `${lane * laneHeightVh + jitter + 2}vh`; 
+  }
+
   el.style.setProperty('--dur', `${durMs}ms`);
   el.style.setProperty('--delay', `-${elapsedMs}ms`);
 
-  container.appendChild(el);
+  if (isScroll) {
+    el.style.setProperty('--start-x', `100vw`);
+    el.style.setProperty('--end-x', `-100%`);
+  } else {
+    const maxW = winW * 0.95;
+    if (textW > maxW) {
+      el.style.transform = `translateX(-50%) scaleX(${maxW / textW})`;
+    } else {
+      el.style.transform = `translateX(-50%)`;
+    }
+  }
+
+  const item = { el, d, type: isScroll ? 'scroll' : 'fixed' };
+  activeDanmaku.add(item);
 
   el.addEventListener('animationend', () => {
     el.remove();
-    activeDanmaku.delete(el);
+    activeDanmaku.delete(item);
   });
-
-  activeDanmaku.add(el);
 }
 
 function handleSeek(timeSec) {
@@ -165,7 +186,6 @@ iina.onMessage("load-danmaku", (data) => {
   if (data.opacity) currentOpacity = data.opacity;
   updateGlobalFontSize();
   updateLanes();
-  updateLaneVars();
   
   let xmlStr = decodeURIComponent("%" + data.xmlContent.match(/.{1,2}/g).join("%"));
   const regex = /<d p="([^"]+)">([\s\S]*?)<\/d>/g;
@@ -190,6 +210,19 @@ iina.onMessage("load-danmaku", (data) => {
 iina.onMessage("resize", () => {
   updateGlobalFontSize();
   updateLanes();
+  
+  activeDanmaku.forEach(item => {
+    if (item.type === 'fixed') {
+      const winW = window.innerWidth;
+      const textW = item.el.offsetWidth;
+      const maxW = winW * 0.95;
+      if (textW > maxW) {
+        item.el.style.transform = `translateX(-50%) scaleX(${maxW / textW})`;
+      } else {
+        item.el.style.transform = `translateX(-50%)`;
+      }
+    }
+  });
 });
 
 iina.onMessage("pause-state", (data) => {
@@ -208,8 +241,8 @@ iina.onMessage("toggle-danmaku", (data) => {
 
 iina.onMessage("set-opacity", (data) => {
   currentOpacity = data.opacity;
-  activeDanmaku.forEach(el => {
-    el.style.opacity = currentOpacity;
+  activeDanmaku.forEach(item => {
+    item.el.style.opacity = currentOpacity;
   });
 });
 
