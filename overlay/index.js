@@ -388,8 +388,19 @@ iina.onMessage("block-type", function (data) {
   cm.filter.allowTypes[2] = !data.blockScroll;
 });
 
+var _resizeTimer = null;
+
+function handleResize() {
+  if (!cm) return;
+  cm.setBounds();
+  if (cmTime > 0 && cm.timeline && cm.timeline.length > 0) {
+    seekToTime(Math.floor(cmTime * 1000));
+  }
+}
+
 iina.onMessage("resize", function () {
-  cmResize();
+  if (_resizeTimer) clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(handleResize, 100);
 });
 
 iina.onMessage("ack", function () {
@@ -400,7 +411,8 @@ iina.onMessage("ack", function () {
 });
 
 window.addEventListener("resize", function () {
-  cmResize();
+  if (_resizeTimer) clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(handleResize, 100);
 });
 
 document.addEventListener("visibilitychange", function () {
