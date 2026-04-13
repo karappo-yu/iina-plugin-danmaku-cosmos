@@ -3,8 +3,12 @@
 }
 
 :root {
-  /* 全局暂停控制开关，一键冻结所有弹幕 */
-  --play-state: running; 
+  --play-state: running;
+  --global-fs: 1.3021vw;
+  --win-w: 100;
+  --lane-h: 5vh;
+  --total-lanes: 1;
+  --lane: 0;
 }
 
 body.is-paused {
@@ -29,7 +33,6 @@ html, body {
   position: relative;
 }
 
-/* 弹幕的基础艺术修养：日系字体 + 粗重黑边，描边随窗口缩放 */
 .dm-item {
   position: absolute;
   white-space: nowrap;
@@ -42,41 +45,46 @@ html, body {
     calc(-0.0781vw) calc(0.0781vw) 0 #000,
     0 0 calc(0.2083vw) rgba(0,0,0,0.8);
   will-change: transform;
-  /* 绑定全局暂停变量 */
   animation-play-state: var(--play-state) !important;
 }
 
-/* Z-Index 10: 滚动吐槽，最底层 */
 .dm-scroll {
   z-index: 10;
-  left: 0;
-  /* 使用 CSS 变量注入动态起点和终点，实现无缝缩放 */
-  animation: scroll-anim var(--dur) linear forwards;
+  top: calc(var(--lane) * var(--lane-h));
+  animation-name: scroll-anim;
+  animation-duration: var(--dur);
   animation-delay: var(--delay, 0ms);
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
 }
 
-/* Z-Index 20: 底部说明 */
 .dm-bottom {
   z-index: 20;
+  top: calc(100% - (var(--lane) * var(--lane-h)) - var(--lane-h));
   left: 50%;
-  transform: translateX(-50%);
-  animation: fixed-anim var(--dur) linear forwards;
+  transform: translate3d(-50%, 0, 0);
+  animation-name: fixed-anim;
+  animation-duration: var(--dur);
   animation-delay: var(--delay, 0ms);
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
 }
 
-/* Z-Index 30: 顶部字幕，最顶层不可遮挡 */
 .dm-top {
   z-index: 30;
+  top: calc(var(--lane) * var(--lane-h));
   left: 50%;
-  transform: translateX(-50%);
-  animation: fixed-anim var(--dur) linear forwards;
+  transform: translate3d(-50%, 0, 0);
+  animation-name: fixed-anim;
+  animation-duration: var(--dur);
   animation-delay: var(--delay, 0ms);
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
 }
 
-/* 核心动画引擎：全程 GPU 加速 */
 @keyframes scroll-anim {
-  from { transform: translateX(var(--start-x)); }
-  to   { transform: translateX(var(--end-x)); }
+  from { transform: translate3d(100vw, 0, 0); }
+  to   { transform: translate3d(-100%, 0, 0); }
 }
 
 @keyframes fixed-anim {
