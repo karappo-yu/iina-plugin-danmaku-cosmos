@@ -78,6 +78,12 @@ function loadDanmakuForVideo(url) {
 
   if (!file.exists(danmakuPath)) {
     var altDanmakuPath = danmakuPath.replace(/[/\\][^/\\]+$/, '/弹幕$&');
+    if (!file.exists(altDanmakuPath)) {
+      altDanmakuPath = danmakuPath.replace(/[/\\][^/\\]+$/, '/Comments$&');
+    }
+    if (!file.exists(altDanmakuPath)) {
+      altDanmakuPath = danmakuPath.replace(/[/\\][^/\\]+$/, '/コメント$&');
+    }
     if (file.exists(altDanmakuPath)) {
       danmakuPath = altDanmakuPath;
     } else {
@@ -85,6 +91,14 @@ function loadDanmakuForVideo(url) {
       if (epNum !== null) {
         var danmakuDir = danmakuPath.replace(/[/\\][^/\\]+$/, '/弹幕');
         var epDanmakuPath = danmakuDir + '/' + epNum + '.xml';
+        if (!file.exists(epDanmakuPath)) {
+          danmakuDir = danmakuPath.replace(/[/\\][^/\\]+$/, '/Comments');
+          epDanmakuPath = danmakuDir + '/' + epNum + '.xml';
+        }
+        if (!file.exists(epDanmakuPath)) {
+          danmakuDir = danmakuPath.replace(/[/\\][^/\\]+$/, '/コメント');
+          epDanmakuPath = danmakuDir + '/' + epNum + '.xml';
+        }
         if (file.exists(epDanmakuPath)) {
           danmakuPath = epDanmakuPath;
         } else {
