@@ -57,7 +57,24 @@ function updateLanes() {
 
 function getFreeLane(lanesArr, textW, winW, durMs, videoTimeMs, danmakuSize) {
   const lanesNeeded = danmakuSize / 25;
-  const startLane = Math.floor(Math.random() * Math.min(maxLanes, 8));
+
+  // 统计当前占用中的轨道数，用于决定搜索范围
+  let busyCount = 0;
+  for (let i = 0; i < maxLanes; i++) {
+    if (lanesArr[i] > videoTimeMs) busyCount++;
+  }
+
+  // 根据占用情况决定搜索范围：少时1-4，多时1-8
+  let searchRange;
+  if (busyCount <= 4) {
+    searchRange = Math.min(4, maxLanes);
+  } else if (busyCount <= 8) {
+    searchRange = Math.min(6, maxLanes);
+  } else {
+    searchRange = Math.min(8, maxLanes);
+  }
+
+  const startLane = Math.floor(Math.random() * searchRange);
 
   for (let j = 0; j < maxLanes; j++) {
     let i = (startLane + j) % maxLanes;
@@ -70,16 +87,15 @@ function getFreeLane(lanesArr, textW, winW, durMs, videoTimeMs, danmakuSize) {
     }
     if (enoughSpace) {
       const speed = (winW + textW) / durMs;
-      // 碰撞计算：确保当前弹幕的尾部离开屏幕右侧边缘的时间
       const clearTime = textW > 0 ? (textW / speed) : durMs;
       for (let k = 0; k < Math.ceil(lanesNeeded); k++) {
-        lanesArr[i + k] = videoTimeMs + clearTime + 100; // Nico 的拥挤度允许更近的尾随
+        lanesArr[i + k] = videoTimeMs + clearTime + 100;
       }
       return i;
     }
   }
 
-  // 完美还原 Nico 特性：如果屏幕满了，强制覆盖存在时间最久的轨道，制造弹幕厚度
+  // 全满时强制覆盖存在时间最久的轨道
   let earliestLane = 0;
   for (let i = 1; i < maxLanes; i++) {
     if (lanesArr[i] < lanesArr[earliestLane]) earliestLane = i;
