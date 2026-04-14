@@ -28,6 +28,25 @@ function filePathFromUrl(url) {
   return url;
 }
 
+function extractEpisodeNumber(videoPath) {
+  var filename = videoPath.replace(/.*[/\\]/, '').replace(/\.[^.]+$/, '');
+  var match;
+  match = filename.match(/\[(\d{1,3})\](?!.*\[)/);
+  if (match) return parseInt(match[1], 10);
+  match = filename.match(/\[\d{1,3}\]/g);
+  if (match) {
+    match = match[match.length - 1].match(/\[(\d{1,3})\]/);
+    if (match) return parseInt(match[1], 10);
+  }
+  match = filename.match(/(?:^|[_\-.\s])(\d{1,3})(?:_|\-|\.|\s|$)/);
+  if (match) return parseInt(match[1], 10);
+  match = filename.match(/(?:^|[\[\]_\-.\s])(1?\d)(?:_|\.|\s|$)/i);
+  if (match) return parseInt(match[1], 10);
+  match = filename.match(/(?:第|話|话|Episode|Ep\.?)\s*(\d{1,3})/i);
+  if (match) return parseInt(match[1], 10);
+  return null;
+}
+
 function danmakuPathForVideo(videoUrl) {
   var path = filePathFromUrl(videoUrl);
   if (!path) return null;
@@ -62,9 +81,22 @@ function loadDanmakuForVideo(url) {
     if (file.exists(altDanmakuPath)) {
       danmakuPath = altDanmakuPath;
     } else {
-      pendingDanmaku = null;
-      if (overlayReady) overlay.postMessage("clear-danmaku", {});
-      return;
+      var epNum = extractEpisodeNumber(danmakuPath);
+      if (epNum !== null) {
+        var danmakuDir = danmakuPath.replace(/[/\\][^/\\]+$/, '/弹幕');
+        var epDanmakuPath = danmakuDir + '/' + epNum + '.xml';
+        if (file.exists(epDanmakuPath)) {
+          danmakuPath = epDanmakuPath;
+        } else {
+          pendingDanmaku = null;
+          if (overlayReady) overlay.postMessage("clear-danmaku", {});
+          return;
+        }
+      } else {
+        pendingDanmaku = null;
+        if (overlayReady) overlay.postMessage("clear-danmaku", {});
+        return;
+      }
     }
   }
 
