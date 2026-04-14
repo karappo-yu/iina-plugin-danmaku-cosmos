@@ -25,6 +25,6 @@
     "danmakuFontScale": 1.0,
     "danmakuSpeed": 680,
     "scrollDuration": 8000,
-    "maxDanmakuPerSecond": 20
+    "maxDanmakuPerSecond": 0
   }
 }
