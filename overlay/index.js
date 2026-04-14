@@ -422,5 +422,11 @@ window.addEventListener("resize", () => {
   iina.postMessage("resize", {});
 });
 
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && lastTime > 0) {
+    handleSeek(lastTime);
+  }
+});
+
 // IPC 通讯只需确认一次即可
 setTimeout(() => iina.postMessage("overlay-ready", {}), 300);
