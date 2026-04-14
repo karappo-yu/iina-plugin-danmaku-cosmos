@@ -317,7 +317,7 @@ iina.onMessage("load-danmaku", (data) => {
         t: parseFloat(p[0]),
         m: parseInt(p[1]),
         c: "#" + colorVal.toString(16).padStart(6, '0'),
-        text: match[2].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'),
+        text: match[2].replace(/^<\/d>/, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'),
         size: danmakuSize
       });
     }
