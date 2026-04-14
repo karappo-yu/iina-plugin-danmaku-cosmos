@@ -127,4 +127,4 @@ package-lock.json
 .workbuddy/
 .trae/
 index.d.ts
-IINA插件开发指南.md
+.dist/

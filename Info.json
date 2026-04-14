@@ -16,7 +16,7 @@
     "file-system"
   ],
   "sidebarTab": {
-    "name": "弹幕"
+    "name": "Danmaku"
   },
   "allowedDomains": ["*"],
   "preferenceDefaults": {
