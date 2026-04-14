@@ -56,30 +56,11 @@ function updateLanes() {
 }
 
 function getFreeLane(lanesArr, textW, winW, durMs, videoTimeMs, danmakuSize) {
-  const lanesNeeded = danmakuSize / 25;
+  const lanesNeeded = Math.ceil(danmakuSize / 25);
 
-  // 统计当前占用中的轨道数，用于决定搜索范围
-  let busyCount = 0;
   for (let i = 0; i < maxLanes; i++) {
-    if (lanesArr[i] > videoTimeMs) busyCount++;
-  }
-
-  // 根据占用情况决定搜索范围：少时1-4，多时1-8
-  let searchRange;
-  if (busyCount <= 4) {
-    searchRange = Math.min(4, maxLanes);
-  } else if (busyCount <= 8) {
-    searchRange = Math.min(6, maxLanes);
-  } else {
-    searchRange = Math.min(8, maxLanes);
-  }
-
-  const startLane = Math.floor(Math.random() * searchRange);
-
-  for (let j = 0; j < maxLanes; j++) {
-    let i = (startLane + j) % maxLanes;
     let enoughSpace = true;
-    for (let k = 0; k < Math.ceil(lanesNeeded); k++) {
+    for (let k = 0; k < lanesNeeded; k++) {
       if (i + k >= maxLanes || lanesArr[i + k] > videoTimeMs) {
         enoughSpace = false;
         break;
@@ -88,14 +69,13 @@ function getFreeLane(lanesArr, textW, winW, durMs, videoTimeMs, danmakuSize) {
     if (enoughSpace) {
       const speed = (winW + textW) / durMs;
       const clearTime = textW > 0 ? (textW / speed) : durMs;
-      for (let k = 0; k < Math.ceil(lanesNeeded); k++) {
+      for (let k = 0; k < lanesNeeded; k++) {
         lanesArr[i + k] = videoTimeMs + clearTime + 100;
       }
       return i;
     }
   }
 
-  // 全满时强制覆盖存在时间最久的轨道
   let earliestLane = 0;
   for (let i = 1; i < maxLanes; i++) {
     if (lanesArr[i] < lanesArr[earliestLane]) earliestLane = i;
