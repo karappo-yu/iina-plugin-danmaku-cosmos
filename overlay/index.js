@@ -36,9 +36,9 @@ let bottomLanes = [];
 function resetLaneData() {
   // 核心更改：将轨道数据结构从单一数字改为对象
   // tailEnterTime: 用于判断入口是否空闲
-  // tailReachOneSixthTime: 尾部到达左侧 1/6 处的时间，用于判断追尾
+  // tailReachOneThirdTime: 尾部到达左侧 1/3 处的时间，用于判断追尾
   // leaveScreenTime: (用于固定弹幕) 完全消失时间
-  scrollLanes = Array.from({ length: maxLanes }, () => ({ tailEnterTime: 0, tailReachOneSixthTime: 0 }));
+  scrollLanes = Array.from({ length: maxLanes }, () => ({ tailEnterTime: 0, tailReachOneThirdTime: 0 }));
   topLanes = Array.from({ length: maxLanes }, () => ({ leaveScreenTime: 0 }));
   bottomLanes = Array.from({ length: maxLanes }, () => ({ leaveScreenTime: 0 }));
 }
@@ -68,16 +68,16 @@ function updateLanes() {
 }
 
 /**
- * 获取空闲的滚动轨道 (应用左侧1/6防追尾算法)
+ * 获取空闲的滚动轨道 (应用左侧1/3防追尾算法)
  */
 function getFreeScrollLane(lanesArr, textW, winW, durMs, currentTime, lanesNeeded) {
   const speed = (winW + textW) / durMs;
   const tailEnterTime = currentTime + (textW / speed) + 100; // 100ms 安全缓冲
   
-  // 新弹幕头部到达 1/6 处的时间 = 行驶 5/6 屏幕宽度的耗时
-  const headReachOneSixthTime = currentTime + (5 * winW / 6) / speed;
-  // 当前弹幕尾部到达 1/6 处的时间 = 行驶 5/6 屏幕宽 + 弹幕宽度的耗时
-  const tailReachOneSixthTime = currentTime + (5 * winW / 6 + textW) / speed;
+  // 新弹幕头部到达 1/3 处的时间 = 行驶 2/3 屏幕宽度的耗时
+  const headReachOneThirdTime = currentTime + (2 * winW / 3) / speed;
+  // 当前弹幕尾部到达 1/3 处的时间 = 行驶 2/3 屏幕宽 + 弹幕宽度的耗时
+  const tailReachOneThirdTime = currentTime + (2 * winW / 3 + textW) / speed;
 
   const validLaneCount = Math.max(1, maxLanes - lanesNeeded + 1);
 
@@ -93,10 +93,10 @@ function getFreeScrollLane(lanesArr, textW, winW, durMs, currentTime, lanesNeede
       
       // 条件 A: 尾部已入屏，入口空闲
       const isEntranceFree = currentTime >= lane.tailEnterTime;
-      // 条件 B: 新弹幕头部到达 1/6 处时，老弹幕尾部已经越过 1/6 处（允许在 1/6 区域内追尾相撞）
-      const isNoCatchUpBeforeOneSixth = headReachOneSixthTime >= lane.tailReachOneSixthTime;
+      // 条件 B: 新弹幕头部到达 1/3 处时，老弹幕尾部已经越过 1/3 处（允许在 1/3 区域内追尾相撞）
+      const isNoCatchUpBeforeOneThird = headReachOneThirdTime >= lane.tailReachOneThirdTime;
 
-      if (!isEntranceFree || !isNoCatchUpBeforeOneSixth) {
+      if (!isEntranceFree || !isNoCatchUpBeforeOneThird) {
         enoughSpace = false;
         break;
       }
@@ -105,7 +105,7 @@ function getFreeScrollLane(lanesArr, textW, winW, durMs, currentTime, lanesNeede
     if (enoughSpace) {
       for (let k = 0; k < lanesNeeded; k++) {
         if (i + k < maxLanes) {
-          lanesArr[i + k] = { tailEnterTime, tailReachOneSixthTime };
+          lanesArr[i + k] = { tailEnterTime, tailReachOneThirdTime };
         }
       }
       return i;
@@ -131,7 +131,7 @@ function getFreeScrollLane(lanesArr, textW, winW, durMs, currentTime, lanesNeede
   // 更新占用的轨道状态
   for (let k = 0; k < lanesNeeded; k++) {
     if (earliestLane + k < maxLanes) {
-      lanesArr[earliestLane + k] = { tailEnterTime, tailReachOneSixthTime };
+      lanesArr[earliestLane + k] = { tailEnterTime, tailReachOneThirdTime };
     }
   }
   return earliestLane;
@@ -265,10 +265,10 @@ function createDanmaku(d, currentTime = null) {
     if (isScroll) {
       const speed = (winW + textW) / durMs;
       const tailEnterTime = videoTimeMs + (textW / speed) + 100;
-      const tailReachOneSixthTime = videoTimeMs + (5 * winW / 6 + textW) / speed;
+      const tailReachOneThirdTime = videoTimeMs + (2 * winW / 3 + textW) / speed;
       for (let k = 0; k < lanesNeeded; k++) {
         if (lane + k < maxLanes) {
-          scrollLanes[lane + k] = { tailEnterTime, tailReachOneSixthTime };
+          scrollLanes[lane + k] = { tailEnterTime, tailReachOneThirdTime };
         }
       }
     } else if (isTop) {
