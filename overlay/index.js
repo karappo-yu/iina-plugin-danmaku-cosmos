@@ -43,6 +43,14 @@ function resetLaneData() {
   bottomLanes = Array.from({ length: maxLanes }, () => ({ leaveScreenTime: 0 }));
 }
 
+// 新增：清除弹幕的布局与轨道缓存
+function clearDanmakuCaches() {
+  allDanmaku.forEach(d => {
+    d._lane = undefined;
+    d._textW = undefined;
+  });
+}
+
 function updateLanes() {
   const winH = window.innerHeight;
   const winW = window.innerWidth;
@@ -209,7 +217,7 @@ function applyRateLimit(danmakuList, maxPerSecond) {
   return result;
 }
 
-function createDanmaku(d, seekTime = null) {
+function createDanmaku(d, currentTime = null) {
   if (!danmakuVisible) return;
 
   const isScroll = d.m >= 1 && d.m <= 3;
@@ -222,7 +230,8 @@ function createDanmaku(d, seekTime = null) {
   const durMs = isScroll ? scrollDuration : fixedDuration;
 
   const videoTimeMs = d.t * 1000;
-  const elapsedMs = seekTime !== null ? (seekTime - d.t) * 1000 : 0;
+  // 统一时间流：修正偏移误差
+  const elapsedMs = currentTime !== null ? (currentTime - d.t) * 1000 : 0;
   
   if (elapsedMs >= durMs || elapsedMs < 0) return;
 
@@ -241,18 +250,46 @@ function createDanmaku(d, seekTime = null) {
 
   container.appendChild(el);
 
-  const textW = el.offsetWidth;
+  // 利用缓存跳过耗时的 layout reflow
+  if (d._textW === undefined) {
+    d._textW = el.offsetWidth;
+  }
+  const textW = d._textW;
   const winW = window.innerWidth;
   const lanesNeeded = Math.ceil(d.size / 25);
-  let lane = 0;
+  let lane = d._lane;
   
-  // 核心分配逻辑分流
-  if (isScroll) {
-    lane = getFreeScrollLane(scrollLanes, textW, winW, durMs, videoTimeMs, lanesNeeded);
-  } else if (isTop) {
-    lane = getFreeFixedLane(topLanes, durMs, videoTimeMs, lanesNeeded);
-  } else if (isBottom) {
-    lane = getFreeFixedLane(bottomLanes, durMs, videoTimeMs, lanesNeeded);
+  // 核心分配逻辑分流，带有轨道记忆
+  if (lane !== undefined && lane < maxLanes) {
+    // 如果有记忆的轨道，则直接使用，但依然要更新全局轨道占用状态
+    if (isScroll) {
+      const speed = (winW + textW) / durMs;
+      const tailEnterTime = videoTimeMs + (textW / speed) + 100;
+      const tailReachOneSixthTime = videoTimeMs + (5 * winW / 6 + textW) / speed;
+      for (let k = 0; k < lanesNeeded; k++) {
+        if (lane + k < maxLanes) {
+          scrollLanes[lane + k] = { tailEnterTime, tailReachOneSixthTime };
+        }
+      }
+    } else if (isTop) {
+      for (let k = 0; k < lanesNeeded; k++) {
+        if (lane + k < maxLanes) topLanes[lane + k] = { leaveScreenTime: videoTimeMs + durMs };
+      }
+    } else if (isBottom) {
+      for (let k = 0; k < lanesNeeded; k++) {
+        if (lane + k < maxLanes) bottomLanes[lane + k] = { leaveScreenTime: videoTimeMs + durMs };
+      }
+    }
+  } else {
+    // 如果没有记忆，则重新计算并缓存
+    if (isScroll) {
+      lane = getFreeScrollLane(scrollLanes, textW, winW, durMs, videoTimeMs, lanesNeeded);
+    } else if (isTop) {
+      lane = getFreeFixedLane(topLanes, durMs, videoTimeMs, lanesNeeded);
+    } else if (isBottom) {
+      lane = getFreeFixedLane(bottomLanes, durMs, videoTimeMs, lanesNeeded);
+    }
+    d._lane = lane;
   }
   
   const laneHeightVh = (100 / maxLanes);
@@ -316,7 +353,7 @@ iina.onMessage("time-update", (data) => {
     handleSeek(t);
   } else if (!isPaused) {
     while (currentIndex < allDanmaku.length && allDanmaku[currentIndex].t <= t) {
-      createDanmaku(allDanmaku[currentIndex]);
+      createDanmaku(allDanmaku[currentIndex], t); // 补充关键代码：正常播放也要传入精准时间戳
       currentIndex++;
     }
   }
@@ -330,7 +367,6 @@ iina.onMessage("load-danmaku", (data) => {
   if (data.maxPerSec !== undefined) maxPerSec = data.maxPerSec;
   updateLanes();
   
-  // 性能极度优化：使用正则替换替代 split/join，防止超大 XML 导致内存溢出
   const encodedStr = data.xmlContent.replace(/(..)/g, '%$1');
   const xmlStr = decodeURIComponent(encodedStr);
   
@@ -339,29 +375,24 @@ iina.onMessage("load-danmaku", (data) => {
   const chats = xmlDoc.getElementsByTagName('chat');
   let list = [];
 
-  // --- 核心：Niconico <chat> 解析逻辑 ---
   if (chats.length > 0) {
     for (let i = 0; i < chats.length; i++) {
       const el = chats[i];
       const text = el.textContent;
       if (!text) continue;
 
-      // 解析 10ms 精度的 vpos
       const vpos = parseInt(el.getAttribute('vpos') || "0", 10);
       const mail = el.getAttribute('mail') || "";
       const commands = mail.toLowerCase().split(/\s+/);
 
-      // 解析指令：位置
       let mode = 1; 
       if (commands.includes('shita')) mode = 4;
       else if (commands.includes('ue')) mode = 5;
 
-      // 解析指令：字号
       let size = 25; 
       if (commands.includes('big')) size = 36;
       else if (commands.includes('small')) size = 15;
 
-      // 解析指令：颜色
       let color = '#FFFFFF';
       for (const cmd of commands) {
         if (NICO_COLORS[cmd]) {
@@ -375,7 +406,7 @@ iina.onMessage("load-danmaku", (data) => {
       }
 
       list.push({
-        t: vpos / 100, // 转换为秒
+        t: vpos / 100,
         m: mode,
         c: color,
         text: text,
@@ -383,7 +414,6 @@ iina.onMessage("load-danmaku", (data) => {
       });
     }
   } else {
-    // --- 优雅降级：如果用户丢进来的是 Bilibili 的 <d> 标签文件 ---
     const regex = /<d p="([^"]+)">([\s\S]*?)<\/d>/g;
     let match;
     while ((match = regex.exec(xmlStr)) !== null) {
@@ -401,10 +431,8 @@ iina.onMessage("load-danmaku", (data) => {
     }
   }
 
-  // 严格按时间重排
   allDanmaku = list.sort((a, b) => a.t - b.t);
 
-  // 数据端限流：在渲染前直接过滤掉超限弹幕
   if (maxPerSec > 0) {
     var beforeCount = allDanmaku.length;
     allDanmaku = applyRateLimit(allDanmaku, maxPerSec);
@@ -419,6 +447,7 @@ iina.onMessage("load-danmaku", (data) => {
 
 iina.onMessage("resize", () => {
   updateLanes();
+  clearDanmakuCaches(); // 清除过期的布局缓存
 
   activeDanmaku.forEach(item => {
     if (item.type === 'fixed') {
@@ -458,6 +487,7 @@ iina.onMessage("set-opacity", (data) => {
 iina.onMessage("set-fontscale", (data) => {
   fontScale = data.scale;
   updateLanes();
+  clearDanmakuCaches(); // 清除过期的布局缓存
   handleSeek(lastTime);
 });
 
