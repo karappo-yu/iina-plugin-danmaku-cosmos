@@ -4,6 +4,18 @@
 
 ![Installation](sh/sh1.png)
 
+> ※ 上图为演示用途，仅展示插件弹幕渲染效果。
+> 实际使用时请自行从合法渠道获取 NicoNico 评论（コメント）。
+> 本插件不提供任何弹幕文件。
+>
+> ※ This image is for demonstration only, showing the plugin's danmaku rendering.
+> Please obtain NicoNico comments (コメント) from legitimate sources.
+> This plugin does not provide any danmaku files.
+>
+> ※ この画像は演示用です。コメント描画の效果を示すものです。
+> コメントは各自の責任において NicoNico など合法的なサービスから取得してください。
+> このプラグインはコメントファイルを提供しません。
+
 IINA danmaku plugin supporting Niconico and Bilibili formats.
 
 ---
