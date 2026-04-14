@@ -2,6 +2,9 @@
 
 IINA 弹幕插件，支持 Niconico 格式与 Bilibili 格式弹幕。
 
+![插件菜单](sh/menu.png)
+![插件安装](sh/sh1.png)
+
 [日本語](#日本語) / [中文](#中文) / [English](#english)
 
 ---
