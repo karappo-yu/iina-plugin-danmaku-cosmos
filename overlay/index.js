@@ -34,9 +34,13 @@ let topLanes = [];
 let bottomLanes = [];
 
 function resetLaneData() {
-  scrollLanes = new Array(maxLanes).fill(0);
-  topLanes = new Array(maxLanes).fill(0);
-  bottomLanes = new Array(maxLanes).fill(0);
+  // 核心更改：将轨道数据结构从单一数字改为对象
+  // tailEnterTime: 用于判断入口是否空闲
+  // tailReachOneSixthTime: 尾部到达左侧 1/6 处的时间，用于判断追尾
+  // leaveScreenTime: (用于固定弹幕) 完全消失时间
+  scrollLanes = Array.from({ length: maxLanes }, () => ({ tailEnterTime: 0, tailReachOneSixthTime: 0 }));
+  topLanes = Array.from({ length: maxLanes }, () => ({ leaveScreenTime: 0 }));
+  bottomLanes = Array.from({ length: maxLanes }, () => ({ leaveScreenTime: 0 }));
 }
 
 function updateLanes() {
@@ -55,30 +59,116 @@ function updateLanes() {
   }
 }
 
-function getFreeLane(lanesArr, textW, winW, durMs, videoTimeMs, danmakuSize) {
-  const lanesNeeded = Math.ceil(danmakuSize / 25);
+/**
+ * 获取空闲的滚动轨道 (应用左侧1/6防追尾算法)
+ */
+function getFreeScrollLane(lanesArr, textW, winW, durMs, currentTime, lanesNeeded) {
+  const speed = (winW + textW) / durMs;
+  const tailEnterTime = currentTime + (textW / speed) + 100; // 100ms 安全缓冲
+  
+  // 新弹幕头部到达 1/6 处的时间 = 行驶 5/6 屏幕宽度的耗时
+  const headReachOneSixthTime = currentTime + (5 * winW / 6) / speed;
+  // 当前弹幕尾部到达 1/6 处的时间 = 行驶 5/6 屏幕宽 + 弹幕宽度的耗时
+  const tailReachOneSixthTime = currentTime + (5 * winW / 6 + textW) / speed;
 
-  for (let i = 0; i < maxLanes; i++) {
+  const validLaneCount = Math.max(1, maxLanes - lanesNeeded + 1);
+
+  // 1. 尝试寻找完全符合条件的空闲轨道
+  for (let i = 0; i < validLaneCount; i++) {
     let enoughSpace = true;
     for (let k = 0; k < lanesNeeded; k++) {
-      if (i + k >= maxLanes || lanesArr[i + k] > videoTimeMs) {
+      if (i + k >= maxLanes) {
+        enoughSpace = false;
+        break;
+      }
+      const lane = lanesArr[i + k];
+      
+      // 条件 A: 尾部已入屏，入口空闲
+      const isEntranceFree = currentTime >= lane.tailEnterTime;
+      // 条件 B: 新弹幕头部到达 1/6 处时，老弹幕尾部已经越过 1/6 处（允许在 1/6 区域内追尾相撞）
+      const isNoCatchUpBeforeOneSixth = headReachOneSixthTime >= lane.tailReachOneSixthTime;
+
+      if (!isEntranceFree || !isNoCatchUpBeforeOneSixth) {
+        enoughSpace = false;
+        break;
+      }
+    }
+    
+    if (enoughSpace) {
+      for (let k = 0; k < lanesNeeded; k++) {
+        if (i + k < maxLanes) {
+          lanesArr[i + k] = { tailEnterTime, tailReachOneSixthTime };
+        }
+      }
+      return i;
+    }
+  }
+
+  // 2. 如果找不到完全符合条件的，寻找最先释放入口的轨道 (强制覆盖)
+  let earliestLane = 0;
+  let earliestTime = Infinity;
+  for (let i = 0; i < validLaneCount; i++) {
+    let maxTailEnter = 0;
+    for (let k = 0; k < lanesNeeded; k++) {
+      if (i + k < maxLanes) {
+        maxTailEnter = Math.max(maxTailEnter, lanesArr[i + k].tailEnterTime);
+      }
+    }
+    if (maxTailEnter < earliestTime) {
+      earliestTime = maxTailEnter;
+      earliestLane = i;
+    }
+  }
+
+  // 更新占用的轨道状态
+  for (let k = 0; k < lanesNeeded; k++) {
+    if (earliestLane + k < maxLanes) {
+      lanesArr[earliestLane + k] = { tailEnterTime, tailReachOneSixthTime };
+    }
+  }
+  return earliestLane;
+}
+
+/**
+ * 获取空闲的固定轨道 (顶部/底部弹幕)
+ */
+function getFreeFixedLane(lanesArr, durMs, currentTime, lanesNeeded) {
+  const leaveScreenTime = currentTime + durMs;
+  const validLaneCount = Math.max(1, maxLanes - lanesNeeded + 1);
+
+  for (let i = 0; i < validLaneCount; i++) {
+    let enoughSpace = true;
+    for (let k = 0; k < lanesNeeded; k++) {
+      if (i + k >= maxLanes || currentTime < lanesArr[i + k].leaveScreenTime) {
         enoughSpace = false;
         break;
       }
     }
     if (enoughSpace) {
-      const speed = (winW + textW) / durMs;
-      const clearTime = textW > 0 ? (textW / speed) : durMs;
       for (let k = 0; k < lanesNeeded; k++) {
-        lanesArr[i + k] = videoTimeMs + clearTime + 100;
+        if (i + k < maxLanes) lanesArr[i + k] = { leaveScreenTime };
       }
       return i;
     }
   }
 
   let earliestLane = 0;
-  for (let i = 1; i < maxLanes; i++) {
-    if (lanesArr[i] < lanesArr[earliestLane]) earliestLane = i;
+  let earliestTime = Infinity;
+  for (let i = 0; i < validLaneCount; i++) {
+    let maxLeave = 0;
+    for (let k = 0; k < lanesNeeded; k++) {
+      if (i + k < maxLanes) {
+        maxLeave = Math.max(maxLeave, lanesArr[i + k].leaveScreenTime);
+      }
+    }
+    if (maxLeave < earliestTime) {
+      earliestTime = maxLeave;
+      earliestLane = i;
+    }
+  }
+
+  for (let k = 0; k < lanesNeeded; k++) {
+    if (earliestLane + k < maxLanes) lanesArr[earliestLane + k] = { leaveScreenTime };
   }
   return earliestLane;
 }
@@ -153,9 +243,17 @@ function createDanmaku(d, seekTime = null) {
 
   const textW = el.offsetWidth;
   const winW = window.innerWidth;
+  const lanesNeeded = Math.ceil(d.size / 25);
+  let lane = 0;
   
-  const lanesRef = isScroll ? scrollLanes : (isTop ? topLanes : bottomLanes);
-  const lane = getFreeLane(lanesRef, textW, winW, durMs, videoTimeMs, d.size);
+  // 核心分配逻辑分流
+  if (isScroll) {
+    lane = getFreeScrollLane(scrollLanes, textW, winW, durMs, videoTimeMs, lanesNeeded);
+  } else if (isTop) {
+    lane = getFreeFixedLane(topLanes, durMs, videoTimeMs, lanesNeeded);
+  } else if (isBottom) {
+    lane = getFreeFixedLane(bottomLanes, durMs, videoTimeMs, lanesNeeded);
+  }
   
   const laneHeightVh = (100 / maxLanes);
 
@@ -369,9 +467,6 @@ iina.onMessage("set-scroll-duration", (data) => {
 
 iina.onMessage("set-max-per-sec", (data) => {
   maxPerSec = data.maxPerSec;
-  // 限流参数变更后需要重新加载弹幕才能生效
-  // 因为过滤是在数据端完成的，已过滤掉的弹幕无法恢复
-  // 所以这里只更新参数，下次加载弹幕时自动应用
 });
 
 iina.onMessage("clear-danmaku", () => {
@@ -408,5 +503,4 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-// IPC 通讯只需确认一次即可
 setTimeout(() => iina.postMessage("overlay-ready", {}), 300);
