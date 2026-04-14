@@ -1,0 +1,44 @@
+name: Release Package
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package Plugin
+        run: |
+          mkdir -p dist
+          zip -r dist/danmaku-cosmos.iinaplgz \
+            Info.json \
+            main.js \
+            global.js \
+            overlay \
+            sidebar \
+            -x "*.DS_Store" \
+            -x "*.git*" \
+            -x ".github/*" \
+            -x ".workbuddy/*" \
+            -x ".trae/*" \
+            -x "index.d.ts" \
+            -x "IINA插件开发指南.md" \
+            -x "README.md" \
+            -x "sh/*"
+          echo "Package created:"
+          ls -lh dist/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/danmaku-cosmos.iinaplgz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
