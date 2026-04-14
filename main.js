@@ -58,9 +58,14 @@ function loadDanmakuForVideo(url) {
   }
 
   if (!file.exists(danmakuPath)) {
-    pendingDanmaku = null;
-    if (overlayReady) overlay.postMessage("clear-danmaku", {});
-    return;
+    var altDanmakuPath = danmakuPath.replace(/[/\\][^/\\]+$/, '/弹幕$&');
+    if (file.exists(altDanmakuPath)) {
+      danmakuPath = altDanmakuPath;
+    } else {
+      pendingDanmaku = null;
+      if (overlayReady) overlay.postMessage("clear-danmaku", {});
+      return;
+    }
   }
 
   var xmlContent = file.read(danmakuPath);
