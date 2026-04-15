@@ -29,19 +29,15 @@ html, body {
   position: relative;
 }
 
-/* 弹幕的基础艺术修养：日系字体 + 粗重黑边，描边随窗口缩放 */
+/* 弹幕的基础艺术修养：日系字体 + 粗重描边 */
 .dm-item {
-  position: absolute;
-  white-space: nowrap;
-  font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Meiryo', sans-serif;
-  font-weight: 700;
-  text-shadow:
-    calc(0.0781vw) calc(0.0781vw) 0 #666,
-    calc(-0.0781vw) calc(-0.0781vw) 0 #666,
-    calc(0.0781vw) calc(-0.0781vw) 0 #666,
-    calc(-0.0781vw) calc(0.0781vw) 0 #666,
-    0 0 calc(0.2083vw) rgba(102,102,102,0.8);
-  will-change: transform;
+  position: absolute;                    /* 绝对定位，相对于容器 */
+  white-space: nowrap;                   /* 不换行 */
+  font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Meiryo', sans-serif;  /* 日系字体优先 */
+  font-weight: 900;                      /* 字重：100-900，400=正常，700=粗体，900=超粗 */
+  -webkit-text-stroke: 0.08vw rgba(0,0,0,0.5);  /* 描边宽度（相对视口），颜色+透明度 */
+  filter: drop-shadow(0 0 0.1vw rgba(0,0,0,0.4));  /* 模糊阴影：模糊半径，颜色+透明度 */
+  will-change: transform;                /* 提示浏览器优化 transform 动画性能 */
   /* 绑定全局暂停变量 */
   animation-play-state: var(--play-state) !important;
 }
