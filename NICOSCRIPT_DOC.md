@@ -43,6 +43,78 @@ const nicoScripts = {
 
 **判断逻辑**：`isReverseActive(vposSec, isOwner)`
 
+**CSS 实现**：
+```javascript
+// 正放：--end-x = -100%（向左）
+// 倒放：--end-x = 100vw（向右）
+if (isReverse) {
+  el.style.setProperty('--start-x', `100vw`);
+  el.style.setProperty('--end-x', `-100%`);
+} else {
+  el.style.setProperty('--start-x', `100vw`);
+  el.style.setProperty('--end-x', `-100%`);
+}
+```
+
+**镜像反转实现**（全屏反转）：
+```javascript
+function reverseAllActiveDanmaku(newReverseState) {
+  const winW = window.innerWidth;
+  activeDanmaku.forEach(item => {
+    const el = item.el;
+    const d = item.d;
+    const durMs = (d.m >= 1 && d.m <= 3) ? scrollDuration : fixedDuration;
+    const currentSpeedMult = getSpeedMultiplier(lastTime, d._isOwner);
+    const adjustedDurMs = durMs / currentSpeedMult;
+    const elapsedMs = (lastTime - d.t) * 1000;
+    const remainingMs = adjustedDurMs - elapsedMs;
+
+    const rect = el.getBoundingClientRect();
+    const currentX = rect.left;
+    const elW = rect.width;
+
+    el.style.animation = 'none';
+    el.offsetHeight;
+
+    if (newReverseState) {
+      const mirroredX = winW - currentX;
+      el.style.setProperty('--start-x', `${mirroredX}px`);
+      el.style.setProperty('--end-x', `${winW + elW}px`);
+    } else {
+      const mirroredX = winW - currentX;
+      el.style.setProperty('--start-x', `${mirroredX}px`);
+      el.style.setProperty('--end-x', `${-elW}px`);
+    }
+
+    el.style.setProperty('--dur', `${remainingMs}ms`);
+    el.style.setProperty('--delay', `0ms`);
+    el.style.animation = '';
+  });
+  resetLaneData();
+}
+```
+
+**测试用 JSON 格式**：
+```json
+[
+  {
+    "fork": "owner",
+    "comments": [
+      { "vposMs": 624380, "body": "@逆　全", "commands": ["@35"] }
+    ]
+  },
+  {
+    "fork": "comment",
+    "comments": []
+  }
+]
+```
+
+**测试用 XML 格式**：
+```xml
+<chat vpos="6240" mail="@35">@逆　全</chat>
+```
+
 ---
 
 ### 2. 速度控制 (`@速い` / `@遅い`)
@@ -77,6 +149,70 @@ const speedMult = getSpeedMultiplier(d.t, d._isOwner);
 const adjustedDurMs = durMs / speedMult;  // 速度越快，时长越短
 ```
 
+**实现代码**：
+```javascript
+function processSpeedScript(vposSec, content, commands) {
+  const speedUpMatch = RE_SPEED_UP.exec(content);
+  const speedDownMatch = RE_SPEED_DOWN.exec(content);
+  if (!speedUpMatch && !speedDownMatch) return;
+
+  const isSpeedUp = !!speedUpMatch;
+  let durationSec = 30;
+
+  for (const cmd of commands) {
+    const durationMatch = /^@(\d+)$/.exec(cmd);
+    if (durationMatch) {
+      durationSec = parseInt(durationMatch[1], 10);
+      break;
+    }
+  }
+
+  nicoScripts.speed.unshift({
+    start: vposSec,
+    end: vposSec + durationSec,
+    multiplier: isSpeedUp ? 2 : 0.5
+  });
+  speedActiveOwnerCache.clear();
+  speedActiveViewerCache.clear();
+}
+
+function getSpeedMultiplier(vposSec, isOwner) {
+  const cache = isOwner ? speedActiveOwnerCache : speedActiveViewerCache;
+  const cached = cache.get(vposSec);
+  if (cached !== undefined) return cached;
+
+  let multiplier = 1;
+  for (const range of nicoScripts.speed) {
+    if (range.start <= vposSec && vposSec <= range.end) {
+      multiplier = range.multiplier;
+      break;
+    }
+  }
+
+  cache.set(vposSec, multiplier);
+  return multiplier;
+}
+```
+
+**测试用 JSON 格式**：
+```json
+[
+  {
+    "fork": "owner",
+    "comments": [
+      { "vposMs": 4000, "body": "@速い @10 加速コマンド", "commands": ["@10"] },
+      { "vposMs": 8000, "body": "@遅い @10 減速コマンド", "commands": ["@10"] }
+    ]
+  }
+]
+```
+
+**测试用 XML 格式**：
+```xml
+<chat vpos="40" mail="@10">@速い 加速コマンド</chat>
+<chat vpos="80" mail="@10">@遅い 減速コマンド</chat>
+```
+
 ---
 
 ## 未实现命令
@@ -91,30 +227,6 @@ const adjustedDurMs = durMs / speedMult;  // 速度越快，时长越短
 | `@シーク禁止` | 禁止跳转 | - |
 | `@ジャンプ` | 跳转时间 | `@ジャンプ 1000` |
 | `@置換` | 内容替换 | - |
-
----
-
-## 倒放脚本详解 (`@逆`)
-
-### 目标类型
-- `全` - 全部弹幕（默认）
-- `コメ` - 只评论弹幕
-- `投コマ` - 只投币弹幕
-
-### 持续时间
-- 使用 `@数字` 指定秒数
-- 默认 30 秒
-
----
-
-## 速度脚本详解
-
-### 目标类型
-- 无区分，所有弹幕统一速度
-
-### 持续时间
-- 使用 `@数字` 指定秒数
-- 默认 30 秒
 
 ---
 
