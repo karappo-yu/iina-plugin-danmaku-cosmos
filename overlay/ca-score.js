@@ -50,7 +50,7 @@ window.getUserCAScores = function (danmakuList) {
 
   for (const d of danmakuList) {
     const userId = d._userId;
-    if (userId === undefined || userId === -1 || userId === null) continue;
+    if (userId === undefined || userId === -1 || userId === null || userId === '') continue;
 
     if (scores[userId] === undefined) scores[userId] = 0;
 
@@ -234,7 +234,7 @@ window.assignCALayers = function (danmakuList) {
 
   // 4. 筛选 CA 弹幕：分数达标 + 非投稿者
   const caDanmaku = dedupedList.filter(d =>
-    (userScores[d._userId] || 0) >= CA_CONFIG.minScore && !d._isOwner
+    (userScores[d._userId] || 0) >= CA_CONFIG.minScore && !d._isOwner && !d._isFlash
   );
 
   if (caDanmaku.length === 0) return danmakuList;

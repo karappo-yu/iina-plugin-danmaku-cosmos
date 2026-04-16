@@ -90,16 +90,16 @@ function parseNicoXml(chats) {
     const vpos = parseInt(el.getAttribute('vpos') || "0", 10);
     const mail = el.getAttribute('mail') || "";
     const commands = mail.toLowerCase().split(/\s+/);
-    const isOwner = !el.getAttribute('user_id');
-    const userId = parseInt(el.getAttribute('user_id') || "0", 10);
+    const isOwner = false;
+    const isNicoscriptCmd = isNicoscript(text);
+    const userId = el.getAttribute('user_id') || '';
     const dateSec = parseInt(el.getAttribute('date') || "0", 10);
     const isPremium = el.getAttribute('premium') === "1";
     const mc = parseMailCommands(commands, isPremium);
     const isFlash = isFlashDanmaku(dateSec, commands);
     const displayText = isFlash ? preprocessFlashText(text) : text;
 
-    // 投稿者弹幕：处理 Nicoscript
-    if (isOwner) {
+    if (isNicoscriptCmd) {
       processReverseScript(vpos, text, commands);
       processSpeedScript(vpos, text, commands);
       processBanScript(vpos, text, commands);
@@ -108,9 +108,9 @@ function parseNicoXml(chats) {
       processReplaceScript(vpos, text, commands, mc);
     }
 
-    const nicoscriptInvisible = isOwner && isNicoscript(text);
+    const nicoscriptInvisible = isNicoscriptCmd;
 
-    if (isOwner) {
+    if (isNicoscriptCmd) {
       processDefaultScript(vpos, text, commands, mc);
     }
 
