@@ -7,9 +7,13 @@
   <title>Danmaku Cosmos Overlay</title>
 </head>
 <body>
+  <canvas id="niconicomments-canvas"></canvas>
   <div id="danmaku-container"></div>
 
   <!-- 模块加载顺序（依赖链：config → command → flash → nicoscript → lane → renderer → input → ca-score → main） -->
+  <script src="lib/niconicomments.min.js"></script>
+  <script src="lib/niconicomments-plugin-niwango.min.js"></script>
+  <script src="lib/niwango.min.js"></script>
   <script src="config.js"></script>
   <script src="command.js"></script>
   <script src="flash.js"></script>

@@ -264,6 +264,10 @@ function registerSidebarHandlers() {
     overlay.postMessage("block-force-lane", { blockForceLane: currentBlockForceLane });
   });
 
+  sidebar.onMessage("set-render-mode", function (data) {
+    overlay.postMessage("set-render-mode", { mode: data.mode });
+  });
+
   sidebar.onMessage("request-state", function () {
     sidebar.postMessage("danmaku-state", {
       enabled: danmakuEnabled,
@@ -308,6 +312,12 @@ event.on("mpv.pause.changed", function () {
 
 overlay.onMessage("danmaku-error", function (data) {
   console.warn("Danmaku error: " + (data.message || "unknown"));
+});
+
+overlay.onMessage("canvas-unsupported", function () {
+  core.osd("Canvas渲染不支持Bilibili XML弹幕");
+  sidebar.postMessage("danmaku-state", { renderMode: 'css' });
+  overlay.postMessage("set-render-mode", { mode: 'css' });
 });
 
 overlay.onMessage("seek-disable", function () {

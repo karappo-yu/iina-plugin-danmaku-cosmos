@@ -234,7 +234,7 @@ window.assignCALayers = function (danmakuList) {
 
   // 4. 筛选 CA 弹幕：分数达标 + 非投稿者
   const caDanmaku = dedupedList.filter(d =>
-    (userScores[d._userId] || 0) >= CA_CONFIG.minScore && !d._isOwner && !d._isFlash
+    (userScores[d._userId] || 0) >= CA_CONFIG.minScore && !d._isOwner
   );
 
   if (caDanmaku.length === 0) return danmakuList;

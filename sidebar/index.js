@@ -1,4 +1,5 @@
 var toggleDanmaku = document.getElementById("toggle-danmaku");
+var renderModeCanvas = document.getElementById("render-mode-canvas");
 var opacitySlider = document.getElementById("opacity-slider");
 var opacityValue = document.getElementById("opacity-value");
 var fontsizeSlider = document.getElementById("fontsize-slider");
@@ -12,8 +13,20 @@ var blockForceLane = document.getElementById("block-force-lane");
 var maxLaneSlider = document.getElementById("max-lane-slider");
 var maxLaneValue = document.getElementById("max-lane-value");
 
+var durationSection = durationSlider.closest('.section');
+var fontsizeSection = fontsizeSlider.closest('.section');
+var laneLimitSection = maxLaneSlider.closest('.section');
+var blockForceLaneLabel = blockForceLane.closest('.checkbox-label');
+
+var opacitySection = opacitySlider.closest('.section');
+var blockSection = blockScroll.closest('.section');
+var canvasSection = renderModeCanvas.closest('.section');
+
+var settingsSections = [canvasSection, laneLimitSection, opacitySection, fontsizeSection, durationSection, blockSection];
+
 var state = {
   enabled: true,
+  renderMode: 'css',
   opacity: 0.7,
   fontScale: 1.0,
   speed: 680,
@@ -25,9 +38,30 @@ var state = {
   maxLaneRatio: 1.0,
 };
 
+function updateCanvasModeUI() {
+  var isCanvas = state.renderMode === 'canvas';
+  if (durationSection) durationSection.style.display = isCanvas ? 'none' : '';
+  if (fontsizeSection) fontsizeSection.style.display = isCanvas ? 'none' : '';
+  if (laneLimitSection) laneLimitSection.style.display = isCanvas ? 'none' : '';
+  if (blockSection) blockSection.style.display = isCanvas ? 'none' : '';
+  var canvasHint = document.querySelector('.canvas-hint');
+  if (canvasHint) canvasHint.style.display = isCanvas ? '' : 'none';
+}
+
+function updateEnabledUI() {
+  var show = state.enabled;
+  settingsSections.forEach(function(sec) {
+    if (sec) sec.style.display = show ? '' : 'none';
+  });
+  if (show) updateCanvasModeUI();
+}
+
 var i18n = {
   en: {
     danmaku_visible: "Danmaku On",
+    render_canvas: "Canvas Render",
+    render_canvas_hint: "Better compatibility with Comment Art",
+    render_canvas_note: "Opacity is available",
     opacity: "Opacity",
     font_scale: "Font Scale",
     scroll_duration: "Scroll Duration",
@@ -40,6 +74,9 @@ var i18n = {
   },
   ja: {
     danmaku_visible: "コメント表示",
+    render_canvas: "Canvas描画",
+    render_canvas_hint: "コメントアートとの互換性が高い",
+    render_canvas_note: "透明度が有効",
     opacity: "透明度",
     font_scale: "フォント倍率",
     scroll_duration: "スクロール時間",
@@ -52,6 +89,9 @@ var i18n = {
   },
   zh: {
     danmaku_visible: "弹幕显示",
+    render_canvas: "Canvas渲染",
+    render_canvas_hint: "对高级弹幕兼容性更好",
+    render_canvas_note: "透明度可用",
     opacity: "透明度",
     font_scale: "字体缩放",
     scroll_duration: "滚动时长",
@@ -82,6 +122,7 @@ function applyI18n() {
 
 function updateUI() {
   toggleDanmaku.checked = state.enabled;
+  renderModeCanvas.checked = state.renderMode === 'canvas';
   opacitySlider.value = state.opacity;
   opacityValue.textContent = Math.round(state.opacity * 100) + "%";
   fontsizeSlider.value = Math.round(state.fontScale * 100);
@@ -108,7 +149,16 @@ function sendBlockType() {
 }
 
 toggleDanmaku.addEventListener("change", function () {
+  state.enabled = toggleDanmaku.checked;
+  updateEnabledUI();
   iina.postMessage("toggle-danmaku");
+});
+
+renderModeCanvas.addEventListener("change", function () {
+  var mode = renderModeCanvas.checked ? 'canvas' : 'css';
+  state.renderMode = mode;
+  updateCanvasModeUI();
+  iina.postMessage("set-render-mode", { mode: mode });
 });
 
 opacitySlider.addEventListener("input", function () {
@@ -142,6 +192,7 @@ maxLaneSlider.addEventListener("input", function () {
 
 iina.onMessage("danmaku-state", function (data) {
   if (data.enabled !== undefined) state.enabled = data.enabled;
+  if (data.renderMode !== undefined) state.renderMode = data.renderMode;
   if (data.opacity !== undefined) state.opacity = data.opacity;
   if (data.fontScale !== undefined) state.fontScale = data.fontScale;
   if (data.speed !== undefined) state.speed = data.speed;
@@ -149,6 +200,7 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.blockForceLane !== undefined) state.blockForceLane = data.blockForceLane;
   if (data.maxLaneRatio !== undefined) state.maxLaneRatio = data.maxLaneRatio;
   updateUI();
+  updateEnabledUI();
 });
 
 applyI18n();

@@ -25,10 +25,28 @@ html, body {
   -webkit-user-select: none;
 }
 
+#niconicomments-canvas {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: none;
+  pointer-events: none;
+}
+
 #danmaku-container {
   width: 100%;
   height: 100%;
   position: relative;
+}
+
+body.canvas-mode #niconicomments-canvas {
+  display: block;
+}
+
+body.canvas-mode #danmaku-container {
+  display: none;
 }
 
 /* 弹幕的基础艺术修养：日系字体 + 粗重描边 */

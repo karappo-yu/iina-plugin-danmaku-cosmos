@@ -20,6 +20,18 @@
     </div>
 
     <div class="section">
+      <div class="toggle-row">
+        <span class="toggle-label" data-i18n="render_canvas">Canvas Render</span>
+        <label class="switch" data-clickable>
+          <input type="checkbox" id="render-mode-canvas" />
+          <span class="switch-slider"></span>
+        </label>
+      </div>
+      <div class="hint-text" data-i18n="render_canvas_hint">Use niconicomments canvas engine</div>
+      <div class="hint-text canvas-hint" data-i18n="render_canvas_note" style="display:none;">Opacity, Font Scale, Block Scroll/Top/Bottom are available</div>
+    </div>
+
+    <div class="section">
       <h3 class="section-title" data-i18n="lane_limit">Lane Limit</h3>
       <div class="control-row">
         <input type="range" id="max-lane-slider" data-clickable min="10" max="100" step="5" value="100" class="slider" />
