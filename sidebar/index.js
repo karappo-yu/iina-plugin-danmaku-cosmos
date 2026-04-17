@@ -29,6 +29,10 @@ var state = {
   enabled: true,
   renderMode: 'css',
   canvasMode: 'default',
+  danmakuType: 'none',
+  danmakuFileName: null,
+  danmakuRelativePath: null,
+  danmakuLoaded: false,
   opacity: 0.7,
   fontScale: 1.0,
   speed: 680,
@@ -40,8 +44,33 @@ var state = {
   maxLaneRatio: 1.0,
 };
 
+function isCanvasSupported() {
+  return state.danmakuType === 'nico-xml' || state.danmakuType === 'nico-json';
+}
+
+function updateDanmakuInfoUI() {
+  var fileInfoEl = document.getElementById('danmaku-file-info');
+  if (!fileInfoEl) return;
+  if (!state.danmakuLoaded) {
+    fileInfoEl.style.display = 'none';
+    return;
+  }
+  fileInfoEl.style.display = '';
+  var nameEl = fileInfoEl.querySelector('.danmaku-file-name');
+  var pathEl = fileInfoEl.querySelector('.danmaku-file-path');
+  if (nameEl) nameEl.textContent = state.danmakuFileName || '';
+  if (pathEl) pathEl.textContent = state.danmakuRelativePath || '';
+}
+
 function updateCanvasModeUI() {
   var isCanvas = state.renderMode === 'canvas';
+  var supported = isCanvasSupported();
+  renderModeCanvas.disabled = !supported;
+  if (!supported && isCanvas) {
+    state.renderMode = 'css';
+    renderModeCanvas.checked = false;
+    iina.postMessage("set-render-mode", { mode: 'css' });
+  }
   if (durationSection) durationSection.style.display = isCanvas ? 'none' : '';
   if (laneLimitSection) laneLimitSection.style.display = isCanvas ? 'none' : '';
   if (blockSection) blockSection.style.display = isCanvas ? 'none' : '';
@@ -49,6 +78,8 @@ function updateCanvasModeUI() {
   if (canvasHint) canvasHint.style.display = isCanvas ? '' : 'none';
   var canvasOptions = document.querySelector('.canvas-mode-options');
   if (canvasOptions) canvasOptions.style.display = isCanvas ? '' : 'none';
+  var canvasUnsupported = document.querySelector('.canvas-unsupported');
+  if (canvasUnsupported) canvasUnsupported.style.display = (!supported && state.enabled) ? '' : 'none';
 }
 
 function updateEnabledUI() {
@@ -56,7 +87,10 @@ function updateEnabledUI() {
   settingsSections.forEach(function(sec) {
     if (sec) sec.style.display = show ? '' : 'none';
   });
-  if (show) updateCanvasModeUI();
+  if (show) {
+    updateCanvasModeUI();
+    updateDanmakuInfoUI();
+  }
 }
 
 var i18n = {
@@ -64,6 +98,7 @@ var i18n = {
     danmaku_visible: "Danmaku On",
     render_canvas: "Canvas Render",
     render_canvas_hint: "Better compatibility with Comment Art",
+    render_canvas_unsupported: "Only available for Niconico format",
     render_canvas_note: "Opacity, Font Scale are available",
     canvas_mode: "Mode",
     canvas_mode_default: "Auto",
@@ -83,6 +118,7 @@ var i18n = {
     danmaku_visible: "コメント表示",
     render_canvas: "Canvas描画",
     render_canvas_hint: "コメントアートとの互換性が高い",
+    render_canvas_unsupported: "ニコニコ形式のみ利用可能",
     render_canvas_note: "透明度・フォント倍率が有効",
     canvas_mode: "モード",
     canvas_mode_default: "自動",
@@ -102,6 +138,7 @@ var i18n = {
     danmaku_visible: "弹幕显示",
     render_canvas: "Canvas渲染",
     render_canvas_hint: "对高级弹幕兼容性更好",
+    render_canvas_unsupported: "仅Niconico格式可用",
     render_canvas_note: "透明度、字体缩放可用",
     canvas_mode: "模式",
     canvas_mode_default: "自动",
@@ -138,6 +175,7 @@ function applyI18n() {
 function updateUI() {
   toggleDanmaku.checked = state.enabled;
   renderModeCanvas.checked = state.renderMode === 'canvas';
+  renderModeCanvas.disabled = !isCanvasSupported();
   opacitySlider.value = state.opacity;
   opacityValue.textContent = Math.round(state.opacity * 100) + "%";
   fontsizeSlider.value = Math.round(state.fontScale * 100);
@@ -171,6 +209,10 @@ toggleDanmaku.addEventListener("change", function () {
 });
 
 renderModeCanvas.addEventListener("change", function () {
+  if (!isCanvasSupported()) {
+    renderModeCanvas.checked = false;
+    return;
+  }
   var mode = renderModeCanvas.checked ? 'canvas' : 'css';
   state.renderMode = mode;
   updateCanvasModeUI();
@@ -222,9 +264,22 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.scrollDuration !== undefined) state.scrollDuration = data.scrollDuration;
   if (data.blockForceLane !== undefined) state.blockForceLane = data.blockForceLane;
   if (data.maxLaneRatio !== undefined) state.maxLaneRatio = data.maxLaneRatio;
+  if (data.danmakuFileType !== undefined) state.danmakuType = data.danmakuFileType;
+  if (data.danmakuFileName !== undefined) state.danmakuFileName = data.danmakuFileName;
+  if (data.danmakuRelativePath !== undefined) state.danmakuRelativePath = data.danmakuRelativePath;
+  if (data.danmakuLoaded !== undefined) state.danmakuLoaded = data.danmakuLoaded;
   updateUI();
   updateEnabledUI();
   if (canvasModeSelect) canvasModeSelect.value = state.canvasMode || 'default';
+});
+
+iina.onMessage("danmaku-type", function (data) {
+  if (data.fileType !== undefined) state.danmakuType = data.fileType;
+  if (data.fileName !== undefined) state.danmakuFileName = data.fileName;
+  if (data.relativePath !== undefined) state.danmakuRelativePath = data.relativePath;
+  if (data.isLoaded !== undefined) state.danmakuLoaded = data.isLoaded;
+  updateUI();
+  updateEnabledUI();
 });
 
 applyI18n();

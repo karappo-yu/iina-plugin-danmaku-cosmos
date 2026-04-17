@@ -261,6 +261,7 @@ iina.onMessage("load-danmaku", (data) => {
   }
 
   // Canvas模式：保存原始数据供niconicomments使用（不支持Bilibili XML）
+  var danmakuType = 'unknown';
   try {
     const rawStr = decodeURIComponent(encodedStr);
     const parser = new DOMParser();
@@ -268,14 +269,20 @@ iina.onMessage("load-danmaku", (data) => {
     const chats = xmlDoc.getElementsByTagName('chat');
     if (chats.length > 0) {
       nicoRawData = xmlDoc;
+      danmakuType = 'nico-xml';
     } else if (xmlDoc.getElementsByTagName('d').length > 0) {
       nicoRawData = null;
+      danmakuType = 'bilibili-xml';
     } else {
       nicoRawData = JSON.parse(rawStr);
+      danmakuType = 'nico-json';
     }
   } catch (e) {
     nicoRawData = null;
+    danmakuType = 'unknown';
   }
+
+  iina.postMessage("danmaku-type", { type: danmakuType });
 
   if (isCanvasMode() && nicoRawData) {
     canvasIsPlaying = !isPaused;
@@ -283,6 +290,10 @@ iina.onMessage("load-danmaku", (data) => {
     initCanvasRenderer(nicoRawData);
     startCanvasLoop();
   } else {
+    lastTime = 0;
+    if (isCanvasMode()) {
+      switchRenderMode('css');
+    }
     handleSeek(0);
   }
 });
@@ -384,6 +395,7 @@ iina.onMessage("clear-danmaku", () => {
   }
   allDanmaku = [];
   currentIndex = 0;
+  iina.postMessage("danmaku-type", { type: 'none' });
 });
 
 iina.onMessage("apply-settings", (data) => {

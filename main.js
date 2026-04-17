@@ -23,6 +23,33 @@ var timePosListenerID = null;
 var windowScaleListenerID = null;
 var speedListenerID = null;
 
+var currentDanmakuStatus = {
+  fileType: null,
+  fileName: null,
+  relativePath: null,
+  isLoaded: false
+};
+
+function updateDanmakuStatus(status) {
+  currentDanmakuStatus = status;
+  sidebar.postMessage("danmaku-type", currentDanmakuStatus);
+}
+
+function danmakuNotFound() {
+  updateDanmakuStatus({ fileType: null, fileName: null, relativePath: null, isLoaded: false });
+}
+
+function detectDanmakuFileType(content) {
+  if (!content) return null;
+  var s = content.trim();
+  if (s.charAt(0) === '[') return 'nico-json';
+  if (s.charAt(0) === '<') {
+    if (s.indexOf('<packet') !== -1) return 'nico-xml';
+    if (s.indexOf('<d p=') !== -1) return 'bilibili-xml';
+  }
+  return null;
+}
+
 function filePathFromUrl(url) {
   if (!url) return null;
   if (url.startsWith("file://")) {
@@ -71,6 +98,7 @@ function loadDanmakuForVideo(url) {
 
   if (core.status.isNetworkResource) {
     core.osd("网络资源，跳过弹幕加载");
+    danmakuNotFound();
     if (overlayReady) overlay.postMessage("clear-danmaku", {});
     return;
   }
@@ -113,11 +141,13 @@ function loadDanmakuForVideo(url) {
           danmakuPath = epDanmakuPath + '.xml';
         } else {
           pendingDanmaku = null;
+          danmakuNotFound();
           if (overlayReady) overlay.postMessage("clear-danmaku", {});
           return;
         }
       } else {
         pendingDanmaku = null;
+        danmakuNotFound();
         if (overlayReady) overlay.postMessage("clear-danmaku", {});
         return;
       }
@@ -128,11 +158,21 @@ function loadDanmakuForVideo(url) {
   if (!xmlContent) {
     core.osd("无法读取弹幕文件");
     pendingDanmaku = null;
+    danmakuNotFound();
     if (overlayReady) overlay.postMessage("clear-danmaku", {});
     return;
   }
 
   var hexContent = stringToHex(xmlContent);
+  var danmakuFileName = danmakuPath.split("/").pop();
+  var videoDir = filePathFromUrl(url).replace(/[/\\][^/\\]+$/, '');
+  var relativePath = danmakuPath;
+  if (danmakuPath.startsWith(videoDir + "/")) {
+    relativePath = danmakuPath.substring(videoDir.length + 1);
+  }
+  var fileType = detectDanmakuFileType(xmlContent);
+  updateDanmakuStatus({ fileType: fileType, fileName: danmakuFileName, relativePath: relativePath, isLoaded: true });
+
   var payload = {
     xmlContent: hexContent,
     opacity: currentOpacity,
@@ -296,6 +336,10 @@ function registerSidebarHandlers() {
       scrollDuration: currentScrollDuration,
       blockForceLane: currentBlockForceLane,
       maxLaneRatio: currentMaxLaneRatio,
+      danmakuFileType: currentDanmakuStatus.fileType,
+      danmakuFileName: currentDanmakuStatus.fileName,
+      danmakuRelativePath: currentDanmakuStatus.relativePath,
+      danmakuLoaded: currentDanmakuStatus.isLoaded,
     });
   });
 }
@@ -336,6 +380,11 @@ overlay.onMessage("canvas-unsupported", function () {
   core.osd("Canvas渲染不支持Bilibili XML弹幕");
   sidebar.postMessage("danmaku-state", { renderMode: 'css' });
   overlay.postMessage("set-render-mode", { mode: 'css' });
+});
+
+overlay.onMessage("danmaku-type", function (data) {
+  currentDanmakuStatus.fileType = data.type;
+  sidebar.postMessage("danmaku-type", currentDanmakuStatus);
 });
 
 overlay.onMessage("seek-disable", function () {
@@ -395,6 +444,10 @@ menu.addItem(
       }
       core.osd("读取到内容长度: " + xmlContent.length);
       var hexContent = stringToHex(xmlContent);
+      var manualFileName = path.split("/").pop();
+      var manualRelPath = manualFileName;
+      var manualFileType = detectDanmakuFileType(xmlContent);
+      updateDanmakuStatus({ fileType: manualFileType, fileName: manualFileName, relativePath: manualRelPath, isLoaded: true });
       overlay.postMessage("load-danmaku", {
         xmlContent: hexContent,
         opacity: currentOpacity,

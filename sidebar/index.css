@@ -116,6 +116,15 @@ small,
   transform: translateX(18px);
 }
 
+.switch input:disabled + .switch-slider {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.switch input:disabled + .switch-slider:before {
+  cursor: not-allowed;
+}
+
 @media (prefers-color-scheme: dark) {
   .switch input:checked + .switch-slider {
     background-color: #4da3ff;
@@ -185,6 +194,38 @@ small,
   font-size: 11px;
   opacity: 0.5;
   margin-top: 4px;
+}
+
+.canvas-unsupported {
+  color: #ff6b6b;
+  opacity: 0.8;
+}
+
+@media (prefers-color-scheme: dark) {
+  .canvas-unsupported {
+    color: #ff8787;
+  }
+}
+
+.danmaku-file-info {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(128, 128, 128, 0.08);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.danmaku-file-name {
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.danmaku-file-path {
+  opacity: 0.5;
+  font-size: 10px;
+  word-break: break-all;
+  margin-top: 2px;
 }
 
 kbd {
