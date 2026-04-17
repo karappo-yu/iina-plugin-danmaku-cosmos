@@ -50,9 +50,9 @@ function canvasGetCurrentTime() {
 }
 
 function detectNicoFormat(data) {
-  if (data instanceof XMLDocument) return 'niconicome';
   if (Array.isArray(data) && data.length > 0) {
     if (data[0].fork !== undefined && data[0].comments !== undefined) return 'v1';
+    if (data[0].chat !== undefined) return 'legacy';
   }
   return 'legacy';
 }
@@ -260,26 +260,29 @@ iina.onMessage("load-danmaku", (data) => {
     assignCALayers(allDanmaku);
   }
 
-  // Canvas模式：保存原始数据供niconicomments使用（不支持Bilibili XML）
+  // Canvas模式：解析JSON数据供niconicomments使用
   var danmakuType = 'unknown';
   try {
     const rawStr = decodeURIComponent(encodedStr);
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(rawStr, "text/xml");
-    const chats = xmlDoc.getElementsByTagName('chat');
-    if (chats.length > 0) {
-      nicoRawData = xmlDoc;
-      danmakuType = 'nico-xml';
-    } else if (xmlDoc.getElementsByTagName('d').length > 0) {
+    var parsed = JSON.parse(rawStr);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      if (parsed[0].fork !== undefined && parsed[0].comments !== undefined) {
+        nicoRawData = parsed;
+        danmakuType = 'nico-json';
+      } else if (parsed[0].chat !== undefined) {
+        nicoRawData = parsed;
+        danmakuType = 'nico-json';
+      } else {
+        nicoRawData = null;
+        danmakuType = 'bilibili-xml';
+      }
+    } else {
       nicoRawData = null;
       danmakuType = 'bilibili-xml';
-    } else {
-      nicoRawData = JSON.parse(rawStr);
-      danmakuType = 'nico-json';
     }
   } catch (e) {
     nicoRawData = null;
-    danmakuType = 'unknown';
+    danmakuType = 'bilibili-xml';
   }
 
   iina.postMessage("danmaku-type", { type: danmakuType });
