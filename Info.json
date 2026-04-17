@@ -2,9 +2,9 @@
   "name": "Danmaku Cosmos",
   "identifier": "com.danmaku-cosmos.iina-plugin",
   "version": "1.0.0",
-  "description": "IINA弹幕显示插件，自动加载与视频同名的XML弹幕文件",
+  "description": "IINA弹幕插件，支持Niconico和Bilibili格式，CSS/Canvas双渲染模式",
   "author": {
-    "name": "Danmaku Cosmos"
+    "name": "karappo-yu"
   },
   "entry": "main.js",
   "globalEntry": "global.js",
