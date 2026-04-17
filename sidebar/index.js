@@ -50,14 +50,19 @@ function isCanvasSupported() {
 
 function updateDanmakuInfoUI() {
   var fileInfoEl = document.getElementById('danmaku-file-info');
-  if (!fileInfoEl) return;
+  var notFoundEl = document.getElementById('danmaku-not-found');
   if (!state.danmakuLoaded) {
-    fileInfoEl.style.display = 'none';
+    if (fileInfoEl) fileInfoEl.style.display = 'none';
+    if (notFoundEl) notFoundEl.style.display = '';
+    toggleDanmaku.disabled = true;
+    toggleDanmaku.checked = false;
     return;
   }
-  fileInfoEl.style.display = '';
-  var nameEl = fileInfoEl.querySelector('.danmaku-file-name');
-  var pathEl = fileInfoEl.querySelector('.danmaku-file-path');
+  if (fileInfoEl) fileInfoEl.style.display = '';
+  if (notFoundEl) notFoundEl.style.display = 'none';
+  toggleDanmaku.disabled = false;
+  var nameEl = fileInfoEl ? fileInfoEl.querySelector('.danmaku-file-name') : null;
+  var pathEl = fileInfoEl ? fileInfoEl.querySelector('.danmaku-file-path') : null;
   if (nameEl) nameEl.textContent = state.danmakuFileName || '';
   if (pathEl) pathEl.textContent = state.danmakuRelativePath || '';
 }
@@ -112,7 +117,9 @@ var i18n = {
     block_scroll: "Block Scroll",
     block_top: "Block Top",
     block_bottom: "Block Bottom",
-    lane_limit: "Lane Limit"
+    lane_limit: "Lane Limit",
+    danmaku_not_found: "No danmaku file found",
+    manual_load: "Load Danmaku"
   },
   ja: {
     danmaku_visible: "コメント表示",
@@ -132,7 +139,9 @@ var i18n = {
     block_scroll: "スクロール屏蔽",
     block_top: "上部屏蔽",
     block_bottom: "下部屏蔽",
-    lane_limit: "軌道制限"
+    lane_limit: "軌道制限",
+    danmaku_not_found: "弹幕ファイルが見つかりません",
+    manual_load: "コメント読込"
   },
   zh: {
     danmaku_visible: "弹幕显示",
@@ -152,7 +161,9 @@ var i18n = {
     block_scroll: "滚动屏蔽",
     block_top: "顶部屏蔽",
     block_bottom: "底部屏蔽",
-    lane_limit: "轨道限制"
+    lane_limit: "轨道限制",
+    danmaku_not_found: "未找到弹幕文件",
+    manual_load: "手动加载弹幕"
   }
 };
 
@@ -173,7 +184,8 @@ function applyI18n() {
 }
 
 function updateUI() {
-  toggleDanmaku.checked = state.enabled;
+  toggleDanmaku.checked = state.enabled && state.danmakuLoaded;
+  toggleDanmaku.disabled = !state.danmakuLoaded;
   renderModeCanvas.checked = state.renderMode === 'canvas';
   renderModeCanvas.disabled = !isCanvasSupported();
   opacitySlider.value = state.opacity;
@@ -203,9 +215,17 @@ function sendBlockType() {
 }
 
 toggleDanmaku.addEventListener("change", function () {
+  if (toggleDanmaku.disabled) {
+    toggleDanmaku.checked = false;
+    return;
+  }
   state.enabled = toggleDanmaku.checked;
   updateEnabledUI();
   iina.postMessage("toggle-danmaku");
+});
+
+document.getElementById("manual-load-btn").addEventListener("click", function () {
+  iina.postMessage("manual-load-danmaku");
 });
 
 renderModeCanvas.addEventListener("change", function () {

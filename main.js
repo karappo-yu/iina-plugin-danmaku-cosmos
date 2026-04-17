@@ -37,6 +37,14 @@ function updateDanmakuStatus(status) {
 
 function danmakuNotFound() {
   updateDanmakuStatus({ fileType: null, fileName: null, relativePath: null, isLoaded: false });
+  if (danmakuEnabled) {
+    danmakuEnabled = false;
+    preferences.set("danmakuEnabled", false);
+    preferences.sync();
+    overlay.postMessage("toggle-danmaku", { enabled: false });
+    sidebar.postMessage("danmaku-state", { enabled: false });
+    setObserver(false);
+  }
 }
 
 function detectDanmakuFileType(content) {
@@ -106,6 +114,7 @@ function loadDanmakuForVideo(url) {
   var danmakuPath = danmakuPathForVideo(url);
   if (!danmakuPath) {
     core.osd("无法推导弹幕路径");
+    danmakuNotFound();
     return;
   }
 
@@ -340,6 +349,45 @@ function registerSidebarHandlers() {
       danmakuFileName: currentDanmakuStatus.fileName,
       danmakuRelativePath: currentDanmakuStatus.relativePath,
       danmakuLoaded: currentDanmakuStatus.isLoaded,
+    });
+  });
+
+  sidebar.onMessage("manual-load-danmaku", function () {
+    iina.utils.chooseFile("选择弹幕文件", {
+      allowedFileTypes: ["json", "xml"],
+    }).then(function(path) {
+      if (!path) {
+        core.osd("未选择文件");
+        return;
+      }
+      var xmlContent = file.read(path);
+      if (!xmlContent) {
+        core.osd("无法读取弹幕文件");
+        return;
+      }
+      core.osd("读取到内容长度: " + xmlContent.length);
+      var hexContent = stringToHex(xmlContent);
+      var manualFileName = path.split("/").pop();
+      var manualRelPath = manualFileName;
+      var manualFileType = detectDanmakuFileType(xmlContent);
+      updateDanmakuStatus({ fileType: manualFileType, fileName: manualFileName, relativePath: manualRelPath, isLoaded: true });
+      overlay.postMessage("load-danmaku", {
+        xmlContent: hexContent,
+        opacity: currentOpacity,
+        fontScale: currentFontScale,
+        speed: currentSpeed,
+        scrollDuration: currentScrollDuration,
+      });
+      core.osd("已加载弹幕: " + manualFileName);
+      if (!danmakuEnabled) {
+        danmakuEnabled = true;
+        preferences.set("danmakuEnabled", true);
+        preferences.sync();
+        overlay.postMessage("toggle-danmaku", { enabled: true });
+        overlay.show();
+        setObserver(true);
+        sidebar.postMessage("danmaku-state", { enabled: true });
+      }
     });
   });
 }

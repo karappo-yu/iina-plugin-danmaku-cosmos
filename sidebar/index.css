@@ -228,6 +228,45 @@ small,
   margin-top: 2px;
 }
 
+.danmaku-not-found {
+  margin-top: 6px;
+  padding: 8px;
+  background: rgba(128, 128, 128, 0.08);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #888;
+  text-align: center;
+}
+
+.manual-load-btn {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.08);
+  border: 1px solid rgba(0, 122, 255, 0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.manual-load-btn:hover {
+  background: rgba(0, 122, 255, 0.15);
+}
+
+.manual-load-btn:active {
+  background: rgba(0, 122, 255, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  .danmaku-not-found {
+    color: #aaa;
+  }
+}
+
 kbd {
   display: inline-block;
   padding: 2px 6px;
