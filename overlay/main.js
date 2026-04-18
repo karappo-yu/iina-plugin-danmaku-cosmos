@@ -208,6 +208,7 @@ iina.onMessage("time-update", (data) => {
   let t = data.time * 100;
 
   if (isCanvasMode()) {
+    if (niconiComments) niconiComments.drawCanvas(t);
     canvasSyncAnchor(data.time);
     lastTime = t;
     return;
