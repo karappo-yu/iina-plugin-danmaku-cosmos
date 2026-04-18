@@ -142,7 +142,7 @@ window.createDanmaku = function (d, currentTime = null) {
   let posX = null, posY = null;
   let displayText = d.text;
   // 所有弹幕：Tab 替换为全角空格×2（参考原项目 BaseComment 构造函数）
-  displayText = displayText.replace(/\t/g, '\u3000\u3000');
+  displayText = displayText.replace(/\t/g, '\u2003');
   if (d._isFlash) {
     const processed = preprocessFlashTextWithRuby(displayText);
     if (processed.hasRuby) {
