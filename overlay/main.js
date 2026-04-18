@@ -327,9 +327,7 @@ iina.onMessage("resize", () => {
   updateLanes();
 
   if (isCanvasMode()) {
-    if (nicoRawData) {
-      initCanvasRenderer(nicoRawData);
-    }
+    if (niconiComments) niconiComments.clear();
     return;
   }
 
