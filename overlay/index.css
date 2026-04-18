@@ -7,6 +7,10 @@
   --play-state: running;
   /* 全局透明度控制变量 */
   --global-opacity: 0.8;
+  /* CSS模式字体偏好设置（由偏好设置覆盖） */
+  --dm-font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Meiryo', sans-serif;
+  --dm-font-weight: 800;
+  --dm-stroke: 0.16vw rgba(0,0,0,0.5);
 }
 
 body.is-paused {
@@ -53,9 +57,9 @@ body.canvas-mode #danmaku-container {
 .dm-item {
   position: absolute;                    /* 绝对定位，相对于容器 */
   white-space: nowrap;                   /* 不换行 */
-  font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Meiryo', sans-serif;  /* 日系字体优先 */
-  font-weight: 800;                      /* 字重：100-900，400=正常，700=粗体，900=超粗 */
-  -webkit-text-stroke: 0.16vw rgba(0,0,0,0.5);  /* 描边宽度（相对视口），颜色+透明度 */
+  font-family: var(--dm-font-family);    /* 字体族（偏好设置可覆盖） */
+  font-weight: var(--dm-font-weight);    /* 字重（偏好设置可覆盖） */
+  -webkit-text-stroke: var(--dm-stroke); /* 描边（偏好设置可覆盖） */
   will-change: transform;                /* 提示浏览器优化 transform 动画性能 */
   contain: layout style paint;           /* 隔离布局，减少重排范围 */
   /* 绑定全局暂停变量 */
@@ -171,27 +175,27 @@ body.canvas-mode #danmaku-container {
 /* 日文汉字字体（Gothic） */
 .dm-item.dm-gothic {
   font-family: "游ゴシック体", "游ゴシック", "Yu Gothic", YuGothic, "Hiragino Sans", "Noto Sans JP", sans-serif;
-  font-weight: 800;
-  -webkit-text-stroke: 0.16vw rgba(0,0,0,0.5);
+  font-weight: var(--dm-font-weight);
+  -webkit-text-stroke: var(--dm-stroke);
 }
 
 /* 日文明朝体（Mincho） */
 .dm-item.dm-mincho {
   font-family: "游明朝体", "游明朝", "Yu Mincho", YuMincho, "Hiragino Mincho ProN", serif;
-  font-weight: 800;
-  -webkit-text-stroke: 0.16vw rgba(0,0,0,0.5);
+  font-weight: var(--dm-font-weight);
+  -webkit-text-stroke: var(--dm-stroke);
 }
 
 /* 韩文哥特字体（Gulim） */
 .dm-item.dm-gulim {
   font-family: Gulim, "Hiragino Sans", sans-serif;
-  font-weight: 800;
-  -webkit-text-stroke: 0.16vw rgba(0,0,0,0.5);
+  font-weight: var(--dm-font-weight);
+  -webkit-text-stroke: var(--dm-stroke);
 }
 
 /* 中文宋体（SimSun） */
 .dm-item.dm-simsun {
   font-family: SimSun, "Hiragino Mincho ProN", "MS Mincho", "MS PMincho", serif;
-  font-weight: 800;
-  -webkit-text-stroke: 0.16vw rgba(0,0,0,0.5);
+  font-weight: var(--dm-font-weight);
+  -webkit-text-stroke: var(--dm-stroke);
 }

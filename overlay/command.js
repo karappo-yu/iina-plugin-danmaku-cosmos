@@ -82,12 +82,18 @@ window.parseMailCommands = function (commands, isPremium = true) {
       if (c === 'ue') { mode = 5; locSet = true; continue; }
     }
 
-    // 字号
+    // 字号关键字
     if (c === 'big' && size === 25) { size = 36; continue; }
     if (c === 'small' && size === 25) { size = 15; continue; }
 
-    // 纯数字（如 "13"、"21"）暂不处理
-    // 原项目中 commands 里的纯数字被静默忽略（只有 @数字 格式才识别为持续时间）
+    // smal@数字 / big@数字 / medium@数字 格式：字号关键字带参数
+    // smal 是 small 的缩写，@后面的数字是具体字号
+    const sizeParamMatch = /^(smal|small|big|medium)@([0-9]+)$/i.exec(c);
+    if (sizeParamMatch) {
+      const customSize = parseInt(sizeParamMatch[2], 10);
+      if (customSize >= 1 && customSize <= 200) size = customSize;
+      continue;
+    }
 
     // 字体
     if (!font && (c === 'gothic' || c === 'mincho' || c === 'gulim' || c === 'simsun')) {

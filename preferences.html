@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    .pref-section { margin-bottom: 12px; }
+    .pref-section select,
+    .pref-section input[type="number"] {
+      margin-top: 2px;
+    }
+    small, .small { font-size: 11px; }
+    .secondary { color: rgba(0, 0, 0, 0.5); }
+    .pref-help { margin-top: 2px; }
+    @media (prefers-color-scheme: dark) {
+      .secondary { color: rgba(255, 255, 255, 0.5); }
+    }
+  </style>
+</head>
+<body>
+  <div class="pref-section">
+    <label>CSS Mode Font Family</label>
+    <div style="margin-top: 2px">
+      <select data-pref-key="cssFontFamily" style="width: 100%;">
+        <option value="default">Default (Hiragino Sans / Noto Sans JP)</option>
+        <optgroup label="Japanese Fonts">
+          <option value="hiragino-sans">Hiragino Sans (ヒラギノ角ゴ)</option>
+          <option value="hiragino-kaku">Hiragino Kaku Gothic ProN (ヒラギノ角ゴ ProN)</option>
+          <option value="hiragino-mincho">Hiragino Mincho ProN (ヒラギノ明朝 ProN)</option>
+          <option value="yu-gothic">Yu Gothic (游ゴシック体)</option>
+          <option value="yu-mincho">Yu Mincho (游明朝体)</option>
+          <option value="noto-sans-jp">Noto Sans JP</option>
+          <option value="noto-serif-jp">Noto Serif JP</option>
+          <option value="meiryo">Meiryo (メイリオ)</option>
+          <option value="ms-pgothic">MS PGothic (MS Pゴシック)</option>
+        </optgroup>
+        <optgroup label="Chinese Fonts">
+          <option value="pingfang-sc">PingFang SC (苹方-简)</option>
+          <option value="pingfang-tc">PingFang TC (苹方-繁)</option>
+          <option value="heiti-sc">STHeiti (华文黑体)</option>
+          <option value="songti-sc">Songti SC (华文宋体-简)</option>
+          <option value="stfangsong">STFangsong (华文仿宋)</option>
+          <option value="simsun">SimSun (宋体)</option>
+          <option value="microsoft-yahei">Microsoft YaHei (微软雅黑)</option>
+          <option value="wenquanyi-micro-hei">WenQuanYi Micro Hei (文泉驿微米黑)</option>
+        </optgroup>
+      </select>
+    </div>
+    <p class="small secondary pref-help">
+      Font used for CSS mode danmaku. Takes effect on next video load.
+    </p>
+  </div>
+
+  <div class="pref-section">
+    <label>Font Weight</label>
+    <div style="margin-top: 2px">
+      <input type="number" data-type="int" data-pref-key="cssFontWeight" min="100" max="900" step="100" style="width: 80px;" />
+    </div>
+    <p class="small secondary pref-help">
+      100=Thin, 400=Normal, 700=Bold, 800=ExtraBold (default), 900=Black. Takes effect on next video load.
+    </p>
+  </div>
+
+  <div class="pref-section">
+    <label>Stroke Width (vw)</label>
+    <div style="margin-top: 2px">
+      <input type="number" data-type="float" data-pref-key="cssStrokeWidth" min="0" max="1" step="0.01" style="width: 80px;" />
+    </div>
+    <p class="small secondary pref-help">
+      Text stroke width in vw units. Default: 0.16. Set to 0 to disable stroke. Takes effect on next video load.
+    </p>
+  </div>
+</body>
+</html>

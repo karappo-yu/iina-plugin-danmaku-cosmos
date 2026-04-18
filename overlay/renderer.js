@@ -168,8 +168,11 @@ window.createDanmaku = function (d, currentTime = null) {
   el.dataset.size = effectiveSize;
 
   // 字号
+  // 判断是否为标准字号（small=15, medium=25, big=36）
+  const isStandardSize = effectiveSize === 15 || effectiveSize === 25 || effectiveSize === 36;
   const sizeKey = getSizeKey(effectiveSize);
-  const resolvedFs = resolveFontSize(effectiveSize, d._isFlash);
+  // 标准字号使用映射表，自定义字号直接使用传入值
+  const resolvedFs = isStandardSize ? resolveFontSize(effectiveSize, d._isFlash) : effectiveSize;
   const lineCount = (d.text.match(/\n/g) || []).length + 1;
   const isMultiLine = lineCount > 1;
   // CA 弹幕 (layer >= 0) 不受全局 fontScale 缩放影响，保持原始比例
@@ -188,9 +191,6 @@ window.createDanmaku = function (d, currentTime = null) {
   if (effectiveFont && NICO_FONTS[effectiveFont]) {
     el.classList.add(`dm-${effectiveFont}`);
     el.style.fontFamily = NICO_FONTS[effectiveFont];
-    if (effectiveFont === 'mincho' || effectiveFont === 'simsun') {
-      el.style.fontWeight = '400';
-    }
   }
 
   // 描边

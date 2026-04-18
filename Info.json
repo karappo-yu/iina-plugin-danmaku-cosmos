@@ -19,13 +19,18 @@
     "name": "Danmaku"
   },
   "allowedDomains": ["*"],
+  "preferencesPage": "preferences.html",
   "preferenceDefaults": {
     "danmakuEnabled": true,
     "danmakuOpacity": 0.7,
+    "danmakuCanvasOpacity": 0.8,
     "danmakuFontScale": 1.0,
     "danmakuSpeed": 680,
     "scrollDuration": 8000,
     "blockForceLane": false,
-    "maxLaneRatio": 1.0
+    "maxLaneRatio": 1.0,
+    "cssFontFamily": "default",
+    "cssFontWeight": 800,
+    "cssStrokeWidth": 0.16
   }
 }

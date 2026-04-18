@@ -22,6 +22,7 @@ jobs:
             Info.json \
             main.js \
             global.js \
+            preferences.html \
             overlay \
             sidebar \
             -x "*.DS_Store" \

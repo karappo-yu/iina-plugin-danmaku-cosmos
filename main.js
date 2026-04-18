@@ -16,6 +16,9 @@ var currentSpeed = preferences.get("danmakuSpeed");
 var currentScrollDuration = preferences.get("scrollDuration");
 var currentBlockForceLane = preferences.get("blockForceLane");
 var currentMaxLaneRatio = preferences.get("maxLaneRatio") !== undefined ? preferences.get("maxLaneRatio") : 1.0;
+var cssFontFamily = preferences.get("cssFontFamily") || "default";
+var cssFontWeight = preferences.get("cssFontWeight") || 800;
+var cssStrokeWidth = preferences.get("cssStrokeWidth") !== undefined ? preferences.get("cssStrokeWidth") : 0.16;
 var currentPlaybackSpeed = 1.0;
 var currentRenderMode = 'css';
 var overlayReady = false;
@@ -190,6 +193,9 @@ function loadDanmakuForVideo(url) {
     fontScale: getActiveFontScale(),
     speed: currentSpeed,
     scrollDuration: currentScrollDuration,
+    cssFontFamily: cssFontFamily,
+    cssFontWeight: cssFontWeight,
+    cssStrokeWidth: cssStrokeWidth,
   };
 
   if (overlayReady) {
@@ -215,6 +221,9 @@ function markOverlayReady() {
     scrollDuration: currentScrollDuration,
     blockForceLane: currentBlockForceLane,
     maxLaneRatio: currentMaxLaneRatio,
+    cssFontFamily: cssFontFamily,
+    cssFontWeight: cssFontWeight,
+    cssStrokeWidth: cssStrokeWidth,
   });
 
   if (pendingDanmaku) {
@@ -386,6 +395,9 @@ function registerSidebarHandlers() {
         fontScale: getActiveFontScale(),
         speed: currentSpeed,
         scrollDuration: currentScrollDuration,
+        cssFontFamily: cssFontFamily,
+        cssFontWeight: cssFontWeight,
+        cssStrokeWidth: cssStrokeWidth,
       });
       core.osd("已加载弹幕: " + manualFileName);
       if (!danmakuEnabled) {
@@ -511,6 +523,9 @@ menu.addItem(
         fontScale: getActiveFontScale(),
         speed: currentSpeed,
         scrollDuration: currentScrollDuration,
+        cssFontFamily: cssFontFamily,
+        cssFontWeight: cssFontWeight,
+        cssStrokeWidth: cssStrokeWidth,
       });
       core.osd("已发送弹幕: " + path.split("/").pop());
       if (!danmakuEnabled) {

@@ -16,6 +16,9 @@ let lastSeekDisabled = false;
 // --- CSS模式专用参数 ---
 let cssOpacity = 0.8;
 let cssFontScale = 1.0;
+let cssFontFamily = 'default';
+let cssFontWeight = 800;
+let cssStrokeWidth = 0.16;
 
 // --- Canvas模式专用参数 ---
 let canvasOpacity = 0.8;
@@ -32,6 +35,35 @@ let canvasIsPlaying = false;
 
 function isCanvasMode() {
   return renderMode === 'canvas';
+}
+
+const FONT_FAMILY_MAP = {
+  'default': "'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Meiryo', sans-serif",
+  'hiragino-sans': "'Hiragino Sans', sans-serif",
+  'hiragino-kaku': "'Hiragino Kaku Gothic ProN', sans-serif",
+  'hiragino-mincho': "'Hiragino Mincho ProN', serif",
+  'yu-gothic': "'Yu Gothic', '游ゴシック体', YuGothic, sans-serif",
+  'yu-mincho': "'Yu Mincho', '游明朝体', YuMincho, serif",
+  'noto-sans-jp': "'Noto Sans JP', sans-serif",
+  'noto-serif-jp': "'Noto Serif JP', serif",
+  'meiryo': "'Meiryo', 'メイリオ', sans-serif",
+  'ms-pgothic': "'MS PGothic', 'ＭＳ Ｐゴシック', sans-serif",
+  'pingfang-sc': "'PingFang SC', sans-serif",
+  'pingfang-tc': "'PingFang TC', sans-serif",
+  'heiti-sc': "'STHeiti', sans-serif",
+  'songti-sc': "'Songti SC', serif",
+  'stfangsong': "'STFangsong', serif",
+  'simsun': "'SimSun', '宋体', serif",
+  'microsoft-yahei': "'Microsoft YaHei', '微软雅黑', sans-serif",
+  'wenquanyi-micro-hei': "'WenQuanYi Micro Hei', '文泉驿微米黑', sans-serif",
+};
+
+function applyCssFontPreferences() {
+  const fontFamily = FONT_FAMILY_MAP[cssFontFamily] || FONT_FAMILY_MAP['default'];
+  const strokeValue = cssStrokeWidth > 0 ? cssStrokeWidth + 'vw rgba(0,0,0,0.5)' : 'none';
+  document.documentElement.style.setProperty('--dm-font-family', fontFamily);
+  document.documentElement.style.setProperty('--dm-font-weight', String(cssFontWeight));
+  document.documentElement.style.setProperty('--dm-stroke', strokeValue);
 }
 
 function canvasSyncAnchor(videoTimeSec) {
@@ -262,6 +294,10 @@ iina.onMessage("load-danmaku", (data) => {
     cssOpacity = data.opacity;
     document.documentElement.style.setProperty('--global-opacity', data.opacity);
   }
+  if (data.cssFontFamily !== undefined) cssFontFamily = data.cssFontFamily;
+  if (data.cssFontWeight !== undefined) cssFontWeight = data.cssFontWeight;
+  if (data.cssStrokeWidth !== undefined) cssStrokeWidth = data.cssStrokeWidth;
+  applyCssFontPreferences();
   updateLanes();
 
   // 重置 Nicoscript 状态
@@ -427,6 +463,10 @@ iina.onMessage("apply-settings", (data) => {
   if (data.scrollDuration !== undefined) setRendererConfig({ scrollDuration: data.scrollDuration });
   if (data.blockForceLane !== undefined) setRendererConfig({ blockForceLane: data.blockForceLane });
   if (data.maxLaneRatio !== undefined) setLaneConfig({ maxLaneRatio: data.maxLaneRatio });
+  if (data.cssFontFamily !== undefined) cssFontFamily = data.cssFontFamily;
+  if (data.cssFontWeight !== undefined) cssFontWeight = data.cssFontWeight;
+  if (data.cssStrokeWidth !== undefined) cssStrokeWidth = data.cssStrokeWidth;
+  applyCssFontPreferences();
   if (!isCanvasMode()) updateLanes();
 });
 
