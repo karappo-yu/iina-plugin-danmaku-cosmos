@@ -66,23 +66,23 @@ IINA 弹幕插件，支持 Niconico 和 Bilibili 格式弹幕，提供 CSS 和 C
 |------|---------|------------|
 | 流畅性 | ✅ 最佳 | ⚠️ WebKit 下较弱 |
 | 透明度 | ✅ | ✅ |
-| 字体缩放 | ✅ | ✅ |
+| 字体缩放 | ✅ | ❌ |
 | 滚动时长 | ✅ | ❌ |
 | 弹幕屏蔽 | ✅ | ❌ |
 | 轨道限制 | ✅ | ❌ |
 | 高级弹幕兼容 | ⚠️ 部分 | ✅ 完整 |
-| Niconico 格式 | ✅ | ✅ |
+| Niconico 格式 | ✅ | ✅ (仅 JSON) |
 | Bilibili 格式 | ✅ | ❌ |
 
-> Canvas 模式仅支持 Niconico 格式弹幕。打开新视频时默认使用 CSS 模式，需手动切换到 Canvas 模式。
+> Canvas 模式仅支持 Niconico JSON 格式弹幕。打开新视频时默认使用 CSS 模式，需手动切换到 Canvas 模式。
 
 ### 支持的弹幕格式
 
-| 格式 | 文件类型 | 说明 |
-|------|---------|------|
-| Niconico XML | `.xml` | `<chat>` 标签格式，自动转换为 v1 JSON 供 Canvas 模式使用 |
-| Niconico JSON | `.json` | v1 API 格式，直接供 Canvas 模式使用 |
-| Bilibili XML | `.xml` | `<d>` 标签格式，仅 CSS 模式支持 |
+| 格式 | CSS 模式 | Canvas 模式 |
+|------|---------|------------|
+| Niconico XML | ✅ | ❌ |
+| Niconico JSON | ✅ | ✅ |
+| Bilibili XML | ✅ | ❌ |
 
 ### 注意事项
 
