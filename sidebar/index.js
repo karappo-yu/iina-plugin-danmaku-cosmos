@@ -79,12 +79,14 @@ function updateDanmakuInfoUI() {
 function updateCanvasModeUI() {
   var isCanvas = state.renderMode === 'canvas';
   var supported = isCanvasSupported();
-  renderModeCanvas.disabled = !supported;
-  if (!supported && isCanvas) {
+  var canUseCanvas = supported && (state.danmakuType === 'nico-json');
+  renderModeCanvas.disabled = !canUseCanvas;
+  if (!canUseCanvas && isCanvas) {
     state.renderMode = 'css';
     renderModeCanvas.checked = false;
     iina.postMessage("set-render-mode", { mode: 'css' });
   }
+  if (fontsizeSection) fontsizeSection.style.display = isCanvas ? 'none' : '';
   if (durationSection) durationSection.style.display = isCanvas ? 'none' : '';
   if (laneLimitSection) laneLimitSection.style.display = isCanvas ? 'none' : '';
   if (blockSection) blockSection.style.display = isCanvas ? 'none' : '';
