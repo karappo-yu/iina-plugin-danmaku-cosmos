@@ -101,7 +101,7 @@ function updateCanvasModeUI() {
 }
 
 function updateEnabledUI() {
-  var show = state.enabled;
+  var show = state.enabled && state.danmakuLoaded;
   settingsSections.forEach(function(sec) {
     if (sec) sec.style.display = show ? '' : 'none';
   });
