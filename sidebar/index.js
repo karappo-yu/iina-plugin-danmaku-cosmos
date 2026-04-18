@@ -80,8 +80,12 @@ function updateCanvasModeUI() {
   var isCanvas = state.renderMode === 'canvas';
   var supported = isCanvasSupported();
   var canUseCanvas = supported && (state.danmakuType === 'nico-json');
-  renderModeCanvas.disabled = !canUseCanvas;
-  if (!canUseCanvas && isCanvas) {
+  if (!canUseCanvas) {
+    if (canvasSection) canvasSection.style.display = 'none';
+    return;
+  }
+  if (canvasSection) canvasSection.style.display = '';
+  if (!isCanvas) {
     state.renderMode = 'css';
     renderModeCanvas.checked = false;
     iina.postMessage("set-render-mode", { mode: 'css' });
@@ -95,7 +99,7 @@ function updateCanvasModeUI() {
   var canvasOptions = document.querySelector('.canvas-mode-options');
   if (canvasOptions) canvasOptions.style.display = isCanvas ? '' : 'none';
   var canvasUnsupported = document.querySelector('.canvas-unsupported');
-  if (canvasUnsupported) canvasUnsupported.style.display = (!supported && state.enabled) ? '' : 'none';
+  if (canvasUnsupported) canvasUnsupported.style.display = 'none';
 }
 
 function updateEnabledUI() {
