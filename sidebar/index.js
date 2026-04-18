@@ -36,7 +36,6 @@ var state = {
   cssOpacity: 0.7,
   canvasOpacity: 0.8,
   cssFontScale: 1.0,
-  canvasFontScale: 1.0,
   speed: 680,
   scrollDuration: 8000,
   blockScroll: false,
@@ -51,7 +50,7 @@ function getActiveOpacity() {
 }
 
 function getActiveFontScale() {
-  return state.renderMode === 'canvas' ? state.canvasFontScale : state.cssFontScale;
+  return state.cssFontScale;
 }
 
 function isCanvasSupported() {
@@ -271,11 +270,7 @@ opacitySlider.addEventListener("input", function () {
 
 fontsizeSlider.addEventListener("input", function () {
   var val = parseFloat(fontsizeSlider.value) / 100;
-  if (state.renderMode === 'canvas') {
-    state.canvasFontScale = val;
-  } else {
-    state.cssFontScale = val;
-  }
+  state.cssFontScale = val;
   fontsizeValue.textContent = Math.round(val * 100) + "%";
   iina.postMessage("set-fontscale", { scale: val });
 });
@@ -304,7 +299,6 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.cssOpacity !== undefined) state.cssOpacity = data.cssOpacity;
   if (data.canvasOpacity !== undefined) state.canvasOpacity = data.canvasOpacity;
   if (data.cssFontScale !== undefined) state.cssFontScale = data.cssFontScale;
-  if (data.canvasFontScale !== undefined) state.canvasFontScale = data.canvasFontScale;
   if (data.speed !== undefined) state.speed = data.speed;
   if (data.scrollDuration !== undefined) state.scrollDuration = data.scrollDuration;
   if (data.blockForceLane !== undefined) state.blockForceLane = data.blockForceLane;

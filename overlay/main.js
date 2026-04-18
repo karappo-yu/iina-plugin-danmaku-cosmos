@@ -19,7 +19,6 @@ let cssFontScale = 1.0;
 
 // --- Canvas模式专用参数 ---
 let canvasOpacity = 0.8;
-let canvasFontScale = 1.0;
 let canvasNicoMode = 'default'; // 'default' | 'html5' | 'flash'
 
 // --- 渲染模式 ---
@@ -104,7 +103,6 @@ function initCanvasRenderer(data) {
     format: detectNicoFormat(data),
     mode: canvasNicoMode,
     keepCA: true,
-    scale: canvasFontScale,
     config: {
       plugins: buildCanvasPlugins(),
     },
@@ -387,17 +385,12 @@ iina.onMessage("set-opacity", (data) => {
 });
 
 iina.onMessage("set-fontscale", (data) => {
-  if (isCanvasMode()) {
-    canvasFontScale = data.scale;
-    if (nicoRawData) initCanvasRenderer(nicoRawData);
-  } else {
-    cssFontScale = data.scale;
-    setRendererConfig({ fontScale: data.scale });
-    setLaneConfig({ fontScale: data.scale });
-    updateLanes();
-    clearDanmakuCaches(allDanmaku);
-    handleSeek(lastTime);
-  }
+  cssFontScale = data.scale;
+  setRendererConfig({ fontScale: data.scale });
+  setLaneConfig({ fontScale: data.scale });
+  updateLanes();
+  clearDanmakuCaches(allDanmaku);
+  handleSeek(lastTime);
 });
 
 iina.onMessage("set-scroll-duration", (data) => {
@@ -427,13 +420,9 @@ iina.onMessage("apply-settings", (data) => {
     }
   }
   if (data.fontScale !== undefined) {
-    if (isCanvasMode()) {
-      canvasFontScale = data.fontScale;
-    } else {
-      cssFontScale = data.fontScale;
-      setRendererConfig({ fontScale: data.fontScale });
-      setLaneConfig({ fontScale: data.fontScale });
-    }
+    cssFontScale = data.fontScale;
+    setRendererConfig({ fontScale: data.fontScale });
+    setLaneConfig({ fontScale: data.fontScale });
   }
   if (data.scrollDuration !== undefined) setRendererConfig({ scrollDuration: data.scrollDuration });
   if (data.blockForceLane !== undefined) setRendererConfig({ blockForceLane: data.blockForceLane });

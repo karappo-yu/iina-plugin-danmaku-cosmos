@@ -12,7 +12,6 @@ var danmakuEnabled = preferences.get("danmakuEnabled");
 var cssOpacity = preferences.get("danmakuOpacity") || 0.7;
 var canvasOpacity = preferences.get("danmakuCanvasOpacity") || 0.8;
 var cssFontScale = preferences.get("danmakuFontScale") || 1.0;
-var canvasFontScale = preferences.get("danmakuCanvasFontScale") || 1.0;
 var currentSpeed = preferences.get("danmakuSpeed");
 var currentScrollDuration = preferences.get("scrollDuration");
 var currentBlockForceLane = preferences.get("blockForceLane");
@@ -26,7 +25,7 @@ function getActiveOpacity() {
 }
 
 function getActiveFontScale() {
-  return currentRenderMode === 'canvas' ? canvasFontScale : cssFontScale;
+  return cssFontScale;
 }
 var pendingDanmaku = null;
 var currentVideoUrl = null;
@@ -354,13 +353,8 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("set-fontscale", function (data) {
-    if (currentRenderMode === 'canvas') {
-      canvasFontScale = data.scale;
-      preferences.set("danmakuCanvasFontScale", canvasFontScale);
-    } else {
-      cssFontScale = data.scale;
-      preferences.set("danmakuFontScale", cssFontScale);
-    }
+    cssFontScale = data.scale;
+    preferences.set("danmakuFontScale", cssFontScale);
     preferences.sync();
     overlay.postMessage("set-fontscale", { scale: data.scale });
   });
@@ -411,7 +405,6 @@ function registerSidebarHandlers() {
       cssOpacity: cssOpacity,
       canvasOpacity: canvasOpacity,
       cssFontScale: cssFontScale,
-      canvasFontScale: canvasFontScale,
       speed: currentSpeed,
       scrollDuration: currentScrollDuration,
       blockForceLane: currentBlockForceLane,
