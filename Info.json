@@ -28,9 +28,13 @@
     "danmakuSpeed": 680,
     "scrollDuration": 8000,
     "blockForceLane": false,
-    "maxLaneRatio": 1.0,
+    "maxLaneRatio": 1,
     "cssFontFamily": "default",
     "cssFontWeight": 800,
-    "cssStrokeWidth": 0.1
+    "cssStrokeWidth": 0.1,
+    "canvasMode": "default",
+    "blockScroll": false,
+    "blockTop": false,
+    "blockBottom": false
   }
 }

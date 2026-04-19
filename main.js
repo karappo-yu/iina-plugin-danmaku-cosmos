@@ -21,6 +21,10 @@ var cssFontWeight = preferences.get("cssFontWeight") || 800;
 var cssStrokeWidth = preferences.get("cssStrokeWidth") !== undefined ? preferences.get("cssStrokeWidth") : 0.1;
 var currentPlaybackSpeed = 1.0;
 var currentRenderMode = 'css';
+var currentCanvasMode = preferences.get("canvasMode") || 'default';
+var currentBlockScroll = preferences.get("blockScroll") || false;
+var currentBlockTop = preferences.get("blockTop") || false;
+var currentBlockBottom = preferences.get("blockBottom") || false;
 var overlayReady = false;
 
 function getActiveOpacity() {
@@ -395,6 +399,13 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("block-type", function (data) {
+    currentBlockScroll = !!data.blockScroll;
+    currentBlockTop = !!data.blockTop;
+    currentBlockBottom = !!data.blockBottom;
+    preferences.set("blockScroll", currentBlockScroll);
+    preferences.set("blockTop", currentBlockTop);
+    preferences.set("blockBottom", currentBlockBottom);
+    preferences.sync();
     overlay.postMessage("block-type", data);
   });
 
@@ -411,12 +422,17 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("set-canvas-mode", function (data) {
+    currentCanvasMode = data.mode;
+    preferences.set("canvasMode", currentCanvasMode);
+    preferences.sync();
     overlay.postMessage("set-canvas-mode", { mode: data.mode });
   });
 
   sidebar.onMessage("request-state", function () {
     sidebar.postMessage("danmaku-state", {
       enabled: danmakuEnabled,
+      renderMode: currentRenderMode,
+      canvasMode: currentCanvasMode,
       cssOpacity: cssOpacity,
       canvasOpacity: canvasOpacity,
       cssFontScale: cssFontScale,
@@ -424,6 +440,9 @@ function registerSidebarHandlers() {
       scrollDuration: currentScrollDuration,
       blockForceLane: currentBlockForceLane,
       maxLaneRatio: currentMaxLaneRatio,
+      blockScroll: currentBlockScroll,
+      blockTop: currentBlockTop,
+      blockBottom: currentBlockBottom,
       danmakuFileType: currentDanmakuStatus.fileType,
       danmakuFileName: currentDanmakuStatus.fileName,
       danmakuRelativePath: currentDanmakuStatus.relativePath,

@@ -154,6 +154,7 @@ IINA 弹幕插件，支持 Niconico 和 Bilibili 格式弹幕，提供 CSS 和 C
 
 ### 注意事項
 
+- **デフォルトフォントについて**：CSS モードのデフォルトフォントは `Hiragino Sans / Noto Sans JP` で、日本語のフォントです。中国語の文字表示が最適でない場合があります（楷体風の宋体など）。中国語のコメントを使用する場合は、偏好設定でフォントを `Microsoft YaHei`、`PingFang SC`、`Noto Sans JP` など中日韓の文字をサポートするフォントに変更することをお勧めします
 - ファイル名に特殊文字（`[`、`]`など）が含まれる場合、自動読み込みに失敗する可能性がある
 - ウィンドウを最小化してから復元すると、コメントが再レンダリングされる（既知の制限）
 
@@ -221,6 +222,7 @@ Automatically searches in the same directory with this priority:
 
 ### Notes
 
+- **Default font**: The default font in CSS mode is `Hiragino Sans / Noto Sans JP`, a Japanese font. Chinese characters may not render well (e.g., displaying as Songti with a Kai-style appearance). Chinese danmaku users are recommended to change the font in preferences to `Microsoft YaHei`, `PingFang SC`, or `Noto Sans JP` for better CJK support
 - Filenames with special characters (like `[`, `]`) may cause auto-load to fail
 - Minimizing and restoring the window causes danmaku to re-render (known limitation)
 

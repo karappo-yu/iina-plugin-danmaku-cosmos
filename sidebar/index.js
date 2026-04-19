@@ -459,17 +459,31 @@ fontsizeSlider.addEventListener("input", function () {
 
 durationSlider.addEventListener("input", function () {
   var val = parseInt(durationSlider.value, 10);
+  state.scrollDuration = val;
   durationValue.textContent = (val / 1000).toFixed(1) + "s";
   iina.postMessage("set-scroll-duration", { duration: val });
 });
 
-blockScroll.addEventListener("change", sendBlockType);
-blockTop.addEventListener("change", sendBlockType);
-blockBottom.addEventListener("change", sendBlockType);
-blockForceLane.addEventListener("change", sendBlockType);
+blockScroll.addEventListener("change", function () {
+  state.blockScroll = blockScroll.checked;
+  sendBlockType();
+});
+blockTop.addEventListener("change", function () {
+  state.blockTop = blockTop.checked;
+  sendBlockType();
+});
+blockBottom.addEventListener("change", function () {
+  state.blockBottom = blockBottom.checked;
+  sendBlockType();
+});
+blockForceLane.addEventListener("change", function () {
+  state.blockForceLane = blockForceLane.checked;
+  sendBlockType();
+});
 
 maxLaneSlider.addEventListener("input", function () {
   var val = parseInt(maxLaneSlider.value, 10) / 100;
+  state.maxLaneRatio = val;
   maxLaneValue.textContent = Math.round(val * 100) + "%";
   iina.postMessage("set-lane-limit", { maxLaneRatio: val });
 });
@@ -485,6 +499,9 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.scrollDuration !== undefined) state.scrollDuration = data.scrollDuration;
   if (data.blockForceLane !== undefined) state.blockForceLane = data.blockForceLane;
   if (data.maxLaneRatio !== undefined) state.maxLaneRatio = data.maxLaneRatio;
+  if (data.blockScroll !== undefined) state.blockScroll = data.blockScroll;
+  if (data.blockTop !== undefined) state.blockTop = data.blockTop;
+  if (data.blockBottom !== undefined) state.blockBottom = data.blockBottom;
   if (data.danmakuFileType !== undefined) state.danmakuType = data.danmakuFileType;
   if (data.danmakuFileName !== undefined) state.danmakuFileName = data.danmakuFileName;
   if (data.danmakuRelativePath !== undefined) state.danmakuRelativePath = data.danmakuRelativePath;
