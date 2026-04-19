@@ -128,6 +128,7 @@ package-lock.json
 .trae/
 index.d.ts
 .dist/
+test-danmaku/
 test-speed.xml
 test-speed.json
 test-all.xml
