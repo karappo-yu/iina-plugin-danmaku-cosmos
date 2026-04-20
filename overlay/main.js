@@ -316,17 +316,7 @@ iina.onMessage("load-danmaku", (data) => {
   var filePath = data.path || '__initial__';
   danmakuFileMap[filePath] = list;
 
-  let dedupedList = [];
-  for (let i = 0; i < list.length; i++) {
-    const d = list[i];
-    const key = d.t + '|' + d.text;
-    if (!danmakuSeenKeys[key]) {
-      danmakuSeenKeys[key] = true;
-      dedupedList.push(d);
-    }
-  }
-
-  allDanmaku = dedupedList.sort((a, b) => a.t - b.t);
+  allDanmaku = list.sort((a, b) => a.t - b.t);
 
   if (typeof assignCALayers === 'function') {
     assignCALayers(allDanmaku);
