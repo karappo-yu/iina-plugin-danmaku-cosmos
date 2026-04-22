@@ -10,7 +10,7 @@
   /* CSS模式字体偏好设置（由偏好设置覆盖） */
   --dm-font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Meiryo', sans-serif;
   --dm-font-weight: 800;
-  --dm-stroke: 0.1vw rgba(0,0,0,0.5);
+  --dm-stroke: 0.1vh rgba(0,0,0,0.5);
 }
 
 body.is-paused {

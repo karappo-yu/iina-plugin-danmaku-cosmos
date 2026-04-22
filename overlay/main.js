@@ -64,7 +64,7 @@ const FONT_FAMILY_MAP = {
 function applyCssFontPreferences() {
   const fontFamily = FONT_FAMILY_MAP[cssFontFamily] || FONT_FAMILY_MAP['default'];
   const scaledStroke = cssStrokeWidth * cssFontScale;
-  const strokeValue = scaledStroke > 0 ? scaledStroke + 'vw rgba(0,0,0,0.5)' : 'none';
+  const strokeValue = scaledStroke > 0 ? scaledStroke + 'vh rgba(0,0,0,0.5)' : 'none';
   document.documentElement.style.setProperty('--dm-font-family', fontFamily);
   document.documentElement.style.setProperty('--dm-font-weight', String(cssFontWeight));
   document.documentElement.style.setProperty('--dm-stroke', strokeValue);
@@ -492,6 +492,7 @@ iina.onMessage("set-opacity", (data) => {
 
 iina.onMessage("set-fontscale", (data) => {
   cssFontScale = data.scale;
+  applyCssFontPreferences();
   setRendererConfig({ fontScale: data.scale });
   setLaneConfig({ fontScale: data.scale });
   updateLanes();
