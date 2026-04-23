@@ -170,7 +170,7 @@ function findDanmakuByEpisode(videoUrl) {
       var fileEpNum = extractDanmakuNumber(fname);
       var fileBaseName = fname.replace(/\.[^.]+$/, '');
       var isSameDir = (dir === videoDir);
-      var isSameBaseName = isSameDir && fileBaseName === videoBaseName;
+      var isSameBaseName = isSameDir && fileBaseName.startsWith(videoBaseName);
       var fileInfo = {
         filename: fname,
         path: filePath,
