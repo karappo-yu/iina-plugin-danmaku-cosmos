@@ -34,6 +34,7 @@ jobs:
             -x "index.d.ts" \
             -x "IINA插件开发指南.md" \
             -x "弹幕解析渲染对比报告.md" \
+            -x "CLAUDE.md" \
             -x "README.md" \
             -x "package.json" \
             -x "package-lock.json" \
