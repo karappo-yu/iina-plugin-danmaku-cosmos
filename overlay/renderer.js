@@ -240,9 +240,9 @@ window.createDanmaku = function (d, currentTime = null) {
 
   // 描边
   if (d.strokeColor) {
-    el.style.webkitTextStroke = `0.16vw ${d.strokeColor}`;
+    el.style.webkitTextStroke = (0.16 * effectiveFontScale).toFixed(3) + 'vh ' + d.strokeColor;
   } else if (d.c === '#000000' || d.c === 'black' || d.c === 'rgb(0,0,0)') {
-    el.style.webkitTextStroke = '0.03vw rgba(255,255,255,0.7)';
+    el.style.webkitTextStroke = (0.03 * effectiveFontScale).toFixed(3) + 'vh rgba(255,255,255,0.7)';
   }
 
   // 边框/填充/透明度
