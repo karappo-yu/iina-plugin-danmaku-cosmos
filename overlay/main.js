@@ -310,7 +310,7 @@ iina.onMessage("load-danmaku", (data) => {
   danmakuFileMap = {};
   danmakuSeenKeys = {};
 
-  const encodedStr = data.xmlContent.replace(/(..)/g, '%$1');
+  const encodedStr = data.xmlContent;
   let list = parseDanmaku(encodedStr);
 
   var filePath = data.path || '__initial__';
@@ -364,7 +364,7 @@ iina.onMessage("load-danmaku", (data) => {
 
 iina.onMessage("add-danmaku-file", (data) => {
   const filePath = data.path;
-  const encodedStr = data.xmlContent.replace(/(..)/g, '%$1');
+  const encodedStr = data.xmlContent;
   let list = parseDanmaku(encodedStr);
 
   danmakuFileMap[filePath] = list;

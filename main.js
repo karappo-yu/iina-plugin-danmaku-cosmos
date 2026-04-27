@@ -81,27 +81,7 @@ function detectDanmakuType(content) {
   return 'bilibili-xml';
 }
 
-function extractEpisodeNumber(videoPath) {
-  var filename = videoPath.replace(/.*[/\\]/, '').replace(/\.[^.]+$/, '');
-  var match;
-  match = filename.match(/\[(\d{1,3})\](?!.*\[)/);
-  if (match) return parseInt(match[1], 10);
-  match = filename.match(/\[\d{1,3}\]/g);
-  if (match) {
-    match = match[match.length - 1].match(/\[(\d{1,3})\]/);
-    if (match) return parseInt(match[1], 10);
-  }
-  match = filename.match(/(?:^|[_\-.\s])(\d{1,3})(?:_|\-|\.|\s|$)/);
-  if (match) return parseInt(match[1], 10);
-  match = filename.match(/(?:^|[\[\]_\-.\s])(1?\d)(?:_|\.|\s|$)/i);
-  if (match) return parseInt(match[1], 10);
-  match = filename.match(/(?:第|話|话|Episode|Ep\.?)\s*(\d{1,3})/i);
-  if (match) return parseInt(match[1], 10);
-  return null;
-}
-
-function extractDanmakuNumber(filename) {
-  var name = filename.replace(/\.[^.]+$/, '');
+function extractNumberFromName(name) {
   var match;
   match = name.match(/\[(\d{1,3})\](?!.*\[)/);
   if (match) return parseInt(match[1], 10);
@@ -117,6 +97,15 @@ function extractDanmakuNumber(filename) {
   match = name.match(/(?:第|話|话|Episode|Ep\.?)\s*(\d{1,3})/i);
   if (match) return parseInt(match[1], 10);
   return null;
+}
+
+function extractEpisodeNumber(videoPath) {
+  var filename = videoPath.replace(/.*[/\\]/, '').replace(/\.[^.]+$/, '');
+  return extractNumberFromName(filename);
+}
+
+function extractDanmakuNumber(filename) {
+  return extractNumberFromName(filename.replace(/\.[^.]+$/, ''));
 }
 
 function findDanmakuByEpisode(videoUrl) {
@@ -193,12 +182,8 @@ function findDanmakuByEpisode(videoUrl) {
   return { xmlFiles: xmlFiles, jsonFiles: jsonFiles, unknownFiles: unknownFiles };
 }
 
-function stringToHex(str) {
-  return Array.from(str).map(function (c) {
-    return c.charCodeAt(0) < 128
-      ? c.charCodeAt(0).toString(16).padStart(2, "0")
-      : encodeURIComponent(c).replace(/\%/g, "").toLowerCase();
-  }).join("");
+function encodeContent(str) {
+  return encodeURIComponent(str);
 }
 
 function loadDanmakuForVideo(url) {
@@ -244,8 +229,8 @@ function loadDanmakuForVideo(url) {
     return;
   }
 
-  var hexContent = stringToHex(xmlContent);
-  danmakuCache[firstFile.path] = hexContent;
+  var encodedContent = encodeContent(xmlContent);
+  danmakuCache[firstFile.path] = encodedContent;
 
   var fileType = detectDanmakuType(xmlContent);
   updateDanmakuStatus({ fileType: fileType, fileName: firstFile.filename, relativePath: firstFile.relativePath, isLoaded: true });
@@ -253,7 +238,7 @@ function loadDanmakuForVideo(url) {
   sidebar.postMessage("danmaku-file-list", danmakuFileList);
 
   var payload = {
-    xmlContent: hexContent,
+    xmlContent: encodedContent,
     path: firstFile.path,
     opacity: getActiveOpacity(),
     fontScale: getActiveFontScale(),
@@ -343,21 +328,36 @@ function setObserver(start) {
   }
 }
 
+function toggleDanmaku() {
+  danmakuEnabled = !danmakuEnabled;
+  preferences.set("danmakuEnabled", danmakuEnabled);
+  preferences.sync();
+  overlay.postMessage("toggle-danmaku", { enabled: danmakuEnabled });
+  if (danmakuEnabled) {
+    overlay.show();
+    setObserver(true);
+    core.osd("弹幕已开启");
+  } else {
+    setObserver(false);
+    core.osd("弹幕已关闭");
+  }
+  sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled });
+}
+
+function ensureDanmakuEnabled() {
+  if (danmakuEnabled) return;
+  danmakuEnabled = true;
+  preferences.set("danmakuEnabled", true);
+  preferences.sync();
+  overlay.postMessage("toggle-danmaku", { enabled: true });
+  overlay.show();
+  setObserver(true);
+  sidebar.postMessage("danmaku-state", { enabled: true });
+}
+
 function registerSidebarHandlers() {
   sidebar.onMessage("toggle-danmaku", function () {
-    danmakuEnabled = !danmakuEnabled;
-    preferences.set("danmakuEnabled", danmakuEnabled);
-    preferences.sync();
-    overlay.postMessage("toggle-danmaku", { enabled: danmakuEnabled });
-    if (danmakuEnabled) {
-      overlay.show();
-      setObserver(true);
-      core.osd("弹幕已开启");
-    } else {
-      setObserver(false);
-      core.osd("弹幕已关闭");
-    }
-    sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled });
+    toggleDanmaku();
   });
 
   sidebar.onMessage("set-opacity", function (data) {
@@ -466,13 +466,13 @@ function registerSidebarHandlers() {
         return;
       }
       core.osd("读取到内容长度: " + xmlContent.length);
-      var hexContent = stringToHex(xmlContent);
+      var encodedContent = encodeContent(xmlContent);
       var manualFileName = path.split("/").pop();
       var manualRelPath = manualFileName;
       var manualFileType = detectDanmakuType(xmlContent);
       updateDanmakuStatus({ fileType: manualFileType, fileName: manualFileName, relativePath: manualRelPath, isLoaded: true });
       overlay.postMessage("load-danmaku", {
-        xmlContent: hexContent,
+        xmlContent: encodedContent,
         opacity: getActiveOpacity(),
         fontScale: getActiveFontScale(),
         speed: currentSpeed,
@@ -482,15 +482,7 @@ function registerSidebarHandlers() {
         cssStrokeWidth: cssStrokeWidth,
       });
       core.osd("已加载弹幕: " + manualFileName);
-      if (!danmakuEnabled) {
-        danmakuEnabled = true;
-        preferences.set("danmakuEnabled", true);
-        preferences.sync();
-        overlay.postMessage("toggle-danmaku", { enabled: true });
-        overlay.show();
-        setObserver(true);
-        sidebar.postMessage("danmaku-state", { enabled: true });
-      }
+      ensureDanmakuEnabled();
     });
   });
 
@@ -502,9 +494,9 @@ function registerSidebarHandlers() {
       if (danmakuFileList.selectedPaths.indexOf(filePath) !== -1) return;
       danmakuFileList.selectedPaths.push(filePath);
 
-      var rawContent;
-      if (!danmakuCache[filePath]) {
-        rawContent = file.read(filePath);
+      var encodedContent = danmakuCache[filePath];
+      if (!encodedContent) {
+        var rawContent = file.read(filePath);
         if (!rawContent) {
           core.osd("无法读取弹幕文件: " + filePath.split("/").pop());
           sidebar.postMessage("danmaku-file-error", { path: filePath, message: "无法读取文件" });
@@ -512,15 +504,13 @@ function registerSidebarHandlers() {
           sidebar.postMessage("danmaku-file-list", danmakuFileList);
           return;
         }
-        danmakuCache[filePath] = stringToHex(rawContent);
-      } else {
-        rawContent = file.read(filePath);
+        encodedContent = encodeContent(rawContent);
+        danmakuCache[filePath] = encodedContent;
       }
 
-      var hexContent = danmakuCache[filePath];
       overlay.postMessage("add-danmaku-file", {
         path: filePath,
-        xmlContent: hexContent,
+        xmlContent: encodedContent,
       });
 
       var checkFileName = filePath.split("/").pop();
@@ -533,22 +523,13 @@ function registerSidebarHandlers() {
         }
       }
       var checkRelPath = checkFileInfo ? checkFileInfo.relativePath : checkFileName;
-      if (!rawContent) rawContent = file.read(filePath);
-      var checkFileType = rawContent ? detectDanmakuType(rawContent) : 'bilibili-xml';
+      var checkFileType = detectDanmakuType(decodeURIComponent(encodedContent));
       updateDanmakuStatus({ fileType: checkFileType, fileName: checkFileName, relativePath: checkRelPath, isLoaded: true });
 
       sidebar.postMessage("danmaku-file-list", danmakuFileList);
       core.osd("已加载弹幕: " + checkFileName);
 
-      if (!danmakuEnabled) {
-        danmakuEnabled = true;
-        preferences.set("danmakuEnabled", true);
-        preferences.sync();
-        overlay.postMessage("toggle-danmaku", { enabled: true });
-        overlay.show();
-        setObserver(true);
-        sidebar.postMessage("danmaku-state", { enabled: true });
-      }
+      ensureDanmakuEnabled();
     } else {
       danmakuFileList.selectedPaths = danmakuFileList.selectedPaths.filter(function(p) { return p !== filePath; });
       overlay.postMessage("remove-danmaku-file", { path: filePath });
@@ -603,7 +584,7 @@ function registerSidebarHandlers() {
 
       var content = file.read(path);
       if (content) {
-        danmakuCache[path] = stringToHex(content);
+        danmakuCache[path] = encodeContent(content);
         overlay.postMessage("add-danmaku-file", {
           path: path,
           xmlContent: danmakuCache[path],
@@ -618,15 +599,7 @@ function registerSidebarHandlers() {
 
       sidebar.postMessage("danmaku-file-list", danmakuFileList);
 
-      if (!danmakuEnabled) {
-        danmakuEnabled = true;
-        preferences.set("danmakuEnabled", true);
-        preferences.sync();
-        overlay.postMessage("toggle-danmaku", { enabled: true });
-        overlay.show();
-        setObserver(true);
-        sidebar.postMessage("danmaku-state", { enabled: true });
-      }
+      ensureDanmakuEnabled();
     });
   });
 
@@ -722,19 +695,7 @@ overlay.onMessage("jump-video", function (data) {
 
 menu.addItem(
   menu.item("切换弹幕显示", function () {
-    danmakuEnabled = !danmakuEnabled;
-    preferences.set("danmakuEnabled", danmakuEnabled);
-    preferences.sync();
-    overlay.postMessage("toggle-danmaku", { enabled: danmakuEnabled });
-    if (danmakuEnabled) {
-      overlay.show();
-      setObserver(true);
-      core.osd("弹幕已开启");
-    } else {
-      setObserver(false);
-      core.osd("弹幕已关闭");
-    }
-    sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled });
+    toggleDanmaku();
   }, { keyBinding: "D" })
 );
 
@@ -753,13 +714,13 @@ menu.addItem(
         return;
       }
       core.osd("读取到内容长度: " + xmlContent.length);
-      var hexContent = stringToHex(xmlContent);
+      var encodedContent = encodeContent(xmlContent);
       var manualFileName = path.split("/").pop();
       var manualRelPath = manualFileName;
       var manualFileType = detectDanmakuType(xmlContent);
       updateDanmakuStatus({ fileType: manualFileType, fileName: manualFileName, relativePath: manualRelPath, isLoaded: true });
       overlay.postMessage("load-danmaku", {
-        xmlContent: hexContent,
+        xmlContent: encodedContent,
         opacity: getActiveOpacity(),
         fontScale: getActiveFontScale(),
         speed: currentSpeed,
@@ -769,15 +730,7 @@ menu.addItem(
         cssStrokeWidth: cssStrokeWidth,
       });
       core.osd("已发送弹幕: " + path.split("/").pop());
-      if (!danmakuEnabled) {
-        danmakuEnabled = true;
-        preferences.set("danmakuEnabled", true);
-        preferences.sync();
-        overlay.postMessage("toggle-danmaku", { enabled: true });
-        overlay.show();
-        setObserver(true);
-        sidebar.postMessage("danmaku-state", { enabled: true });
-      }
+      ensureDanmakuEnabled();
     });
   })
 );

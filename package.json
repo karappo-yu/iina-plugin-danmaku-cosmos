@@ -1,5 +1,4 @@
 {
-  "dependencies": {
-    "@xmldom/xmldom": "^0.9.9"
-  }
+  "private": true,
+  "description": "No build tools — this file is a stub only. @xmldom/xmldom is not used."
 }
