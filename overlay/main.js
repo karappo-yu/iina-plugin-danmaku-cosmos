@@ -369,6 +369,19 @@ iina.onMessage("add-danmaku-file", (data) => {
 
   danmakuFileMap[filePath] = list;
 
+  // Populate danmakuSeenKeys from the first file's data if this is the first
+  // additional file being added (single-file scenario skips this entirely)
+  if (allDanmaku.length > 0) {
+    let empty = true;
+    for (let k in danmakuSeenKeys) { empty = false; break; }
+    if (empty) {
+      for (let i = 0; i < allDanmaku.length; i++) {
+        const d = allDanmaku[i];
+        danmakuSeenKeys[d.t + '|' + d.text] = true;
+      }
+    }
+  }
+
   let newItems = [];
   for (let i = 0; i < list.length; i++) {
     const d = list[i];
