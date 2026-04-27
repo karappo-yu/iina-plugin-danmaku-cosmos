@@ -57,6 +57,12 @@ Danmaku Cosmos/
 
 **重要**：overlay 和 sidebar **不直接通信**，均通过 `main.js` 中转。
 
+**sidebar 懒加载**：IINA 侧边栏 Tab 是懒加载的，用户点开前 sidebar WebView 不存在。因此 sidebar 采用**拉模式**同步状态：
+1. sidebar 加载完成后主动发 `request-state`
+2. `main.js` 在 `request-state` 回调中一次性推送当前完整状态
+3. 后续状态变更走事件驱动的增量 `sidebar.postMessage` 更新
+4. 不要假设 `main.js` 可以在初始化时主动向 sidebar 推送消息
+
 ### overlay 脚本加载顺序（不可变）
 
 ```
