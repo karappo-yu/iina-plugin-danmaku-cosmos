@@ -216,6 +216,7 @@ window.createDanmaku = function (d, currentTime = null) {
   const isStandardSize = effectiveSize === 15 || effectiveSize === 25 || effectiveSize === 36;
   const sizeKey = typeof getSizeKey === 'function' ? getSizeKey(effectiveSize) : 'medium';
   const resolvedFs = isStandardSize && typeof resolveFontSize === 'function' ? resolveFontSize(effectiveSize, d._isFlash) : effectiveSize;
+  const strokeScale = resolvedFs / 27; // per-danmaku stroke scaling relative to default medium size
   const lineCount = (displayText.match(/\n/g) || []).length + 1;
   const isMultiLine = lineCount > 1;
   
@@ -238,11 +239,13 @@ window.createDanmaku = function (d, currentTime = null) {
     el.style.fontFamily = NICO_FONTS[effectiveFont];
   }
 
-  // 描边
+  // 描边 — 按字体大小比例缩放（描边大小 = 基准值 × 字体缩放比例）
   if (d.strokeColor) {
-    el.style.webkitTextStroke = (0.16 * effectiveFontScale).toFixed(3) + 'vh ' + d.strokeColor;
+    el.style.webkitTextStroke = (0.16 * effectiveFontScale * strokeScale).toFixed(3) + 'vh ' + d.strokeColor;
   } else if (d.c === '#000000' || d.c === 'black' || d.c === 'rgb(0,0,0)') {
-    el.style.webkitTextStroke = (0.03 * effectiveFontScale).toFixed(3) + 'vh rgba(255,255,255,0.7)';
+    el.style.webkitTextStroke = (0.03 * effectiveFontScale * strokeScale).toFixed(3) + 'vh rgba(255,255,255,0.7)';
+  } else if (window.__strokeBaseVh > 0) {
+    el.style.webkitTextStroke = (window.__strokeBaseVh * strokeScale).toFixed(3) + 'vh rgba(0,0,0,0.5)';
   }
 
   // 边框/填充/透明度

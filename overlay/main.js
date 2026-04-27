@@ -64,6 +64,7 @@ const FONT_FAMILY_MAP = {
 function applyCssFontPreferences() {
   const fontFamily = FONT_FAMILY_MAP[cssFontFamily] || FONT_FAMILY_MAP['default'];
   const scaledStroke = cssStrokeWidth * cssFontScale;
+  window.__strokeBaseVh = scaledStroke;
   const strokeValue = scaledStroke > 0 ? scaledStroke + 'vh rgba(0,0,0,0.5)' : 'none';
   document.documentElement.style.setProperty('--dm-font-family', fontFamily);
   document.documentElement.style.setProperty('--dm-font-weight', String(cssFontWeight));
