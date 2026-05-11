@@ -125,6 +125,8 @@ function findDanmakuByEpisode(videoUrl) {
     }
   }
 
+  var exactXmlFiles = [];
+  var exactJsonFiles = [];
   var prefixXmlFiles = [];
   var prefixJsonFiles = [];
   var epNumXmlFiles = [];
@@ -160,7 +162,9 @@ function findDanmakuByEpisode(videoUrl) {
 
       var fileEpNum = extractDanmakuNumber(fname);
       var fileBaseName = fname.replace(/\.[^.]+$/, '');
-      var isPrefixMatch = fileBaseName.normalize('NFC').startsWith(videoBaseName);
+      var normalizedBaseName = fileBaseName.normalize('NFC');
+      var isExactMatch = normalizedBaseName === videoBaseName;
+      var isPrefixMatch = !isExactMatch && normalizedBaseName.startsWith(videoBaseName);
       var fileInfo = {
         filename: fname,
         path: filePath,
@@ -168,7 +172,13 @@ function findDanmakuByEpisode(videoUrl) {
         type: ext.toUpperCase()
       };
 
-      if (isPrefixMatch) {
+      if (isExactMatch) {
+        if (ext === 'xml') {
+          exactXmlFiles.push(fileInfo);
+        } else {
+          exactJsonFiles.push(fileInfo);
+        }
+      } else if (isPrefixMatch) {
         if (ext === 'xml') {
           prefixXmlFiles.push(fileInfo);
         } else {
@@ -186,6 +196,9 @@ function findDanmakuByEpisode(videoUrl) {
     }
   }
 
+  if (exactXmlFiles.length > 0 || exactJsonFiles.length > 0) {
+    return { xmlFiles: exactXmlFiles, jsonFiles: exactJsonFiles, unknownFiles: unknownFiles };
+  }
   if (prefixXmlFiles.length > 0 || prefixJsonFiles.length > 0) {
     return { xmlFiles: prefixXmlFiles, jsonFiles: prefixJsonFiles, unknownFiles: unknownFiles };
   }
