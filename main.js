@@ -114,7 +114,7 @@ function findDanmakuByEpisode(videoUrl) {
 
   var videoDir = path.replace(/[/\\][^/\\]+$/, '');
   var videoEpNum = extractEpisodeNumber(path);
-  var videoBaseName = path.replace(/.*[/\\]/, '').replace(/\.[^.]+$/, '');
+  var videoBaseName = path.replace(/.*[/\\]/, '').replace(/\.[^.]+$/, '').normalize('NFC');
 
   var searchDirs = [videoDir];
   var altDirNames = ['弹幕', 'Comments', 'コメント'];
@@ -160,7 +160,7 @@ function findDanmakuByEpisode(videoUrl) {
 
       var fileEpNum = extractDanmakuNumber(fname);
       var fileBaseName = fname.replace(/\.[^.]+$/, '');
-      var isPrefixMatch = fileBaseName.startsWith(videoBaseName);
+      var isPrefixMatch = fileBaseName.normalize('NFC').startsWith(videoBaseName);
       var fileInfo = {
         filename: fname,
         path: filePath,
