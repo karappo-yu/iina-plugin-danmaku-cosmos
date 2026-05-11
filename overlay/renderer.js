@@ -291,9 +291,8 @@ window.createDanmaku = function (d, currentTime = null) {
     const winW = window.innerWidth;
     const maxW = d.full ? winW : winW * 0.95;
     if (textW > maxW) {
-      el.style.transform = `translateX(-50%) scaleX(${maxW / textW})`;
-    } else {
-      el.style.transform = `translateX(-50%)`;
+      const ratio = maxW / textW;
+      el.style.fontSize = `calc(${danmakuFs} * ${ratio})`;
     }
 
     el.style.setProperty('--dur', `${adjustedDurMs}ms`);
@@ -414,7 +413,12 @@ window.createDanmaku = function (d, currentTime = null) {
   if (d._textW === undefined) d._textW = el.offsetWidth;
   const textW = d._textW;
   const winW = window.innerWidth;
-  const lanesNeeded = Math.ceil(effectiveSize / 25);
+  let shrinkRatio = 1;
+  if (isTop || isBottom) {
+    const maxW = d.full ? winW : winW * 0.95;
+    if (textW > maxW) shrinkRatio = maxW / textW;
+  }
+  const lanesNeeded = Math.ceil(effectiveSize * shrinkRatio / 25);
 
   let lane = d._lane;
   let offsetLevel = (d._offsetLevel !== undefined) ? d._offsetLevel : 0;
@@ -474,20 +478,9 @@ window.createDanmaku = function (d, currentTime = null) {
     if (pos.bottom) el.style.bottom = pos.bottom;
   }
 
-  // 固定弹幕：宽度限制
-  if ((isTop || isBottom) && d._textW !== undefined) {
-    const maxW = window.innerWidth * 0.95;
-    if (d._textW > maxW) {
-      el.style.transform = `translateX(-50%) scaleX(${maxW / d._textW})`;
-    } else {
-      el.style.transform = `translateX(-50%)`;
-    }
-  }
-
   el.style.setProperty('--dur', `${adjustedDurMs}ms`);
   el.style.setProperty('--delay', `-${elapsedMs}ms`);
 
-  // 滚动方向
   const isReverse = isReverseScroll || (typeof isReverseActive === 'function' && isReverseActive(d.t, d._isOwner));
 
   if (isScroll || isReverseScroll) {
@@ -498,12 +491,10 @@ window.createDanmaku = function (d, currentTime = null) {
       el.style.setProperty('--start-x', `100vw`);
       el.style.setProperty('--end-x', `-100%`);
     }
-  } else {
-    const maxW = d.full ? winW : winW * 0.95;
-    if (textW > maxW) {
-      el.style.transform = `translateX(-50%) scaleX(${maxW / textW})`;
-    } else {
-      el.style.transform = `translateX(-50%)`;
+  } else if (shrinkRatio < 1) {
+    el.style.fontSize = `calc(${danmakuFs} * ${shrinkRatio})`;
+    if (el.style.webkitTextStroke) {
+      el.style.webkitTextStroke = el.style.webkitTextStroke.replace(/([\d.]+vh)/, (m, v) => `calc(${v} * ${shrinkRatio})`);
     }
   }
 
