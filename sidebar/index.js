@@ -8,7 +8,12 @@ var strokeOpacitySlider = document.getElementById("stroke-opacity-slider");
 var strokeOpacityValue = document.getElementById("stroke-opacity-value");
 var strokeWidthSlider = document.getElementById("stroke-width-slider");
 var strokeWidthValue = document.getElementById("stroke-width-value");
+var advancedToggle = document.getElementById("advanced-toggle");
+var advancedContent = document.getElementById("advanced-content");
+var advancedArrow = document.getElementById("advanced-arrow");
 var fileAddBtn = document.getElementById("danmaku-file-add-btn");
+
+var advancedOpen = false; // Start collapsed
 
 var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closest('.section'), strokeOpacitySlider.closest('.section')];
 
@@ -204,6 +209,7 @@ var i18n = {
     canvas_mode_html5: "HTML5",
     canvas_mode_flash: "Flash",
     stroke: "Stroke",
+    advanced: "Advanced",
     stroke_opacity: "Opacity",
     stroke_width: "Width",
     danmaku_not_found: "No danmaku file found",
@@ -278,6 +284,12 @@ toggleDanmaku.addEventListener("change", function () {
   state.enabled = toggleDanmaku.checked;
   updateEnabledUI();
   iina.postMessage("toggle-danmaku");
+});
+
+advancedToggle.addEventListener("click", function () {
+  advancedOpen = !advancedOpen;
+  advancedContent.style.display = advancedOpen ? '' : 'none';
+  advancedArrow.textContent = advancedOpen ? '▼' : '▶';
 });
 
 if (fileAddBtn) {
