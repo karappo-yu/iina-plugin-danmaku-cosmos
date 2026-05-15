@@ -133,24 +133,17 @@ function disposeCanvasRenderer() {
   if (!niconiComments) return;
   unbindCanvasEvents(niconiComments);
   niconiComments.clear();
+  if (typeof niconiComments.destroy === 'function') niconiComments.destroy();
   niconiComments = null;
-
-  // Replace canvas element to reset WebGL/2D context
-  const old = document.getElementById('niconicomments-canvas');
-  if (old && old.parentNode) {
-    const fresh = document.createElement('canvas');
-    fresh.id = 'niconicomments-canvas';
-    fresh.width = 1920;
-    fresh.height = 1080;
-    fresh.style.cssText = old.style.cssText;
-    old.parentNode.replaceChild(fresh, old);
-  }
 }
 
 function initCanvasRenderer(data) {
-  disposeCanvasRenderer();
   const canvas = document.getElementById('niconicomments-canvas');
   if (!canvas || typeof NiconiComments === 'undefined') return;
+  canvas.width = 1920;
+  canvas.height = 1080;
+  canvas.style.opacity = canvasOpacity;
+  disposeCanvasRenderer();
   niconiComments = new NiconiComments(canvas, data, {
     format: nicoRawFormat,
     mode: canvasNicoMode,
@@ -167,7 +160,6 @@ function initCanvasRenderer(data) {
   });
   nicoRawData = data;
   bindCanvasEvents(niconiComments);
-  canvas.style.opacity = canvasOpacity;
 }
 
 function destroyCanvasRenderer() {
