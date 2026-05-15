@@ -116,14 +116,6 @@ function prepareCanvasSource(rawStr, parsedList, sourceType) {
   nicoRawFormat = 'formatted';
 }
 
-function buildCanvasPlugins() {
-  const plugins = [];
-  if (typeof PluginNiwango === 'function' && typeof Niwango !== 'undefined') {
-    plugins.push(PluginNiwango(Niwango));
-  }
-  return plugins;
-}
-
 const canvasEventHandlers = {
   seekDisable: () => iina.postMessage("seek-disable", {}),
   seekEnable: () => iina.postMessage("seek-enable", {}),
@@ -170,7 +162,6 @@ function initCanvasRenderer(data) {
     mode: canvasNicoMode,
     keepCA: true,
     scale: canvasFontScale,
-    config: { plugins: buildCanvasPlugins() },
   });
   nicoRawData = data;
   bindCanvasEvents(niconiComments);
