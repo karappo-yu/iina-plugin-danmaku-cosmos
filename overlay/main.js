@@ -35,8 +35,6 @@ let nicoRawData = null;
 let nicoRawFormat = 'legacy';
 let currentDanmakuType = 'none';
 let canvasRafId = null;
-let canvasWarmupRafId = null;
-let canvasWarmupToken = 0;
 let canvasVideoAnchorTime = 0;
 let canvasSystemAnchorTime = 0;
 let canvasIsPlaying = false;
@@ -252,17 +250,8 @@ function unbindCanvasEvents(instance) {
   instance.removeEventListener("jump", canvasEventHandlers.jump);
 }
 
-function cancelCanvasWarmup() {
-  canvasWarmupToken++;
-  if (canvasWarmupRafId !== null) {
-    cancelAnimationFrame(canvasWarmupRafId);
-    canvasWarmupRafId = null;
-  }
-}
-
 function disposeCanvasRenderer() {
   if (!niconiComments) return;
-  cancelCanvasWarmup();
   unbindCanvasEvents(niconiComments);
   niconiComments.clear();
   if (typeof niconiComments.destroy === 'function') {
@@ -318,69 +307,6 @@ function stopCanvasLoop() {
     cancelAnimationFrame(canvasRafId);
     canvasRafId = null;
   }
-}
-
-function warmCanvasTimelineBucket(vposInt, seenComments, maxImages) {
-  if (!niconiComments || !niconiComments.timeline || maxImages <= 0) return 0;
-  const items = niconiComments.timeline[vposInt];
-  if (!items || items.length === 0) return 0;
-
-  let warmed = 0;
-  for (let i = 0; i < items.length && warmed < maxImages; i++) {
-    const comment = items[i];
-    if (!comment || seenComments.has(comment)) continue;
-    seenComments.add(comment);
-    if (typeof comment.getTextImage === 'function') {
-      comment.getTextImage();
-      warmed++;
-    }
-  }
-  return warmed;
-}
-
-function warmCanvasImagesAround(targetVpos, immediateBudget) {
-  if (!niconiComments || !niconiComments.timeline) return;
-
-  const center = Math.floor(targetVpos);
-  const immediateSeen = new Set();
-  let warmed = 0;
-  for (let offset = -10; offset <= 40 && warmed < immediateBudget; offset += 5) {
-    warmed += warmCanvasTimelineBucket(center + offset, immediateSeen, immediateBudget - warmed);
-  }
-
-  cancelCanvasWarmup();
-  const token = canvasWarmupToken;
-  const seen = new Set(immediateSeen);
-  let offset = 45;
-  const maxOffset = 800;
-  const stepVpos = 5;
-  const perFrameBudget = 12;
-
-  const runWarmup = () => {
-    if (token !== canvasWarmupToken || !niconiComments) return;
-
-    let frameWarmed = 0;
-    const frameStart = performance.now();
-    while (offset <= maxOffset && frameWarmed < perFrameBudget && performance.now() - frameStart < 4) {
-      frameWarmed += warmCanvasTimelineBucket(center + offset, seen, perFrameBudget - frameWarmed);
-      offset += stepVpos;
-    }
-
-    if (offset <= maxOffset) {
-      canvasWarmupRafId = requestAnimationFrame(runWarmup);
-    } else {
-      canvasWarmupRafId = null;
-    }
-  };
-
-  canvasWarmupRafId = requestAnimationFrame(runWarmup);
-}
-
-function handleCanvasSeek(videoTimeSec) {
-  if (!niconiComments) return;
-  const targetVpos = videoTimeSec * 100;
-  warmCanvasImagesAround(targetVpos, 48);
-  niconiComments.drawCanvas(targetVpos, true);
 }
 
 function switchRenderMode(mode) {
@@ -450,9 +376,13 @@ iina.onMessage("time-update", (data) => {
 
   if (isCanvasMode()) {
     const isSeek = Math.abs(t - lastTime) > 150;
+    if (isSeek) stopCanvasLoop();
     canvasSyncAnchor(data.time);
     lastTime = t;
-    if (isSeek) handleCanvasSeek(data.time);
+    if (isSeek && niconiComments) {
+      niconiComments.drawCanvas(t);
+      startCanvasLoop();
+    }
     return;
   }
 
