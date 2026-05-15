@@ -45,23 +45,19 @@
     </div>
 
     <div class="section">
-      <h3 class="section-title" data-i18n="canvas_mode">Mode</h3>
-      <div class="control-row">
-        <span class="toggle-label" data-i18n="canvas_mode_label">Render Mode</span>
-        <select id="canvas-mode-select" data-clickable>
-          <option value="default" data-i18n="canvas_mode_default">Auto</option>
-          <option value="html5" data-i18n="canvas_mode_html5">HTML5</option>
-          <option value="flash" data-i18n="canvas_mode_flash">Flash</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="section">
       <div class="toggle-row" id="advanced-toggle" data-clickable style="cursor:pointer">
         <span class="section-title" data-i18n="advanced">Advanced</span>
         <span id="advanced-arrow" style="font-size:10px;opacity:0.5">▶</span>
       </div>
       <div id="advanced-content" style="display:none">
+        <div class="control-row" style="margin-top:8px">
+          <span class="toggle-label" data-i18n="canvas_mode_label">Render Mode</span>
+          <select id="canvas-mode-select" data-clickable style="margin-left:auto">
+            <option value="default" data-i18n="canvas_mode_default">Auto</option>
+            <option value="html5" data-i18n="canvas_mode_html5">HTML5</option>
+            <option value="flash" data-i18n="canvas_mode_flash">Flash</option>
+          </select>
+        </div>
         <div class="control-row" style="margin-top:8px">
           <span class="toggle-label" data-i18n="stroke_color">Stroke Color</span>
           <input type="color" id="stroke-color" value="#000000" style="margin-left:auto;padding:0;border:none;width:30px;height:24px;cursor:pointer;background:none" />
