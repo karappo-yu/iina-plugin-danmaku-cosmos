@@ -38,6 +38,8 @@ let canvasRafId = null;
 let canvasVideoAnchorTime = 0;
 let canvasSystemAnchorTime = 0;
 let canvasIsPlaying = false;
+let _preloadVpos = 0;
+let _preloadSeen = null;
 
 function isCanvasMode() {
   return renderMode === 'canvas';
@@ -284,6 +286,7 @@ function initCanvasRenderer(data) {
   nicoRawData = data;
 
   bindCanvasEvents(niconiComments);
+  resetPreloader();
 }
 
 function destroyCanvasRenderer() {
@@ -293,7 +296,9 @@ function destroyCanvasRenderer() {
 
 function canvasRenderLoop() {
   if (!niconiComments) return;
-  niconiComments.drawCanvas(canvasGetCurrentTime() * 100);
+  const currentVpos = canvasGetCurrentTime() * 100;
+  niconiComments.drawCanvas(currentVpos);
+  if (!isPaused) preloadAhead(currentVpos);
   canvasRafId = requestAnimationFrame(canvasRenderLoop);
 }
 
@@ -306,6 +311,43 @@ function stopCanvasLoop() {
   if (canvasRafId !== null) {
     cancelAnimationFrame(canvasRafId);
     canvasRafId = null;
+  }
+}
+
+function resetPreloader() {
+  _preloadVpos = 0;
+  _preloadSeen = null;
+}
+
+function preloadAhead(currentVpos) {
+  if (!niconiComments || !niconiComments.timeline) {
+    resetPreloader();
+    return;
+  }
+  if (!_preloadSeen) {
+    _preloadSeen = new Set();
+    _preloadVpos = Math.floor(currentVpos) + 50;
+  }
+
+  const maxAhead = _preloadVpos + 6000;
+  const frameEnd = performance.now() + 4;
+  const perFrameBudget = 12;
+
+  let warmed = 0;
+  while (_preloadVpos < maxAhead && warmed < perFrameBudget && performance.now() < frameEnd) {
+    const items = niconiComments.timeline[_preloadVpos];
+    if (items) {
+      for (let i = 0; i < items.length && warmed < perFrameBudget && performance.now() < frameEnd; i++) {
+        const c = items[i];
+        if (!c || _preloadSeen.has(c)) continue;
+        _preloadSeen.add(c);
+        if (typeof c.getTextImage === 'function') {
+          c.getTextImage();
+          warmed++;
+        }
+      }
+    }
+    _preloadVpos++;
   }
 }
 
@@ -380,6 +422,7 @@ iina.onMessage("time-update", (data) => {
     canvasSyncAnchor(data.time);
     lastTime = t;
     if (isSeek && niconiComments) {
+      _preloadVpos = Math.floor(t) + 50;
       niconiComments.drawCanvas(t);
       startCanvasLoop();
     }
