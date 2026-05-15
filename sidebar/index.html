@@ -58,9 +58,9 @@
             <option value="flash" data-i18n="canvas_mode_flash">Flash</option>
           </select>
         </div>
-        <h3 class="section-title" data-i18n="comment_limit" style="margin-top:10px">Comment Limit</h3>
-        <div class="control-row">
-          <label class="switch" data-clickable>
+        <div class="control-row" style="margin-top:8px">
+          <span class="toggle-label" data-i18n="comment_limit">Comment Limit</span>
+          <label class="switch" data-clickable style="margin-left:auto;flex-shrink:0">
             <input type="checkbox" id="comment-limit-enable" />
             <span class="switch-slider"></span>
           </label>
@@ -86,13 +86,13 @@
           <input type="range" id="speed-slider" data-clickable min="50" max="150" step="5" value="95" class="slider" />
           <span id="speed-value" class="value-text">95%</span>
         </div>
-        <h3 class="section-title" data-i18n="stroke_color" style="margin-top:10px">Stroke Color</h3>
-        <div class="control-row">
-          <input type="color" id="stroke-color" value="#000000" style="padding:0;border:none;width:30px;height:24px;cursor:pointer;background:none" />
+        <div class="control-row" style="margin-top:10px">
+          <span class="toggle-label" data-i18n="stroke_color">Stroke Color</span>
+          <input type="color" id="stroke-color" value="#000000" style="margin-left:auto;padding:0;border:none;width:30px;height:24px;cursor:pointer;background:none" />
         </div>
-        <h3 class="section-title" data-i18n="stroke_inversion" style="margin-top:10px">Invert Color</h3>
-        <div class="control-row">
-          <input type="color" id="stroke-inversion-color" value="#ffffff" style="padding:0;border:none;width:30px;height:24px;cursor:pointer;background:none" />
+        <div class="control-row" style="margin-top:6px">
+          <span class="toggle-label" data-i18n="stroke_inversion">Invert Color</span>
+          <input type="color" id="stroke-inversion-color" value="#ffffff" style="margin-left:auto;padding:0;border:none;width:30px;height:24px;cursor:pointer;background:none" />
         </div>
       </div>
     </div>
