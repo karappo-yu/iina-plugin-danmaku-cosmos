@@ -284,6 +284,16 @@ function initCanvasRenderer(data) {
   nicoRawData = data;
 
   bindCanvasEvents(niconiComments);
+
+  const _lastVpos = allDanmaku.length > 0 ? allDanmaku[allDanmaku.length - 1].t : 0;
+  if (_lastVpos > 0) {
+    const _c = document.getElementById('niconicomments-canvas');
+    const _o = _c.style.opacity;
+    _c.style.opacity = '0';
+    niconiComments.drawCanvas(_lastVpos, true);
+    niconiComments.drawCanvas(0, true);
+    _c.style.opacity = _o;
+  }
 }
 
 function destroyCanvasRenderer() {
