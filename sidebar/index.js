@@ -10,10 +10,8 @@ var strokeWidthSlider = document.getElementById("stroke-width-slider");
 var strokeWidthValue = document.getElementById("stroke-width-value");
 var strokeColorInput = document.getElementById("stroke-color");
 var strokeInversionInput = document.getElementById("stroke-inversion-color");
-var commentLimitEnable = document.getElementById("comment-limit-enable");
 var commentLimitSlider = document.getElementById("comment-limit-slider");
 var commentLimitValue = document.getElementById("comment-limit-value");
-var commentLimitRow = document.getElementById("comment-limit-row");
 var speedSlider = document.getElementById("speed-slider");
 var speedValue = document.getElementById("speed-value");
 var advancedToggle = document.getElementById("advanced-toggle");
@@ -302,8 +300,10 @@ function updateUI() {
   strokeInversionInput.value = state.strokeInversionColor;
   commentLimitEnable.checked = state.commentLimit > 0;
   commentLimitRow.style.display = state.commentLimit > 0 ? '' : 'none';
-  commentLimitSlider.value = state.commentLimit > 0 ? state.commentLimit : 40;
-  commentLimitValue.textContent = String(commentLimitSlider.value);
+  commentLimitEnable.checked = state.commentLimit > 0;
+  commentLimitRow.style.display = state.commentLimit > 0 ? '' : 'none';
+  commentLimitSlider.value = state.commentLimit;
+  commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : 'Off';
   speedSlider.value = Math.round(state.scrollSpeed * 100);
   speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
   if (canvasModeSelect) canvasModeSelect.value = state.canvasMode || 'default';
@@ -372,21 +372,10 @@ strokeInversionInput.addEventListener("input", function () {
   iina.postMessage("set-stroke-inversion-color", { color: state.strokeInversionColor });
 });
 
-commentLimitEnable.addEventListener("change", function () {
-  if (commentLimitEnable.checked) {
-    commentLimitRow.style.display = '';
-    state.commentLimit = parseInt(commentLimitSlider.value, 10);
-  } else {
-    commentLimitRow.style.display = 'none';
-    state.commentLimit = 0;
-  }
-  iina.postMessage("set-comment-limit", { limit: state.commentLimit });
-});
-
 commentLimitSlider.addEventListener("input", function () {
   var val = parseInt(commentLimitSlider.value, 10);
   state.commentLimit = val;
-  commentLimitValue.textContent = String(val);
+  commentLimitValue.textContent = val > 0 ? String(val) : 'Off';
   iina.postMessage("set-comment-limit", { limit: val });
 });
 
