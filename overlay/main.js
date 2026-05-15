@@ -133,7 +133,7 @@ function disposeCanvasRenderer() {
   if (!niconiComments) return;
   unbindCanvasEvents(niconiComments);
   niconiComments.clear();
-  if (typeof niconiComments.destroy === 'function') niconiComments.destroy();
+  niconiComments.destroy();
   niconiComments = null;
 }
 
