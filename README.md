@@ -42,7 +42,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 ### 注意事项
 
-- 字符画（コメントアート）在 IINA 的 WebKit 渲染下可能出现错位，属浏览器引擎差异，在 Chrome 中正常
+- 字符画（コメントアート）在 IINA 的 WebKit 渲染下可能出现错位或混乱，这是因为 niconicomments 库的 canvas 文字渲染在 Safari 内核下存在兼容性问题，属于浏览器引擎差异，在 Chrome 中正常
 - 文件名包含特殊字符（如 `[`、`]`）可能导致自动加载失败
 - 最小化窗口后再恢复，弹幕会重新渲染（已知限制）
 
@@ -120,7 +120,7 @@ Automatically searches in the same directory with this priority:
 
 ### Notes
 
-- Comment Art (CA) may appear misaligned in IINA's WebKit renderer. This is a browser engine limitation — it renders correctly in Chrome
+- Comment Art (CA) may appear misaligned or garbled in IINA's WebKit renderer. This is a Safari canvas text rendering compatibility issue with the niconicomments library — it renders correctly in Chrome
 - Filenames with special characters (like `[`, `]`) may cause auto-load to fail
 - Minimizing and restoring the window causes danmaku to re-render (known limitation)
 
