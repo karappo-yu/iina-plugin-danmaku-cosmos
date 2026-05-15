@@ -71,8 +71,6 @@ function buildFormattedCanvasData(list, sourceType) {
   const result = [];
   for (let i = 0; i < list.length; i++) {
     const d = list[i];
-    const mail = Array.isArray(d._commands) ? d._commands.slice() : [];
-    if (mail.length === 0) mail.push('naka');
     result.push({
       id: i,
       vpos: Math.round(d.t || 0),
@@ -81,7 +79,7 @@ function buildFormattedCanvasData(list, sourceType) {
       date_usec: 0,
       owner: sourceType !== 'bilibili-xml' && !!d._isOwner,
       premium: true,
-      mail: mail,
+      mail: Array.isArray(d._commands) ? d._commands : [],
       user_id: toNumericUserId(d._userId, userMap),
       layer: d._layer === undefined ? -1 : d._layer,
       is_my_post: false
