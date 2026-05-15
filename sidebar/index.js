@@ -241,8 +241,13 @@ var i18n = {
     canvas_mode_html5: "HTML5",
     canvas_mode_flash: "Flash",
     stroke: "\u7e01\u53d6\u308a",
+    advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
+    stroke_color: "\u7e01\u53d6\u308a\u306e\u8272",
+    stroke_inversion: "\u9006\u7e01\u53d6\u308a\u8272",
     stroke_opacity: "\u900f\u660e\u5ea6",
     stroke_width: "\u592a\u3055",
+    comment_limit: "\u30b3\u30e1\u30f3\u30c8\u5236\u9650",
+    scroll_speed: "\u30b9\u30af\u30ed\u30fc\u30eb\u901f\u5ea6",
     danmaku_not_found: "\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093",
     file_add: "\u8ffd\u52a0"
   },
@@ -256,8 +261,13 @@ var i18n = {
     canvas_mode_html5: "HTML5",
     canvas_mode_flash: "Flash",
     stroke: "\u63cf\u8fb9",
+    advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
+    stroke_color: "\u63cf\u8fb9\u989c\u8272",
+    stroke_inversion: "\u53cd\u8272\u63cf\u8fb9",
     stroke_opacity: "\u900f\u660e\u5ea6",
     stroke_width: "\u7c97\u7ec6",
+    comment_limit: "\u5f39\u5e55\u4e0a\u9650",
+    scroll_speed: "\u6eda\u52a8\u901f\u5ea6",
     danmaku_not_found: "\u672a\u627e\u5230\u5f39\u5e55\u6587\u4ef6",
     file_add: "\u6dfb\u52a0"
   }
