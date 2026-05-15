@@ -39,14 +39,6 @@ function detectNicoFormat(data) {
   return 'legacy';
 }
 
-function detectNicoFormat(data) {
-  if (Array.isArray(data) && data.length > 0) {
-    if (data[0].comments !== undefined && Array.isArray(data[0].comments)) return 'v1';
-    if (data[0].chat !== undefined) return 'legacy';
-  }
-  return 'legacy';
-}
-
 function detectRawDanmakuType(rawStr) {
   const s = rawStr ? rawStr.trim() : '';
   if (!s) return 'bilibili-xml';
@@ -55,42 +47,27 @@ function detectRawDanmakuType(rawStr) {
   return 'bilibili-xml';
 }
 
-function toNumericUserId(userId, userMap) {
-  const numeric = Number(userId);
-  if (!isNaN(numeric) && isFinite(numeric)) return numeric;
-  const key = String(userId || '');
-  if (userMap[key] === undefined) {
-    userMap._nextId = (userMap._nextId || 0) + 1;
-    userMap[key] = userMap._nextId;
-  }
-  return userMap[key];
-}
-
-function buildFormattedCanvasData(list, sourceType) {
-  const userMap = {};
-  const result = [];
-  for (let i = 0; i < list.length; i++) {
-    const d = list[i];
-    result.push({
-      id: i,
-      vpos: Math.round(d.t || 0),
-      content: d.text || '',
-      date: d._dateSec || 0,
-      date_usec: 0,
-      owner: sourceType !== 'bilibili-xml' && !!d._isOwner,
-      premium: true,
-      mail: Array.isArray(d._commands) ? d._commands : [],
-      user_id: toNumericUserId(d._userId, userMap),
-      layer: d._layer === undefined ? -1 : d._layer,
-      is_my_post: false
-    });
-  }
-  return result;
+function buildV1Data(list, sourceType) {
+  const fork = sourceType === 'nico-xml' ? 'nico-xml' : 'bilibili-xml';
+  const comments = list.map((d, i) => ({
+    body: d.text || '',
+    commands: Array.isArray(d._commands) ? d._commands : [],
+    vposMs: Math.round((d.t || 0) * 10),
+    isPremium: true,
+    userId: String(d._userId || ''),
+    isMyPost: false,
+    no: i + 1,
+    score: 0,
+    postedAt: '2024-01-01T00:00:00+09:00',
+    nicoruCount: 0,
+    nicoruId: null,
+    source: 'trunk',
+  }));
+  nicoRawData = [{ fork, comments }];
+  nicoRawFormat = 'v1';
 }
 
 function prepareCanvasSource(rawStr, parsedList, sourceType) {
-  nicoRawData = null;
-  nicoRawFormat = 'formatted';
   if (sourceType === 'nico-json') {
     try {
       nicoRawData = JSON.parse(rawStr);
@@ -100,8 +77,7 @@ function prepareCanvasSource(rawStr, parsedList, sourceType) {
       console.warn('niconicocomments JSON parse failed, using formatted data:', e);
     }
   }
-  nicoRawData = buildFormattedCanvasData(parsedList, sourceType);
-  nicoRawFormat = 'formatted';
+  buildV1Data(parsedList, sourceType);
 }
 
 const canvasEventHandlers = {
