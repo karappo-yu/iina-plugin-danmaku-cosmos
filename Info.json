@@ -1,8 +1,8 @@
 {
-  "name": "Danmaku Cosmos",
+  "name": "Danmaku Cosmos (niconicocomments only)",
   "identifier": "com.danmaku-cosmos.iina-plugin",
   "version": "1.0.0",
-  "description": "IINA弹幕插件，支持Niconico和Bilibili格式，CSS/Canvas双渲染模式",
+  "description": "IINA弹幕插件 (niconicocomments-only渲染)",
   "author": {
     "name": "karappo-yu"
   },
@@ -22,23 +22,8 @@
   "preferencesPage": "preferences.html",
   "preferenceDefaults": {
     "danmakuEnabled": true,
-    "danmakuOpacity": 0.7,
     "danmakuCanvasOpacity": 0.8,
-    "danmakuFontScale": 1.0,
-    "danmakuSpeed": 680,
-    "scrollDuration": 8000,
-    "blockForceLane": false,
-    "maxLaneRatio": 1,
-    "cssFontFamily": "default",
-    "cssFontWeight": 800,
-    "cssStrokeWidth": 0.1,
-    "canvasMode": "default",
     "niconicommentsFontScale": 1.0,
-    "defaultEngineBilibiliXml": "cosmos",
-    "defaultEngineNicoXml": "cosmos",
-    "defaultEngineNicoJson": "cosmos",
-    "blockScroll": false,
-    "blockTop": false,
-    "blockBottom": false
+    "canvasMode": "default"
   }
 }

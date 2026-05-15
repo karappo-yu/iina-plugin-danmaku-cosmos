@@ -1,27 +1,19 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <!-- 完全移除了臃肿的 CCL 依赖，变成一个极其纯粹的渲染容器 -->
   <link rel="stylesheet" href="index.css" />
-  <title>Danmaku Cosmos Overlay</title>
+  <title>niconicocomments Overlay</title>
 </head>
 <body>
   <canvas id="niconicomments-canvas"></canvas>
-  <div id="danmaku-container"></div>
-
-  <!-- 模块加载顺序（依赖链：config → command → flash → nicoscript → lane → renderer → input → ca-score → main） -->
   <script src="lib/niconicomments.min.js"></script>
   <script src="lib/niconicomments-plugin-niwango.min.js"></script>
   <script src="lib/niwango.min.js"></script>
-  <script src="config.js"></script>
   <script src="command.js"></script>
   <script src="flash.js"></script>
-  <script src="nicoscript.js"></script>
-  <script src="lane.js"></script>
-  <script src="renderer.js"></script>
+  <script src="config.js"></script>
   <script src="input.js"></script>
-  <script src="ca-score.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

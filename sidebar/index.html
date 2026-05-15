@@ -29,65 +29,10 @@
     </div>
 
     <div class="section">
-      <div class="control-row">
-        <span class="toggle-label" data-i18n="current_engine">Current Engine</span>
-        <select id="render-engine-select" data-clickable>
-          <option value="css" data-i18n="engine_cosmos">Cosmos</option>
-          <option value="canvas" data-i18n="engine_niconicomments">niconicocomments</option>
-        </select>
-      </div>
-      <div class="hint-text" data-i18n="render_engine_hint">Choose the active danmaku engine</div>
-      <div class="hint-text canvas-unsupported" data-i18n="render_canvas_unsupported" style="display:none;">niconicocomments is unavailable for the current data</div>
-      <div class="canvas-mode-options" style="display:none; margin-top: 8px;">
-        <div class="control-row">
-          <span class="toggle-label" data-i18n="canvas_mode">Mode</span>
-          <select id="canvas-mode-select" data-clickable style="margin-left: auto;">
-            <option value="default" data-i18n="canvas_mode_default">Auto</option>
-            <option value="html5" data-i18n="canvas_mode_html5">HTML5</option>
-            <option value="flash" data-i18n="canvas_mode_flash">Flash</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h3 class="section-title" data-i18n="default_engine">Default Engine</h3>
-      <div class="engine-default-row">
-        <span data-i18n="format_bilibili_xml">Bilibili XML</span>
-        <select id="default-engine-bilibili-xml" data-clickable>
-          <option value="cosmos" data-i18n="engine_cosmos">Cosmos</option>
-          <option value="niconicocomments" data-i18n="engine_niconicomments">niconicocomments</option>
-        </select>
-      </div>
-      <div class="engine-default-row">
-        <span data-i18n="format_nico_xml">Niconico XML</span>
-        <select id="default-engine-nico-xml" data-clickable>
-          <option value="cosmos" data-i18n="engine_cosmos">Cosmos</option>
-          <option value="niconicocomments" data-i18n="engine_niconicomments">niconicocomments</option>
-        </select>
-      </div>
-      <div class="engine-default-row">
-        <span data-i18n="format_nico_json">Niconico JSON</span>
-        <select id="default-engine-nico-json" data-clickable>
-          <option value="cosmos" data-i18n="engine_cosmos">Cosmos</option>
-          <option value="niconicocomments" data-i18n="engine_niconicomments">niconicocomments</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="section">
-      <h3 class="section-title" data-i18n="lane_limit">Lane Limit</h3>
-      <div class="control-row">
-        <input type="range" id="max-lane-slider" data-clickable min="10" max="100" step="5" value="100" class="slider" />
-        <span id="max-lane-value" class="value-text">100%</span>
-      </div>
-    </div>
-
-    <div class="section">
       <h3 class="section-title" data-i18n="opacity">Opacity</h3>
       <div class="control-row">
-        <input type="range" id="opacity-slider" data-clickable min="0.1" max="1" step="0.05" value="0.7" class="slider" />
-        <span id="opacity-value" class="value-text">70%</span>
+        <input type="range" id="opacity-slider" data-clickable min="0.1" max="1" step="0.05" value="0.8" class="slider" />
+        <span id="opacity-value" class="value-text">80%</span>
       </div>
     </div>
 
@@ -100,28 +45,14 @@
     </div>
 
     <div class="section">
-      <h3 class="section-title" data-i18n="scroll_duration">Scroll Duration</h3>
+      <h3 class="section-title" data-i18n="canvas_mode">Mode</h3>
       <div class="control-row">
-        <input type="range" id="duration-slider" data-clickable min="3000" max="15000" step="500" value="8000" class="slider" />
-        <span id="duration-value" class="value-text">8.0s</span>
-      </div>
-    </div>
-
-    <div class="section">
-      <h3 class="section-title" data-i18n="danmaku_block">Block</h3>
-      <div class="checkbox-group">
-        <label class="checkbox-label" data-clickable>
-          <input type="checkbox" id="block-force-lane" /> <span data-i18n="block_force_lane">Block Overflow</span>
-        </label>
-        <label class="checkbox-label" data-clickable>
-          <input type="checkbox" id="block-scroll" /> <span data-i18n="block_scroll">Block Scroll</span>
-        </label>
-        <label class="checkbox-label" data-clickable>
-          <input type="checkbox" id="block-top" /> <span data-i18n="block_top">Block Top</span>
-        </label>
-        <label class="checkbox-label" data-clickable>
-          <input type="checkbox" id="block-bottom" /> <span data-i18n="block_bottom">Block Bottom</span>
-        </label>
+        <span class="toggle-label" data-i18n="canvas_mode_label">Render Mode</span>
+        <select id="canvas-mode-select" data-clickable>
+          <option value="default" data-i18n="canvas_mode_default">Auto</option>
+          <option value="html5" data-i18n="canvas_mode_html5">HTML5</option>
+          <option value="flash" data-i18n="canvas_mode_flash">Flash</option>
+        </select>
       </div>
     </div>
   </div>

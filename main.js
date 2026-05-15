@@ -9,48 +9,21 @@ var preferences = iina.preferences;
 var mpv = iina.mpv;
 
 var danmakuEnabled = preferences.get("danmakuEnabled");
-var cssOpacity = preferences.get("danmakuOpacity") || 0.7;
 var canvasOpacity = preferences.get("danmakuCanvasOpacity") || 0.8;
-var cssFontScale = preferences.get("danmakuFontScale") || 1.0;
-var niconicommentsFontScale = preferences.get("niconicommentsFontScale") || 1.0;
-var currentSpeed = preferences.get("danmakuSpeed");
-var currentScrollDuration = preferences.get("scrollDuration");
-var currentBlockForceLane = preferences.get("blockForceLane");
-var currentMaxLaneRatio = preferences.get("maxLaneRatio") !== undefined ? preferences.get("maxLaneRatio") : 1.0;
-var cssFontFamily = preferences.get("cssFontFamily") || "default";
-var cssFontWeight = preferences.get("cssFontWeight") || 800;
-var cssStrokeWidth = preferences.get("cssStrokeWidth") !== undefined ? preferences.get("cssStrokeWidth") : 0.1;
-var currentPlaybackSpeed = 1.0;
-var currentRenderMode = 'css';
+var canvasFontScale = preferences.get("niconicommentsFontScale") || 1.0;
 var currentCanvasMode = preferences.get("canvasMode") || 'default';
-var defaultEngines = {
-  'bilibili-xml': normalizeEngine(preferences.get("defaultEngineBilibiliXml")),
-  'nico-xml': normalizeEngine(preferences.get("defaultEngineNicoXml")),
-  'nico-json': normalizeEngine(preferences.get("defaultEngineNicoJson"))
-};
-var currentBlockScroll = preferences.get("blockScroll") || false;
-var currentBlockTop = preferences.get("blockTop") || false;
-var currentBlockBottom = preferences.get("blockBottom") || false;
+var currentPlaybackSpeed = 1.0;
 var overlayReady = false;
 var preferencesSyncTimer = null;
 
 function syncPreferencesSoon() {
-  if (preferencesSyncTimer) {
-    clearTimeout(preferencesSyncTimer);
-  }
+  if (preferencesSyncTimer) clearTimeout(preferencesSyncTimer);
   preferencesSyncTimer = setTimeout(function () {
     preferences.sync();
     preferencesSyncTimer = null;
   }, 250);
 }
 
-function getActiveOpacity() {
-  return currentRenderMode === 'canvas' ? canvasOpacity : cssOpacity;
-}
-
-function getActiveFontScale() {
-  return currentRenderMode === 'canvas' ? niconicommentsFontScale : cssFontScale;
-}
 var pendingDanmaku = null;
 var currentVideoUrl = null;
 var timePosListenerID = null;
@@ -84,9 +57,7 @@ function danmakuNotFound() {
 
 function filePathFromUrl(url) {
   if (!url) return null;
-  if (url.startsWith("file://")) {
-    return decodeURIComponent(url.substring(7));
-  }
+  if (url.startsWith("file://")) return decodeURIComponent(url.substring(7));
   return null;
 }
 
@@ -96,35 +67,6 @@ function detectDanmakuType(content) {
   if (s.charAt(0) === '[') return 'nico-json';
   if (s.indexOf('<packet') !== -1) return 'nico-xml';
   return 'bilibili-xml';
-}
-
-function normalizeEngine(engine) {
-  return engine === 'niconicocomments' || engine === 'canvas' ? 'niconicocomments' : 'cosmos';
-}
-
-function engineToRenderMode(engine) {
-  return normalizeEngine(engine) === 'niconicocomments' ? 'canvas' : 'css';
-}
-
-function getDefaultEngineForType(fileType) {
-  return defaultEngines[fileType] || 'cosmos';
-}
-
-function getPreferenceKeyForType(fileType) {
-  if (fileType === 'bilibili-xml') return "defaultEngineBilibiliXml";
-  if (fileType === 'nico-xml') return "defaultEngineNicoXml";
-  if (fileType === 'nico-json') return "defaultEngineNicoJson";
-  return null;
-}
-
-function setRenderMode(mode) {
-  currentRenderMode = mode === 'canvas' ? 'canvas' : 'css';
-  overlay.postMessage("set-render-mode", { mode: currentRenderMode });
-  sidebar.postMessage("danmaku-state", { renderMode: currentRenderMode });
-}
-
-function applyDefaultRenderModeForType(fileType) {
-  setRenderMode(engineToRenderMode(getDefaultEngineForType(fileType)));
 }
 
 function extractNumberFromName(name) {
@@ -166,9 +108,7 @@ function findDanmakuByEpisode(videoUrl) {
   var altDirNames = ['弹幕', 'Comments', 'コメント'];
   for (var i = 0; i < altDirNames.length; i++) {
     var altDir = videoDir + '/' + altDirNames[i];
-    if (file.exists(altDir)) {
-      searchDirs.push(altDir);
-    }
+    if (file.exists(altDir)) searchDirs.push(altDir);
   }
 
   var exactXmlFiles = [];
@@ -183,11 +123,7 @@ function findDanmakuByEpisode(videoUrl) {
   for (var d = 0; d < searchDirs.length; d++) {
     var dir = searchDirs[d];
     var items;
-    try {
-      items = file.list(dir, { includeSubDir: false });
-    } catch (e) {
-      continue;
-    }
+    try { items = file.list(dir, { includeSubDir: false }); } catch (e) { continue; }
     if (!items) continue;
 
     for (var j = 0; j < items.length; j++) {
@@ -202,9 +138,7 @@ function findDanmakuByEpisode(videoUrl) {
       seenPaths[filePath] = true;
 
       var relativePath = filePath;
-      if (filePath.startsWith(videoDir + "/")) {
-        relativePath = filePath.substring(videoDir.length + 1);
-      }
+      if (filePath.startsWith(videoDir + "/")) relativePath = filePath.substring(videoDir.length + 1);
 
       var fileEpNum = extractDanmakuNumber(fname);
       var fileBaseName = fname.replace(/\.[^.]+$/, '');
@@ -219,23 +153,11 @@ function findDanmakuByEpisode(videoUrl) {
       };
 
       if (isExactMatch) {
-        if (ext === 'xml') {
-          exactXmlFiles.push(fileInfo);
-        } else {
-          exactJsonFiles.push(fileInfo);
-        }
+        if (ext === 'xml') exactXmlFiles.push(fileInfo); else exactJsonFiles.push(fileInfo);
       } else if (isPrefixMatch) {
-        if (ext === 'xml') {
-          prefixXmlFiles.push(fileInfo);
-        } else {
-          prefixJsonFiles.push(fileInfo);
-        }
+        if (ext === 'xml') prefixXmlFiles.push(fileInfo); else prefixJsonFiles.push(fileInfo);
       } else if (videoEpNum !== null && fileEpNum !== null && fileEpNum === videoEpNum) {
-        if (ext === 'xml') {
-          epNumXmlFiles.push(fileInfo);
-        } else {
-          epNumJsonFiles.push(fileInfo);
-        }
+        if (ext === 'xml') epNumXmlFiles.push(fileInfo); else epNumJsonFiles.push(fileInfo);
       } else if (fileEpNum === null) {
         unknownFiles.push(fileInfo);
       }
@@ -299,7 +221,6 @@ function loadDanmakuForVideo(url) {
   danmakuCache[firstFile.path] = encodedContent;
 
   var fileType = detectDanmakuType(xmlContent);
-  applyDefaultRenderModeForType(fileType);
   updateDanmakuStatus({ fileType: fileType, fileName: firstFile.filename, relativePath: firstFile.relativePath, isLoaded: true });
 
   sidebar.postMessage("danmaku-file-list", danmakuFileList);
@@ -308,16 +229,8 @@ function loadDanmakuForVideo(url) {
     xmlContent: encodedContent,
     path: firstFile.path,
     danmakuType: fileType,
-    renderMode: currentRenderMode,
-    opacity: getActiveOpacity(),
-    fontScale: cssFontScale,
-    cssFontScale: cssFontScale,
-    canvasFontScale: niconicommentsFontScale,
-    speed: currentSpeed,
-    scrollDuration: currentScrollDuration,
-    cssFontFamily: cssFontFamily,
-    cssFontWeight: cssFontWeight,
-    cssStrokeWidth: cssStrokeWidth,
+    opacity: canvasOpacity,
+    canvasFontScale: canvasFontScale,
   };
 
   if (overlayReady) {
@@ -337,17 +250,9 @@ function markOverlayReady() {
   overlay.postMessage("ack", {});
 
   overlay.postMessage("apply-settings", {
-    opacity: getActiveOpacity(),
-    fontScale: cssFontScale,
-    cssFontScale: cssFontScale,
-    canvasFontScale: niconicommentsFontScale,
-    speed: currentSpeed,
-    scrollDuration: currentScrollDuration,
-    blockForceLane: currentBlockForceLane,
-    maxLaneRatio: currentMaxLaneRatio,
-    cssFontFamily: cssFontFamily,
-    cssFontWeight: cssFontWeight,
-    cssStrokeWidth: cssStrokeWidth,
+    opacity: canvasOpacity,
+    canvasFontScale: canvasFontScale,
+    canvasMode: currentCanvasMode,
   });
 
   if (pendingDanmaku) {
@@ -364,18 +269,9 @@ function markOverlayReady() {
 }
 
 function setObserver(start) {
-  if (timePosListenerID) {
-    event.off("mpv.time-pos.changed", timePosListenerID);
-    timePosListenerID = null;
-  }
-  if (windowScaleListenerID) {
-    event.off("mpv.window-scale.changed", windowScaleListenerID);
-    windowScaleListenerID = null;
-  }
-  if (speedListenerID) {
-    event.off("mpv.speed.changed", speedListenerID);
-    speedListenerID = null;
-  }
+  if (timePosListenerID) { event.off("mpv.time-pos.changed", timePosListenerID); timePosListenerID = null; }
+  if (windowScaleListenerID) { event.off("mpv.window-scale.changed", windowScaleListenerID); windowScaleListenerID = null; }
+  if (speedListenerID) { event.off("mpv.speed.changed", speedListenerID); speedListenerID = null; }
 
   if (start && overlayReady && danmakuEnabled) {
     timePosListenerID = event.on("mpv.time-pos.changed", function (t) {
@@ -389,9 +285,7 @@ function setObserver(start) {
       overlay.postMessage("playback-speed", { speed: speed });
     });
     var t = mpv.getNumber("time-pos");
-    if (t !== undefined && t !== null) {
-      overlay.postMessage("time-update", { time: t });
-    }
+    if (t !== undefined && t !== null) overlay.postMessage("time-update", { time: t });
     var speed = mpv.getNumber("speed");
     if (speed !== undefined && speed !== null) {
       currentPlaybackSpeed = speed;
@@ -406,14 +300,8 @@ function toggleDanmaku() {
   preferences.set("danmakuEnabled", danmakuEnabled);
   preferences.sync();
   overlay.postMessage("toggle-danmaku", { enabled: danmakuEnabled });
-  if (danmakuEnabled) {
-    overlay.show();
-    setObserver(true);
-    core.osd("弹幕已开启");
-  } else {
-    setObserver(false);
-    core.osd("弹幕已关闭");
-  }
+  if (danmakuEnabled) { overlay.show(); setObserver(true); core.osd("弹幕已开启"); }
+  else { setObserver(false); core.osd("弹幕已关闭"); }
   sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled });
 }
 
@@ -429,110 +317,35 @@ function ensureDanmakuEnabled() {
 }
 
 function registerSidebarHandlers() {
-  sidebar.onMessage("toggle-danmaku", function () {
-    toggleDanmaku();
-  });
+  sidebar.onMessage("toggle-danmaku", function () { toggleDanmaku(); });
 
   sidebar.onMessage("set-opacity", function (data) {
-    if (currentRenderMode === 'canvas') {
-      canvasOpacity = data.opacity;
-      preferences.set("danmakuCanvasOpacity", canvasOpacity);
-    } else {
-      cssOpacity = data.opacity;
-      preferences.set("danmakuOpacity", cssOpacity);
-    }
+    canvasOpacity = data.opacity;
+    preferences.set("danmakuCanvasOpacity", canvasOpacity);
     syncPreferencesSoon();
     overlay.postMessage("set-opacity", { opacity: data.opacity });
   });
 
   sidebar.onMessage("set-fontscale", function (data) {
-    var targetMode = data.engine === 'canvas' || data.mode === 'canvas' || currentRenderMode === 'canvas';
-    if (targetMode) {
-      niconicommentsFontScale = data.scale;
-      preferences.set("niconicommentsFontScale", niconicommentsFontScale);
-    } else {
-      cssFontScale = data.scale;
-      preferences.set("danmakuFontScale", cssFontScale);
-    }
+    canvasFontScale = data.scale;
+    preferences.set("niconicommentsFontScale", canvasFontScale);
     syncPreferencesSoon();
-    overlay.postMessage("set-fontscale", { scale: data.scale, mode: targetMode ? 'canvas' : 'css' });
-  });
-
-  sidebar.onMessage("set-speed", function (data) {
-    currentSpeed = data.speed;
-    preferences.set("danmakuSpeed", currentSpeed);
-    syncPreferencesSoon();
-    overlay.postMessage("set-speed", { speed: data.speed });
-  });
-
-  sidebar.onMessage("set-scroll-duration", function (data) {
-    currentScrollDuration = data.duration;
-    preferences.set("scrollDuration", currentScrollDuration);
-    syncPreferencesSoon();
-    overlay.postMessage("set-scroll-duration", { duration: data.duration });
-  });
-
-  sidebar.onMessage("set-lane-limit", function (data) {
-    preferences.set("maxLaneRatio", data.maxLaneRatio);
-    syncPreferencesSoon();
-    overlay.postMessage("set-lane-limit", { maxLaneRatio: data.maxLaneRatio });
-  });
-
-  sidebar.onMessage("block-type", function (data) {
-    currentBlockScroll = !!data.blockScroll;
-    currentBlockTop = !!data.blockTop;
-    currentBlockBottom = !!data.blockBottom;
-    preferences.set("blockScroll", currentBlockScroll);
-    preferences.set("blockTop", currentBlockTop);
-    preferences.set("blockBottom", currentBlockBottom);
-    preferences.sync();
-    overlay.postMessage("block-type", data);
-  });
-
-  sidebar.onMessage("block-force-lane", function (data) {
-    currentBlockForceLane = data.blockForceLane;
-    preferences.set("blockForceLane", currentBlockForceLane);
-    preferences.sync();
-    overlay.postMessage("block-force-lane", { blockForceLane: currentBlockForceLane });
-  });
-
-  sidebar.onMessage("set-render-mode", function (data) {
-    setRenderMode(data.mode);
-  });
-
-  sidebar.onMessage("set-default-engine", function (data) {
-    var prefKey = getPreferenceKeyForType(data.format);
-    if (!prefKey) return;
-    defaultEngines[data.format] = normalizeEngine(data.engine);
-    preferences.set(prefKey, defaultEngines[data.format]);
-    preferences.sync();
-    sidebar.postMessage("danmaku-state", { defaultEngines: defaultEngines });
+    overlay.postMessage("set-fontscale", { scale: data.scale });
   });
 
   sidebar.onMessage("set-canvas-mode", function (data) {
     currentCanvasMode = data.mode;
     preferences.set("canvasMode", currentCanvasMode);
-    preferences.sync();
+    syncPreferencesSoon();
     overlay.postMessage("set-canvas-mode", { mode: data.mode });
   });
 
   sidebar.onMessage("request-state", function () {
     sidebar.postMessage("danmaku-state", {
       enabled: danmakuEnabled,
-      renderMode: currentRenderMode,
       canvasMode: currentCanvasMode,
-      cssOpacity: cssOpacity,
       canvasOpacity: canvasOpacity,
-      cssFontScale: cssFontScale,
-      canvasFontScale: niconicommentsFontScale,
-      defaultEngines: defaultEngines,
-      speed: currentSpeed,
-      scrollDuration: currentScrollDuration,
-      blockForceLane: currentBlockForceLane,
-      maxLaneRatio: currentMaxLaneRatio,
-      blockScroll: currentBlockScroll,
-      blockTop: currentBlockTop,
-      blockBottom: currentBlockBottom,
+      canvasFontScale: canvasFontScale,
       danmakuFileType: currentDanmakuStatus.fileType,
       danmakuFileName: currentDanmakuStatus.fileName,
       danmakuRelativePath: currentDanmakuStatus.relativePath,
@@ -542,39 +355,22 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("manual-load-danmaku", function () {
-    iina.utils.chooseFile("选择弹幕文件", {
-      allowedFileTypes: ["json", "xml"],
-    }).then(function(path) {
-      if (!path) {
-        core.osd("未选择文件");
-        return;
-      }
+    iina.utils.chooseFile("选择弹幕文件", { allowedFileTypes: ["json", "xml"] }).then(function(path) {
+      if (!path) { core.osd("未选择文件"); return; }
       var xmlContent = file.read(path);
-      if (!xmlContent) {
-        core.osd("无法读取弹幕文件");
-        return;
-      }
+      if (!xmlContent) { core.osd("无法读取弹幕文件"); return; }
       core.osd("读取到内容长度: " + xmlContent.length);
       var encodedContent = encodeContent(xmlContent);
       var manualFileName = path.split("/").pop();
       var manualRelPath = manualFileName;
       var manualFileType = detectDanmakuType(xmlContent);
-      applyDefaultRenderModeForType(manualFileType);
       updateDanmakuStatus({ fileType: manualFileType, fileName: manualFileName, relativePath: manualRelPath, isLoaded: true });
       overlay.postMessage("load-danmaku", {
         xmlContent: encodedContent,
         path: path,
         danmakuType: manualFileType,
-        renderMode: currentRenderMode,
-        opacity: getActiveOpacity(),
-        fontScale: cssFontScale,
-        cssFontScale: cssFontScale,
-        canvasFontScale: niconicommentsFontScale,
-        speed: currentSpeed,
-        scrollDuration: currentScrollDuration,
-        cssFontFamily: cssFontFamily,
-        cssFontWeight: cssFontWeight,
-        cssStrokeWidth: cssStrokeWidth,
+        opacity: canvasOpacity,
+        canvasFontScale: canvasFontScale,
       });
       core.osd("已加载弹幕: " + manualFileName);
       ensureDanmakuEnabled();
@@ -603,19 +399,13 @@ function registerSidebarHandlers() {
         danmakuCache[filePath] = encodedContent;
       }
 
-      overlay.postMessage("add-danmaku-file", {
-        path: filePath,
-        xmlContent: encodedContent,
-      });
+      overlay.postMessage("add-danmaku-file", { path: filePath, xmlContent: encodedContent });
 
       var checkFileName = filePath.split("/").pop();
       var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles).concat(danmakuFileList.unknownFiles);
       var checkFileInfo = null;
       for (var fi = 0; fi < allFiles.length; fi++) {
-        if (allFiles[fi].path === filePath) {
-          checkFileInfo = allFiles[fi];
-          break;
-        }
+        if (allFiles[fi].path === filePath) { checkFileInfo = allFiles[fi]; break; }
       }
       var checkRelPath = checkFileInfo ? checkFileInfo.relativePath : checkFileName;
       var checkFileType = detectDanmakuType(decodeURIComponent(encodedContent));
@@ -623,7 +413,6 @@ function registerSidebarHandlers() {
 
       sidebar.postMessage("danmaku-file-list", danmakuFileList);
       core.osd("已加载弹幕: " + checkFileName);
-
       ensureDanmakuEnabled();
     } else {
       danmakuFileList.selectedPaths = danmakuFileList.selectedPaths.filter(function(p) { return p !== filePath; });
@@ -639,51 +428,32 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("danmaku-file-add", function () {
-    iina.utils.chooseFile("选择弹幕文件", {
-      allowedFileTypes: ["json", "xml"],
-    }).then(function(path) {
+    iina.utils.chooseFile("选择弹幕文件", { allowedFileTypes: ["json", "xml"] }).then(function(path) {
       if (!path) return;
 
       var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles).concat(danmakuFileList.unknownFiles);
       for (var i = 0; i < allFiles.length; i++) {
-        if (allFiles[i].path === path) {
-          core.osd("文件已在列表中");
-          return;
-        }
+        if (allFiles[i].path === path) { core.osd("文件已在列表中"); return; }
       }
 
       var fname = path.split("/").pop();
       var ext = fname.lastIndexOf('.') >= 0 ? fname.substring(fname.lastIndexOf('.') + 1).toLowerCase() : '';
       var videoDir = currentVideoUrl ? filePathFromUrl(currentVideoUrl).replace(/[/\\][^/\\]+$/, '') : '';
       var relativePath = path;
-      if (videoDir && path.startsWith(videoDir + "/")) {
-        relativePath = path.substring(videoDir.length + 1);
-      }
+      if (videoDir && path.startsWith(videoDir + "/")) relativePath = path.substring(videoDir.length + 1);
 
-      var fileInfo = {
-        filename: fname,
-        path: path,
-        relativePath: relativePath,
-        type: ext.toUpperCase()
-      };
+      var fileInfo = { filename: fname, path: path, relativePath: relativePath, type: ext.toUpperCase() };
 
-      if (ext === 'xml') {
-        danmakuFileList.xmlFiles.push(fileInfo);
-      } else if (ext === 'json') {
-        danmakuFileList.jsonFiles.push(fileInfo);
-      } else {
-        danmakuFileList.unknownFiles.push(fileInfo);
-      }
+      if (ext === 'xml') danmakuFileList.xmlFiles.push(fileInfo);
+      else if (ext === 'json') danmakuFileList.jsonFiles.push(fileInfo);
+      else danmakuFileList.unknownFiles.push(fileInfo);
 
       danmakuFileList.selectedPaths.push(path);
 
       var content = file.read(path);
       if (content) {
         danmakuCache[path] = encodeContent(content);
-        overlay.postMessage("add-danmaku-file", {
-          path: path,
-          xmlContent: danmakuCache[path],
-        });
+        overlay.postMessage("add-danmaku-file", { path: path, xmlContent: danmakuCache[path] });
         var addFileType = detectDanmakuType(content);
         updateDanmakuStatus({ fileType: addFileType, fileName: fname, relativePath: relativePath, isLoaded: true });
         core.osd("已添加弹幕: " + fname);
@@ -693,14 +463,12 @@ function registerSidebarHandlers() {
       }
 
       sidebar.postMessage("danmaku-file-list", danmakuFileList);
-
       ensureDanmakuEnabled();
     });
   });
 
   sidebar.onMessage("danmaku-file-delete", function (data) {
     var filePath = data.path;
-
     danmakuFileList.xmlFiles = danmakuFileList.xmlFiles.filter(function(f) { return f.path !== filePath; });
     danmakuFileList.jsonFiles = danmakuFileList.jsonFiles.filter(function(f) { return f.path !== filePath; });
     danmakuFileList.unknownFiles = danmakuFileList.unknownFiles.filter(function(f) { return f.path !== filePath; });
@@ -708,12 +476,8 @@ function registerSidebarHandlers() {
     var wasSelected = danmakuFileList.selectedPaths.indexOf(filePath) !== -1;
     danmakuFileList.selectedPaths = danmakuFileList.selectedPaths.filter(function(p) { return p !== filePath; });
 
-    if (wasSelected) {
-      overlay.postMessage("remove-danmaku-file", { path: filePath });
-    }
-
+    if (wasSelected) overlay.postMessage("remove-danmaku-file", { path: filePath });
     delete danmakuCache[filePath];
-
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
 
     if (danmakuFileList.selectedPaths.length === 0) {
@@ -728,15 +492,11 @@ event.on("iina.window-loaded", function () {
   registerSidebarHandlers();
 });
 
-overlay.onMessage("overlay-ready", function () {
-  markOverlayReady();
-});
+overlay.onMessage("overlay-ready", function () { markOverlayReady(); });
 
 event.on("iina.plugin-overlay-loaded", function () {
   overlay.show();
-  setTimeout(function () {
-    if (!overlayReady) markOverlayReady();
-  }, 2000);
+  setTimeout(function () { if (!overlayReady) markOverlayReady(); }, 2000);
 });
 
 event.on("iina.file-loaded", function (url) {
@@ -746,17 +506,7 @@ event.on("iina.file-loaded", function (url) {
 
 event.on("mpv.pause.changed", function () {
   if (!overlayReady) return;
-  var paused = core.status.paused;
-  overlay.postMessage("pause-state", { paused: paused });
-});
-
-overlay.onMessage("danmaku-error", function (data) {
-  console.warn("Danmaku error: " + (data.message || "unknown"));
-});
-
-overlay.onMessage("canvas-unsupported", function () {
-  core.osd("niconicocomments 暂不支持当前弹幕数据，已切回 Cosmos");
-  setRenderMode('css');
+  overlay.postMessage("pause-state", { paused: core.status.paused });
 });
 
 overlay.onMessage("danmaku-type", function (data) {
@@ -764,70 +514,42 @@ overlay.onMessage("danmaku-type", function (data) {
   sidebar.postMessage("danmaku-type", currentDanmakuStatus);
 });
 
-overlay.onMessage("seek-disable", function () {
-  core.osd("弹幕：禁止跳转");
-});
-
-overlay.onMessage("seek-enable", function () {
-  core.osd("弹幕：允许跳转");
-});
+overlay.onMessage("seek-disable", function () { core.osd("弹幕：禁止跳转"); });
+overlay.onMessage("seek-enable", function () { core.osd("弹幕：允许跳转"); });
 
 overlay.onMessage("jump", function (data) {
   if (data.targetSec !== undefined && data.targetSec !== null) {
     mpv.set("time-pos", data.targetSec);
-    if (data.message) {
-      core.osd("弹幕跳转: " + data.message);
-    }
+    if (data.message) core.osd("弹幕跳转: " + data.message);
   }
 });
 
 overlay.onMessage("jump-video", function (data) {
-  if (data.videoId) {
-    core.osd("弹幕跳转: " + data.videoId + (data.message ? " " + data.message : ""));
-  }
+  if (data.videoId) core.osd("弹幕跳转: " + data.videoId + (data.message ? " " + data.message : ""));
 });
 
 menu.addItem(
-  menu.item("切换弹幕显示", function () {
-    toggleDanmaku();
-  }, { keyBinding: "D" })
+  menu.item("切换弹幕显示", function () { toggleDanmaku(); }, { keyBinding: "D" })
 );
 
 menu.addItem(
   menu.item("手动加载弹幕文件…", function () {
-    iina.utils.chooseFile("选择弹幕文件", {
-      allowedFileTypes: ["json", "xml"],
-    }).then(function(path) {
-      if (!path) {
-        core.osd("未选择文件");
-        return;
-      }
+    iina.utils.chooseFile("选择弹幕文件", { allowedFileTypes: ["json", "xml"] }).then(function(path) {
+      if (!path) { core.osd("未选择文件"); return; }
       var xmlContent = file.read(path);
-      if (!xmlContent) {
-        core.osd("无法读取弹幕文件");
-        return;
-      }
+      if (!xmlContent) { core.osd("无法读取弹幕文件"); return; }
       core.osd("读取到内容长度: " + xmlContent.length);
       var encodedContent = encodeContent(xmlContent);
       var manualFileName = path.split("/").pop();
       var manualRelPath = manualFileName;
       var manualFileType = detectDanmakuType(xmlContent);
-      applyDefaultRenderModeForType(manualFileType);
       updateDanmakuStatus({ fileType: manualFileType, fileName: manualFileName, relativePath: manualRelPath, isLoaded: true });
       overlay.postMessage("load-danmaku", {
         xmlContent: encodedContent,
         path: path,
         danmakuType: manualFileType,
-        renderMode: currentRenderMode,
-        opacity: getActiveOpacity(),
-        fontScale: cssFontScale,
-        cssFontScale: cssFontScale,
-        canvasFontScale: niconicommentsFontScale,
-        speed: currentSpeed,
-        scrollDuration: currentScrollDuration,
-        cssFontFamily: cssFontFamily,
-        cssFontWeight: cssFontWeight,
-        cssStrokeWidth: cssStrokeWidth,
+        opacity: canvasOpacity,
+        canvasFontScale: canvasFontScale,
       });
       core.osd("已发送弹幕: " + path.split("/").pop());
       ensureDanmakuEnabled();
@@ -838,15 +560,11 @@ menu.addItem(
 menu.addItem(menu.separator());
 
 menu.addItem(
-  menu.item("显示弹幕覆盖层", function () {
-    overlay.show();
-  })
+  menu.item("显示弹幕覆盖层", function () { overlay.show(); })
 );
 
 menu.addItem(
-  menu.item("隐藏弹幕覆盖层", function () {
-    overlay.hide();
-  })
+  menu.item("隐藏弹幕覆盖层", function () { overlay.hide(); })
 );
 
-console.log("Danmaku Cosmos plugin initialized");
+console.log("niconicocomments-only plugin initialized");
