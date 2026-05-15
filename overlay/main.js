@@ -66,36 +66,6 @@ function detectRawDanmakuType(rawStr) {
   return 'bilibili-xml';
 }
 
-function hasCommand(commands, values) {
-  for (let i = 0; i < commands.length; i++) {
-    const c = String(commands[i]).toLowerCase();
-    if (values.indexOf(c) !== -1) return true;
-  }
-  return false;
-}
-
-function canvasMailFromDanmaku(d) {
-  const mail = Array.isArray(d._commands) ? d._commands.slice() : [];
-  if (!hasCommand(mail, ['naka', 'ue', 'shita'])) {
-    if (d.m === 4) mail.push('shita');
-    else if (d.m === 5) mail.push('ue');
-    else mail.push('naka');
-  }
-  if (!hasCommand(mail, ['small', 'big', 'medium'])) {
-    if (d.size >= 36) mail.push('big');
-    else if (d.size <= 15) mail.push('small');
-  }
-  const color = d.c || '#FFFFFF';
-  if (/^#[0-9a-f]{6}$/i.test(color) && color.toUpperCase() !== '#FFFFFF') {
-    let hasColor = false;
-    for (let i = 0; i < mail.length; i++) {
-      if (resolveColor(mail[i])) { hasColor = true; break; }
-    }
-    if (!hasColor) mail.push(color);
-  }
-  return mail;
-}
-
 function toNumericUserId(userId, userMap) {
   const numeric = Number(userId);
   if (!isNaN(numeric) && isFinite(numeric)) return numeric;
@@ -120,7 +90,7 @@ function buildFormattedCanvasData(list, sourceType) {
       date_usec: 0,
       owner: sourceType !== 'bilibili-xml' && !!d._isOwner,
       premium: true,
-      mail: canvasMailFromDanmaku(d),
+      mail: Array.isArray(d._commands) ? d._commands : [],
       user_id: toNumericUserId(d._userId, userMap),
       layer: d._layer === undefined ? -1 : d._layer,
       is_my_post: false
