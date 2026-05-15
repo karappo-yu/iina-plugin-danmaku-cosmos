@@ -170,12 +170,12 @@ function destroyCanvasRenderer() {
 function canvasRenderLoop() {
   if (!niconiComments) return;
   niconiComments.drawCanvas(canvasGetCurrentTime() * 100);
-  canvasRafId = setTimeout(canvasRenderLoop, 33);
+  canvasRafId = setTimeout(canvasRenderLoop, 16);
 }
 
 function startCanvasLoop() {
   if (canvasRafId) return;
-  canvasRafId = setTimeout(canvasRenderLoop, 33);
+  canvasRafId = setTimeout(canvasRenderLoop, 16);
 }
 
 function stopCanvasLoop() {
