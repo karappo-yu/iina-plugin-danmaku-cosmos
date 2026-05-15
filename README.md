@@ -29,9 +29,9 @@ IINA 弹幕插件，支持 Niconico 和 Bilibili 格式弹幕，提供 CSS 和 C
 ### 功能特性
 
 - **双格式支持**：Niconico 格式（`<chat>` 标签 / v1 JSON）和 Bilibili 格式（`<d>` 标签）
-- **双渲染模式**：
-  - **CSS 模式**（默认，推荐）：完全自研的轻量级 DOM 渲染，流畅性最佳，支持透明度、字体缩放、滚动时长、弹幕屏蔽、轨道限制等完整设置
-  - **Canvas 模式**：基于 [niconicomments](https://github.com/xpadev-net/niconicomments) 的 Canvas 渲染，对高级弹幕（コメントアート / Comment Art）兼容性更好，支持 Auto / HTML5 / Flash 三种模式。由于 IINA 使用 Safari (WebKit) 内核，Canvas 性能不如 CSS 模式，建议仅在需要高级弹幕兼容时使用
+- **双渲染引擎**：
+  - **Cosmos**（默认，推荐）：完全自研的轻量级 DOM 渲染，流畅性最佳，支持透明度、字体缩放、滚动时长、弹幕屏蔽、轨道限制等完整设置
+  - **niconicocomments**：基于 [niconicomments](https://github.com/xpadev-net/niconicomments) 的 Canvas 渲染，对高级弹幕（コメントアート / Comment Art）兼容性更好，支持 Auto / HTML5 / Flash 三种模式，并可为 Bilibili XML、Niconico XML、Niconico JSON 分别设置默认引擎
 - **自动加载弹幕**：按优先级自动查找同目录下的弹幕文件
 - **手动加载弹幕**：通过菜单或侧边栏手动选择弹幕文件
 - **侧边栏控制面板**：实时调整透明度、字体缩放等参数
@@ -97,9 +97,9 @@ IINA 弹幕插件，支持 Niconico 和 Bilibili 格式弹幕，提供 CSS 和 C
 ### 機能
 
 - **2フォーマット対応**：Niconico 形式（`<chat>` タグ / v1 JSON）と Bilibili 形式（`<d>` タグ）
-- **2つの描画モード**：
-  - **CSS モード**（デフォルト・推奨）：完全自作の軽量 DOM 描画。最も滑らかで、透明度・フォント倍率・スクロール時間・コメント屏蔽・軌道制限など完全な設定をサポート
-  - **Canvas モード**：[niconicomments](https://github.com/xpadev-net/niconicomments) ベースの Canvas 描画。コメントアートとの互換性が高く、Auto / HTML5 / Flash の3モードをサポート。IINA は Safari (WebKit) エンジンを使用するため、Canvas のパフォーマンスは CSS モードに劣ります。コメントアート互換が必要な場合のみ使用を推奨
+- **2つの描画エンジン**：
+  - **Cosmos**（デフォルト・推奨）：完全自作の軽量 DOM 描画。最も滑らかで、透明度・フォント倍率・スクロール時間・コメント屏蔽・軌道制限など完全な設定をサポート
+  - **niconicocomments**：[niconicomments](https://github.com/xpadev-net/niconicomments) ベースの Canvas 描画。コメントアートとの互換性が高く、Auto / HTML5 / Flash の3モードをサポートし、Bilibili XML / Niconico XML / Niconico JSON ごとに既定エンジンを設定できます
 - **自動読み込み**：同じフォルダから優先順位に従って自動検索
 - **手動読み込み**：メニューやサイドバーからコメントファイルを選択
 - **サイドバーコントロール**：透明度・フォント倍率などのパラメータをリアルタイム調整
@@ -165,9 +165,9 @@ IINA 弹幕插件，支持 Niconico 和 Bilibili 格式弹幕，提供 CSS 和 C
 ### Features
 
 - **Dual format support**: Niconico format (`<chat>` tags / v1 JSON) and Bilibili format (`<d>` tags)
-- **Dual rendering modes**:
-  - **CSS mode** (default, recommended): Fully self-developed lightweight DOM rendering with the best smoothness. Supports full settings — opacity, font scale, scroll duration, danmaku blocking, lane limit
-  - **Canvas mode**: Canvas rendering based on [niconicomments](https://github.com/xpadev-net/niconicomments), with better Comment Art compatibility. Supports Auto / HTML5 / Flash modes. Since IINA uses the Safari (WebKit) engine, Canvas performance is lower than CSS mode. Recommended only when Comment Art compatibility is needed
+- **Dual rendering engines**:
+  - **Cosmos** (default, recommended): Fully self-developed lightweight DOM rendering with the best smoothness. Supports full settings — opacity, font scale, scroll duration, danmaku blocking, lane limit
+  - **niconicocomments**: Canvas rendering based on [niconicomments](https://github.com/xpadev-net/niconicomments), with better Comment Art compatibility. Supports Auto / HTML5 / Flash modes and per-format defaults for Bilibili XML, Niconico XML, and Niconico JSON
 - **Auto-load danmaku**: Automatically searches for danmaku files in the same directory by priority
 - **Manual load**: Select danmaku files via menu or sidebar
 - **Sidebar control panel**: Real-time adjustment of opacity, font scale, and other parameters
@@ -198,19 +198,19 @@ Automatically searches in the same directory with this priority:
 
 ### Rendering Modes
 
-| Feature | CSS Mode | Canvas Mode |
+| Feature | Cosmos | niconicocomments |
 |---------|----------|-------------|
 | Smoothness | ✅ Best | ⚠️ Weaker on WebKit |
 | Opacity | ✅ | ✅ |
-| Font Scale | ✅ | ❌ |
+| Font Scale | ✅ | ✅ |
 | Scroll Duration | ✅ | ❌ |
 | Danmaku Blocking | ✅ | ❌ |
 | Lane Limit | ✅ | ❌ |
 | Comment Art Compat | ⚠️ Partial | ✅ Full |
-| Niconico Format | ✅ | ✅ (JSON only) |
-| Bilibili Format | ✅ | ❌ |
+| Niconico Format | ✅ | ✅ |
+| Bilibili Format | ✅ | ✅ |
 
-> Canvas mode only supports Niconico JSON format danmaku. New videos default to CSS mode; switch to Canvas mode manually.
+> The sidebar can choose default engines independently for Bilibili XML, Niconico XML, and Niconico JSON.
 
 ### Supported Formats
 

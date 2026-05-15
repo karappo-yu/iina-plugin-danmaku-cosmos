@@ -33,6 +33,10 @@
     "cssFontWeight": 800,
     "cssStrokeWidth": 0.1,
     "canvasMode": "default",
+    "niconicommentsFontScale": 1.0,
+    "defaultEngineBilibiliXml": "cosmos",
+    "defaultEngineNicoXml": "cosmos",
+    "defaultEngineNicoJson": "cosmos",
     "blockScroll": false,
     "blockTop": false,
     "blockBottom": false

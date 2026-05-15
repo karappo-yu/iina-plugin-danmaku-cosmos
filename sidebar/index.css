@@ -137,6 +137,27 @@ small,
   gap: 10px;
 }
 
+.control-row select {
+  margin-left: auto;
+}
+
+.engine-default-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.engine-default-row span {
+  flex: 1;
+  min-width: 0;
+}
+
+.engine-default-row select {
+  max-width: 150px;
+}
+
 .value-text {
   font-size: 12px;
   min-width: 40px;

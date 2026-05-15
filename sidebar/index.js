@@ -1,6 +1,9 @@
 var toggleDanmaku = document.getElementById("toggle-danmaku");
-var renderModeCanvas = document.getElementById("render-mode-canvas");
+var renderEngineSelect = document.getElementById("render-engine-select");
 var canvasModeSelect = document.getElementById("canvas-mode-select");
+var defaultEngineBilibiliXml = document.getElementById("default-engine-bilibili-xml");
+var defaultEngineNicoXml = document.getElementById("default-engine-nico-xml");
+var defaultEngineNicoJson = document.getElementById("default-engine-nico-json");
 var opacitySlider = document.getElementById("opacity-slider");
 var opacityValue = document.getElementById("opacity-value");
 var fontsizeSlider = document.getElementById("fontsize-slider");
@@ -22,9 +25,9 @@ var blockForceLaneLabel = blockForceLane.closest('.checkbox-label');
 
 var opacitySection = opacitySlider.closest('.section');
 var blockSection = blockScroll.closest('.section');
-var canvasSection = renderModeCanvas.closest('.section');
+var engineSection = renderEngineSelect.closest('.section');
 
-var settingsSections = [canvasSection, laneLimitSection, opacitySection, fontsizeSection, durationSection, blockSection];
+var settingsSections = [engineSection, laneLimitSection, opacitySection, fontsizeSection, durationSection, blockSection];
 
 var state = {
   enabled: true,
@@ -37,6 +40,12 @@ var state = {
   cssOpacity: 0.7,
   canvasOpacity: 0.8,
   cssFontScale: 1.0,
+  canvasFontScale: 1.0,
+  defaultEngines: {
+    'bilibili-xml': 'cosmos',
+    'nico-xml': 'cosmos',
+    'nico-json': 'cosmos'
+  },
   speed: 680,
   scrollDuration: 8000,
   blockScroll: false,
@@ -62,19 +71,11 @@ function getActiveOpacity() {
 }
 
 function getActiveFontScale() {
-  return state.cssFontScale;
+  return state.renderMode === 'canvas' ? state.canvasFontScale : state.cssFontScale;
 }
 
-function isCanvasSupported() {
-  if (fileListState.selectedPaths.length !== 1) return false;
-  var selectedPath = fileListState.selectedPaths[0];
-  var allFiles = fileListState.xmlFiles.concat(fileListState.jsonFiles).concat(fileListState.unknownFiles);
-  for (var i = 0; i < allFiles.length; i++) {
-    if (allFiles[i].path === selectedPath) {
-      return allFiles[i].type === 'JSON';
-    }
-  }
-  return false;
+function isNiconicommentsSupported() {
+  return state.danmakuType === 'bilibili-xml' || state.danmakuType === 'nico-xml' || state.danmakuType === 'nico-json';
 }
 
 function isCanvasMode() {
@@ -248,18 +249,21 @@ function updateDanmakuInfoUI() {
 
 function updateCanvasModeUI() {
   var isCanvas = state.renderMode === 'canvas';
-  var supported = isCanvasSupported();
+  var supported = isNiconicommentsSupported();
   if (!supported) {
-    if (canvasSection) canvasSection.style.display = 'none';
+    if (renderEngineSelect) renderEngineSelect.disabled = true;
     if (isCanvas) {
       state.renderMode = 'css';
-      renderModeCanvas.checked = false;
+      if (renderEngineSelect) renderEngineSelect.value = 'css';
       iina.postMessage("set-render-mode", { mode: 'css' });
     }
     return;
   }
-  if (canvasSection) canvasSection.style.display = '';
-  if (fontsizeSection) fontsizeSection.style.display = isCanvas ? 'none' : '';
+  if (renderEngineSelect) {
+    renderEngineSelect.disabled = false;
+    renderEngineSelect.value = state.renderMode;
+  }
+  if (fontsizeSection) fontsizeSection.style.display = '';
   if (durationSection) durationSection.style.display = isCanvas ? 'none' : '';
   if (laneLimitSection) laneLimitSection.style.display = isCanvas ? 'none' : '';
   if (blockSection) blockSection.style.display = isCanvas ? 'none' : '';
@@ -284,10 +288,15 @@ function updateEnabledUI() {
 var i18n = {
   en: {
     danmaku_visible: "Danmaku On",
-    render_canvas: "Canvas Render",
-    render_canvas_hint: "Better compatibility with Comment Art",
-    render_canvas_unsupported: "Only available for Niconico format",
-    render_canvas_note: "Opacity, Font Scale are available",
+    current_engine: "Current Engine",
+    render_engine_hint: "Choose the active danmaku engine",
+    render_canvas_unsupported: "niconicocomments is unavailable for the current data",
+    default_engine: "Default Engine",
+    engine_cosmos: "Cosmos",
+    engine_niconicomments: "niconicocomments",
+    format_bilibili_xml: "Bilibili XML",
+    format_nico_xml: "Niconico XML",
+    format_nico_json: "Niconico JSON",
     canvas_mode: "Mode",
     canvas_mode_default: "Auto",
     canvas_mode_html5: "HTML5",
@@ -307,10 +316,15 @@ var i18n = {
   },
   ja: {
     danmaku_visible: "コメント表示",
-    render_canvas: "Canvas描画",
-    render_canvas_hint: "コメントアートとの互換性が高い",
-    render_canvas_unsupported: "ニコニコ形式のみ利用可能",
-    render_canvas_note: "透明度・フォント倍率が有効",
+    current_engine: "現在のエンジン",
+    render_engine_hint: "使用中のコメント描画エンジン",
+    render_canvas_unsupported: "現在のコメントでは niconicocomments を利用できません",
+    default_engine: "既定エンジン",
+    engine_cosmos: "Cosmos",
+    engine_niconicomments: "niconicocomments",
+    format_bilibili_xml: "Bilibili XML",
+    format_nico_xml: "Niconico XML",
+    format_nico_json: "Niconico JSON",
     canvas_mode: "モード",
     canvas_mode_default: "自動",
     canvas_mode_html5: "HTML5",
@@ -330,10 +344,15 @@ var i18n = {
   },
   zh: {
     danmaku_visible: "弹幕显示",
-    render_canvas: "Canvas渲染",
-    render_canvas_hint: "对高级弹幕兼容性更好",
-    render_canvas_unsupported: "仅Niconico格式可用",
-    render_canvas_note: "透明度、字体缩放可用",
+    current_engine: "当前引擎",
+    render_engine_hint: "选择当前弹幕使用的渲染引擎",
+    render_canvas_unsupported: "当前弹幕数据无法使用 niconicocomments",
+    default_engine: "默认引擎",
+    engine_cosmos: "Cosmos",
+    engine_niconicomments: "niconicocomments",
+    format_bilibili_xml: "Bilibili XML",
+    format_nico_xml: "Niconico XML",
+    format_nico_json: "Niconico JSON",
     canvas_mode: "模式",
     canvas_mode_default: "自动",
     canvas_mode_html5: "HTML5",
@@ -374,8 +393,10 @@ function updateUI() {
   var hasDanmaku = state.danmakuLoaded || hasFiles;
   toggleDanmaku.checked = state.enabled && hasDanmaku;
   toggleDanmaku.disabled = !hasDanmaku;
-  renderModeCanvas.checked = state.renderMode === 'canvas';
-  renderModeCanvas.disabled = !isCanvasSupported();
+  if (renderEngineSelect) {
+    renderEngineSelect.value = state.renderMode;
+    renderEngineSelect.disabled = !isNiconicommentsSupported();
+  }
   opacitySlider.value = getActiveOpacity();
   opacityValue.textContent = Math.round(getActiveOpacity() * 100) + "%";
   fontsizeSlider.value = Math.round(getActiveFontScale() * 100);
@@ -389,6 +410,9 @@ function updateUI() {
   blockBottom.checked = state.blockBottom;
   blockForceLane.checked = state.blockForceLane;
   if (canvasModeSelect) canvasModeSelect.value = state.canvasMode || 'default';
+  if (defaultEngineBilibiliXml) defaultEngineBilibiliXml.value = state.defaultEngines['bilibili-xml'] || 'cosmos';
+  if (defaultEngineNicoXml) defaultEngineNicoXml.value = state.defaultEngines['nico-xml'] || 'cosmos';
+  if (defaultEngineNicoJson) defaultEngineNicoJson.value = state.defaultEngines['nico-json'] || 'cosmos';
 }
 
 function sendBlockType() {
@@ -418,18 +442,18 @@ if (fileAddBtn) {
   });
 }
 
-renderModeCanvas.addEventListener("change", function () {
-  if (!isCanvasSupported()) {
-    renderModeCanvas.checked = false;
+renderEngineSelect.addEventListener("change", function () {
+  var mode = renderEngineSelect.value;
+  if (mode === 'canvas' && !isNiconicommentsSupported()) {
+    renderEngineSelect.value = 'css';
     return;
   }
-  var mode = renderModeCanvas.checked ? 'canvas' : 'css';
   state.renderMode = mode;
   updateCanvasModeUI();
   renderFileList();
   iina.postMessage("set-render-mode", { mode: mode });
   iina.postMessage("set-opacity", { opacity: getActiveOpacity() });
-  iina.postMessage("set-fontscale", { scale: getActiveFontScale() });
+  iina.postMessage("set-fontscale", { scale: getActiveFontScale(), mode: mode });
   updateUI();
 });
 
@@ -438,6 +462,18 @@ canvasModeSelect.addEventListener("change", function () {
   state.canvasMode = mode;
   iina.postMessage("set-canvas-mode", { mode: mode });
 });
+
+function bindDefaultEngineSelect(selectEl, format) {
+  if (!selectEl) return;
+  selectEl.addEventListener("change", function () {
+    state.defaultEngines[format] = selectEl.value;
+    iina.postMessage("set-default-engine", { format: format, engine: selectEl.value });
+  });
+}
+
+bindDefaultEngineSelect(defaultEngineBilibiliXml, 'bilibili-xml');
+bindDefaultEngineSelect(defaultEngineNicoXml, 'nico-xml');
+bindDefaultEngineSelect(defaultEngineNicoJson, 'nico-json');
 
 opacitySlider.addEventListener("input", function () {
   var val = parseFloat(opacitySlider.value);
@@ -452,9 +488,13 @@ opacitySlider.addEventListener("input", function () {
 
 fontsizeSlider.addEventListener("input", function () {
   var val = parseFloat(fontsizeSlider.value) / 100;
-  state.cssFontScale = val;
+  if (state.renderMode === 'canvas') {
+    state.canvasFontScale = val;
+  } else {
+    state.cssFontScale = val;
+  }
   fontsizeValue.textContent = Math.round(val * 100) + "%";
-  iina.postMessage("set-fontscale", { scale: val });
+  iina.postMessage("set-fontscale", { scale: val, mode: state.renderMode });
 });
 
 durationSlider.addEventListener("input", function () {
@@ -495,6 +535,12 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.cssOpacity !== undefined) state.cssOpacity = data.cssOpacity;
   if (data.canvasOpacity !== undefined) state.canvasOpacity = data.canvasOpacity;
   if (data.cssFontScale !== undefined) state.cssFontScale = data.cssFontScale;
+  if (data.canvasFontScale !== undefined) state.canvasFontScale = data.canvasFontScale;
+  if (data.defaultEngines !== undefined) {
+    state.defaultEngines['bilibili-xml'] = data.defaultEngines['bilibili-xml'] || 'cosmos';
+    state.defaultEngines['nico-xml'] = data.defaultEngines['nico-xml'] || 'cosmos';
+    state.defaultEngines['nico-json'] = data.defaultEngines['nico-json'] || 'cosmos';
+  }
   if (data.speed !== undefined) state.speed = data.speed;
   if (data.scrollDuration !== undefined) state.scrollDuration = data.scrollDuration;
   if (data.blockForceLane !== undefined) state.blockForceLane = data.blockForceLane;
@@ -528,7 +574,7 @@ iina.onMessage("danmaku-file-list", function (data) {
   renderFileList();
   updateDanmakuInfoUI();
   updateCanvasModeUI();
-  renderModeCanvas.disabled = !isCanvasSupported();
+  if (renderEngineSelect) renderEngineSelect.disabled = !isNiconicommentsSupported();
 });
 
 iina.onMessage("danmaku-file-error", function (data) {

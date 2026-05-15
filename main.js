@@ -12,6 +12,7 @@ var danmakuEnabled = preferences.get("danmakuEnabled");
 var cssOpacity = preferences.get("danmakuOpacity") || 0.7;
 var canvasOpacity = preferences.get("danmakuCanvasOpacity") || 0.8;
 var cssFontScale = preferences.get("danmakuFontScale") || 1.0;
+var niconicommentsFontScale = preferences.get("niconicommentsFontScale") || 1.0;
 var currentSpeed = preferences.get("danmakuSpeed");
 var currentScrollDuration = preferences.get("scrollDuration");
 var currentBlockForceLane = preferences.get("blockForceLane");
@@ -22,6 +23,11 @@ var cssStrokeWidth = preferences.get("cssStrokeWidth") !== undefined ? preferenc
 var currentPlaybackSpeed = 1.0;
 var currentRenderMode = 'css';
 var currentCanvasMode = preferences.get("canvasMode") || 'default';
+var defaultEngines = {
+  'bilibili-xml': normalizeEngine(preferences.get("defaultEngineBilibiliXml")),
+  'nico-xml': normalizeEngine(preferences.get("defaultEngineNicoXml")),
+  'nico-json': normalizeEngine(preferences.get("defaultEngineNicoJson"))
+};
 var currentBlockScroll = preferences.get("blockScroll") || false;
 var currentBlockTop = preferences.get("blockTop") || false;
 var currentBlockBottom = preferences.get("blockBottom") || false;
@@ -32,7 +38,7 @@ function getActiveOpacity() {
 }
 
 function getActiveFontScale() {
-  return cssFontScale;
+  return currentRenderMode === 'canvas' ? niconicommentsFontScale : cssFontScale;
 }
 var pendingDanmaku = null;
 var currentVideoUrl = null;
@@ -79,6 +85,35 @@ function detectDanmakuType(content) {
   if (s.charAt(0) === '[') return 'nico-json';
   if (s.indexOf('<packet') !== -1) return 'nico-xml';
   return 'bilibili-xml';
+}
+
+function normalizeEngine(engine) {
+  return engine === 'niconicocomments' || engine === 'canvas' ? 'niconicocomments' : 'cosmos';
+}
+
+function engineToRenderMode(engine) {
+  return normalizeEngine(engine) === 'niconicocomments' ? 'canvas' : 'css';
+}
+
+function getDefaultEngineForType(fileType) {
+  return defaultEngines[fileType] || 'cosmos';
+}
+
+function getPreferenceKeyForType(fileType) {
+  if (fileType === 'bilibili-xml') return "defaultEngineBilibiliXml";
+  if (fileType === 'nico-xml') return "defaultEngineNicoXml";
+  if (fileType === 'nico-json') return "defaultEngineNicoJson";
+  return null;
+}
+
+function setRenderMode(mode) {
+  currentRenderMode = mode === 'canvas' ? 'canvas' : 'css';
+  overlay.postMessage("set-render-mode", { mode: currentRenderMode });
+  sidebar.postMessage("danmaku-state", { renderMode: currentRenderMode });
+}
+
+function applyDefaultRenderModeForType(fileType) {
+  setRenderMode(engineToRenderMode(getDefaultEngineForType(fileType)));
 }
 
 function extractNumberFromName(name) {
@@ -211,9 +246,6 @@ function encodeContent(str) {
 
 function loadDanmakuForVideo(url) {
   currentVideoUrl = url;
-  currentRenderMode = 'css';
-  overlay.postMessage("set-render-mode", { mode: 'css' });
-  sidebar.postMessage("danmaku-state", { renderMode: 'css' });
   danmakuCache = {};
 
   if (core.status.isNetworkResource) {
@@ -256,6 +288,7 @@ function loadDanmakuForVideo(url) {
   danmakuCache[firstFile.path] = encodedContent;
 
   var fileType = detectDanmakuType(xmlContent);
+  applyDefaultRenderModeForType(fileType);
   updateDanmakuStatus({ fileType: fileType, fileName: firstFile.filename, relativePath: firstFile.relativePath, isLoaded: true });
 
   sidebar.postMessage("danmaku-file-list", danmakuFileList);
@@ -263,8 +296,12 @@ function loadDanmakuForVideo(url) {
   var payload = {
     xmlContent: encodedContent,
     path: firstFile.path,
+    danmakuType: fileType,
+    renderMode: currentRenderMode,
     opacity: getActiveOpacity(),
-    fontScale: getActiveFontScale(),
+    fontScale: cssFontScale,
+    cssFontScale: cssFontScale,
+    canvasFontScale: niconicommentsFontScale,
     speed: currentSpeed,
     scrollDuration: currentScrollDuration,
     cssFontFamily: cssFontFamily,
@@ -290,7 +327,9 @@ function markOverlayReady() {
 
   overlay.postMessage("apply-settings", {
     opacity: getActiveOpacity(),
-    fontScale: getActiveFontScale(),
+    fontScale: cssFontScale,
+    cssFontScale: cssFontScale,
+    canvasFontScale: niconicommentsFontScale,
     speed: currentSpeed,
     scrollDuration: currentScrollDuration,
     blockForceLane: currentBlockForceLane,
@@ -396,10 +435,16 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("set-fontscale", function (data) {
-    cssFontScale = data.scale;
-    preferences.set("danmakuFontScale", cssFontScale);
+    var targetMode = data.engine === 'canvas' || data.mode === 'canvas' || currentRenderMode === 'canvas';
+    if (targetMode) {
+      niconicommentsFontScale = data.scale;
+      preferences.set("niconicommentsFontScale", niconicommentsFontScale);
+    } else {
+      cssFontScale = data.scale;
+      preferences.set("danmakuFontScale", cssFontScale);
+    }
     preferences.sync();
-    overlay.postMessage("set-fontscale", { scale: data.scale });
+    overlay.postMessage("set-fontscale", { scale: data.scale, mode: targetMode ? 'canvas' : 'css' });
   });
 
   sidebar.onMessage("set-speed", function (data) {
@@ -441,8 +486,16 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("set-render-mode", function (data) {
-    currentRenderMode = data.mode;
-    overlay.postMessage("set-render-mode", { mode: data.mode });
+    setRenderMode(data.mode);
+  });
+
+  sidebar.onMessage("set-default-engine", function (data) {
+    var prefKey = getPreferenceKeyForType(data.format);
+    if (!prefKey) return;
+    defaultEngines[data.format] = normalizeEngine(data.engine);
+    preferences.set(prefKey, defaultEngines[data.format]);
+    preferences.sync();
+    sidebar.postMessage("danmaku-state", { defaultEngines: defaultEngines });
   });
 
   sidebar.onMessage("set-canvas-mode", function (data) {
@@ -460,6 +513,8 @@ function registerSidebarHandlers() {
       cssOpacity: cssOpacity,
       canvasOpacity: canvasOpacity,
       cssFontScale: cssFontScale,
+      canvasFontScale: niconicommentsFontScale,
+      defaultEngines: defaultEngines,
       speed: currentSpeed,
       scrollDuration: currentScrollDuration,
       blockForceLane: currentBlockForceLane,
@@ -493,11 +548,17 @@ function registerSidebarHandlers() {
       var manualFileName = path.split("/").pop();
       var manualRelPath = manualFileName;
       var manualFileType = detectDanmakuType(xmlContent);
+      applyDefaultRenderModeForType(manualFileType);
       updateDanmakuStatus({ fileType: manualFileType, fileName: manualFileName, relativePath: manualRelPath, isLoaded: true });
       overlay.postMessage("load-danmaku", {
         xmlContent: encodedContent,
+        path: path,
+        danmakuType: manualFileType,
+        renderMode: currentRenderMode,
         opacity: getActiveOpacity(),
-        fontScale: getActiveFontScale(),
+        fontScale: cssFontScale,
+        cssFontScale: cssFontScale,
+        canvasFontScale: niconicommentsFontScale,
         speed: currentSpeed,
         scrollDuration: currentScrollDuration,
         cssFontFamily: cssFontFamily,
@@ -683,9 +744,8 @@ overlay.onMessage("danmaku-error", function (data) {
 });
 
 overlay.onMessage("canvas-unsupported", function () {
-  core.osd("Canvas渲染不支持Bilibili XML弹幕");
-  sidebar.postMessage("danmaku-state", { renderMode: 'css' });
-  overlay.postMessage("set-render-mode", { mode: 'css' });
+  core.osd("niconicocomments 暂不支持当前弹幕数据，已切回 Cosmos");
+  setRenderMode('css');
 });
 
 overlay.onMessage("danmaku-type", function (data) {
@@ -741,11 +801,17 @@ menu.addItem(
       var manualFileName = path.split("/").pop();
       var manualRelPath = manualFileName;
       var manualFileType = detectDanmakuType(xmlContent);
+      applyDefaultRenderModeForType(manualFileType);
       updateDanmakuStatus({ fileType: manualFileType, fileName: manualFileName, relativePath: manualRelPath, isLoaded: true });
       overlay.postMessage("load-danmaku", {
         xmlContent: encodedContent,
+        path: path,
+        danmakuType: manualFileType,
+        renderMode: currentRenderMode,
         opacity: getActiveOpacity(),
-        fontScale: getActiveFontScale(),
+        fontScale: cssFontScale,
+        cssFontScale: cssFontScale,
+        canvasFontScale: niconicommentsFontScale,
         speed: currentSpeed,
         scrollDuration: currentScrollDuration,
         cssFontFamily: cssFontFamily,

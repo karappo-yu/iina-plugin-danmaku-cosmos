@@ -25,12 +25,15 @@ let cssStrokeWidth = 0.1;
 
 // --- Canvas模式专用参数 ---
 let canvasOpacity = 0.8;
+let canvasFontScale = 1.0;
 let canvasNicoMode = 'default'; // 'default' | 'html5' | 'flash'
 
 // --- 渲染模式 ---
 let renderMode = 'css'; // 'css' | 'canvas'
 let niconiComments = null;
 let nicoRawData = null;
+let nicoRawFormat = 'legacy';
+let currentDanmakuType = 'none';
 let canvasRafId = null;
 let canvasVideoAnchorTime = 0;
 let canvasSystemAnchorTime = 0;
@@ -114,6 +117,99 @@ function ensureV1Fields(data) {
   });
 }
 
+function detectRawDanmakuType(rawStr) {
+  const s = rawStr ? rawStr.trim() : '';
+  if (!s) return 'bilibili-xml';
+  if (s.charAt(0) === '[') return 'nico-json';
+  if (s.indexOf('<packet') !== -1) return 'nico-xml';
+  return 'bilibili-xml';
+}
+
+function hasCommand(commands, values) {
+  for (let i = 0; i < commands.length; i++) {
+    const c = String(commands[i]).toLowerCase();
+    if (values.indexOf(c) !== -1) return true;
+  }
+  return false;
+}
+
+function canvasMailFromDanmaku(d) {
+  const mail = Array.isArray(d._commands) ? d._commands.slice() : [];
+  if (!hasCommand(mail, ['naka', 'ue', 'shita'])) {
+    if (d.m === 4) mail.push('shita');
+    else if (d.m === 5) mail.push('ue');
+    else mail.push('naka');
+  }
+
+  if (!hasCommand(mail, ['small', 'big', 'medium'])) {
+    if (d.size >= 36) mail.push('big');
+    else if (d.size <= 15) mail.push('small');
+  }
+
+  const color = d.c || '#FFFFFF';
+  if (/^#[0-9a-f]{6}$/i.test(color) && color.toUpperCase() !== '#FFFFFF') {
+    let hasColor = false;
+    for (let i = 0; i < mail.length; i++) {
+      if (resolveColor(mail[i])) {
+        hasColor = true;
+        break;
+      }
+    }
+    if (!hasColor) mail.push(color);
+  }
+
+  return mail;
+}
+
+function toNumericUserId(userId, userMap) {
+  const numeric = Number(userId);
+  if (!isNaN(numeric) && isFinite(numeric)) return numeric;
+  const key = String(userId || '');
+  if (userMap[key] === undefined) userMap[key] = Object.keys(userMap).length + 1;
+  return userMap[key];
+}
+
+function buildFormattedCanvasData(list, sourceType) {
+  const userMap = {};
+  const result = [];
+  for (let i = 0; i < list.length; i++) {
+    const d = list[i];
+    result.push({
+      id: i,
+      vpos: Math.round(d.t || 0),
+      content: d.text || '',
+      date: d._dateSec || 0,
+      date_usec: 0,
+      owner: sourceType !== 'bilibili-xml' && !!d._isOwner,
+      premium: true,
+      mail: canvasMailFromDanmaku(d),
+      user_id: toNumericUserId(d._userId, userMap),
+      layer: d._layer === undefined ? -1 : d._layer,
+      is_my_post: false
+    });
+  }
+  return result;
+}
+
+function prepareCanvasSource(rawStr, parsedList, sourceType) {
+  nicoRawData = null;
+  nicoRawFormat = 'formatted';
+
+  if (sourceType === 'nico-json') {
+    try {
+      const parsed = JSON.parse(rawStr);
+      nicoRawData = ensureV1Fields(parsed);
+      nicoRawFormat = detectNicoFormat(nicoRawData);
+      return;
+    } catch (e) {
+      console.warn('niconicocomments JSON source parse failed, using formatted data:', e);
+    }
+  }
+
+  nicoRawData = buildFormattedCanvasData(parsedList, sourceType);
+  nicoRawFormat = 'formatted';
+}
+
 function buildCanvasPlugins() {
   const plugins = [];
   if (typeof PluginNiwango === 'function' && typeof Niwango !== 'undefined') {
@@ -137,9 +233,10 @@ function initCanvasRenderer(data) {
   const renderer = NiconiComments.internal.renderer.createRenderer(canvas);
 
   niconiComments = new NiconiComments(renderer, data, {
-    format: detectNicoFormat(data),
+    format: nicoRawFormat,
     mode: canvasNicoMode,
     keepCA: true,
+    scale: canvasFontScale,
     config: {
       plugins: buildCanvasPlugins(),
     },
@@ -200,7 +297,7 @@ function switchRenderMode(mode) {
     if (nicoRawData) {
       initCanvasRenderer(nicoRawData);
       startCanvasLoop();
-    } else {
+    } else if (currentDanmakuType !== 'none' || allDanmaku.length > 0) {
       iina.postMessage("canvas-unsupported", {});
     }
   } else {
@@ -289,10 +386,14 @@ iina.onMessage("time-update", (data) => {
 });
 
 iina.onMessage("load-danmaku", (data) => {
-  if (data.fontScale) {
-    cssFontScale = data.fontScale;
-    setRendererConfig({ fontScale: data.fontScale });
-    setLaneConfig({ fontScale: data.fontScale });
+  const incomingCssFontScale = data.cssFontScale !== undefined ? data.cssFontScale : data.fontScale;
+  if (incomingCssFontScale !== undefined) {
+    cssFontScale = incomingCssFontScale;
+    setRendererConfig({ fontScale: incomingCssFontScale });
+    setLaneConfig({ fontScale: incomingCssFontScale });
+  }
+  if (data.canvasFontScale !== undefined) {
+    canvasFontScale = data.canvasFontScale;
   }
   if (data.scrollDuration) setRendererConfig({ scrollDuration: data.scrollDuration });
   if (data.opacity) {
@@ -312,6 +413,7 @@ iina.onMessage("load-danmaku", (data) => {
   danmakuSeenKeys = {};
 
   const encodedStr = data.xmlContent;
+  const rawStr = decodeURIComponent(encodedStr);
   let list = parseDanmaku(encodedStr);
 
   var filePath = data.path || '__initial__';
@@ -323,36 +425,22 @@ iina.onMessage("load-danmaku", (data) => {
     assignCALayers(allDanmaku);
   }
 
-  var danmakuType = 'unknown';
-  try {
-    const rawStr = decodeURIComponent(encodedStr);
-    var parsed = JSON.parse(rawStr);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      if (parsed[0].comments !== undefined && Array.isArray(parsed[0].comments)) {
-        nicoRawData = ensureV1Fields(parsed);
-        danmakuType = 'nico-json';
-      } else if (parsed[0].chat !== undefined) {
-        nicoRawData = parsed;
-        danmakuType = 'nico-json';
-      } else {
-        nicoRawData = null;
-        danmakuType = 'bilibili-xml';
-      }
-    } else {
-      nicoRawData = null;
-      danmakuType = 'bilibili-xml';
-    }
-  } catch (e) {
-    nicoRawData = null;
-    danmakuType = 'bilibili-xml';
-  }
+  var danmakuType = data.danmakuType || detectRawDanmakuType(rawStr);
+  currentDanmakuType = danmakuType;
+  prepareCanvasSource(rawStr, allDanmaku, danmakuType);
 
   iina.postMessage("danmaku-type", { type: danmakuType });
+
+  let switchedRenderMode = false;
+  if (data.renderMode !== undefined && data.renderMode !== renderMode) {
+    switchRenderMode(data.renderMode);
+    switchedRenderMode = true;
+  }
 
   if (isCanvasMode() && nicoRawData) {
     canvasIsPlaying = !isPaused;
     canvasSyncAnchor(0);
-    initCanvasRenderer(nicoRawData);
+    if (!switchedRenderMode) initCanvasRenderer(nicoRawData);
     startCanvasLoop();
   } else {
     lastTime = 0;
@@ -400,7 +488,10 @@ iina.onMessage("add-danmaku-file", (data) => {
       assignCALayers(allDanmaku);
     }
 
-    if (!isCanvasMode()) {
+    if (isCanvasMode()) {
+      prepareCanvasSource('', allDanmaku, currentDanmakuType);
+      initCanvasRenderer(nicoRawData);
+    } else {
       handleSeek(lastTime);
     }
   }
@@ -435,7 +526,10 @@ iina.onMessage("remove-danmaku-file", (data) => {
     assignCALayers(allDanmaku);
   }
 
-  if (!isCanvasMode()) {
+  if (isCanvasMode()) {
+    prepareCanvasSource('', allDanmaku, currentDanmakuType);
+    if (nicoRawData) initCanvasRenderer(nicoRawData);
+  } else {
     clearAllDanmaku();
     handleSeek(lastTime);
   }
@@ -505,6 +599,14 @@ iina.onMessage("set-opacity", (data) => {
 });
 
 iina.onMessage("set-fontscale", (data) => {
+  if (data.mode === 'canvas' || (data.mode === undefined && isCanvasMode())) {
+    canvasFontScale = data.scale;
+    if (isCanvasMode() && nicoRawData) {
+      initCanvasRenderer(nicoRawData);
+    }
+    return;
+  }
+
   cssFontScale = data.scale;
   applyCssFontPreferences();
   setRendererConfig({ fontScale: data.scale });
@@ -528,6 +630,9 @@ iina.onMessage("clear-danmaku", () => {
   currentIndex = 0;
   danmakuFileMap = {};
   danmakuSeenKeys = {};
+  nicoRawData = null;
+  nicoRawFormat = 'legacy';
+  currentDanmakuType = 'none';
   iina.postMessage("danmaku-type", { type: 'none' });
 });
 
@@ -542,10 +647,14 @@ iina.onMessage("apply-settings", (data) => {
       document.documentElement.style.setProperty('--global-opacity', data.opacity);
     }
   }
-  if (data.fontScale !== undefined) {
-    cssFontScale = data.fontScale;
-    setRendererConfig({ fontScale: data.fontScale });
-    setLaneConfig({ fontScale: data.fontScale });
+  const incomingCssFontScale = data.cssFontScale !== undefined ? data.cssFontScale : data.fontScale;
+  if (incomingCssFontScale !== undefined) {
+    cssFontScale = incomingCssFontScale;
+    setRendererConfig({ fontScale: incomingCssFontScale });
+    setLaneConfig({ fontScale: incomingCssFontScale });
+  }
+  if (data.canvasFontScale !== undefined) {
+    canvasFontScale = data.canvasFontScale;
   }
   if (data.scrollDuration !== undefined) setRendererConfig({ scrollDuration: data.scrollDuration });
   if (data.blockForceLane !== undefined) setRendererConfig({ blockForceLane: data.blockForceLane });

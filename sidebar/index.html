@@ -29,15 +29,15 @@
     </div>
 
     <div class="section">
-      <div class="toggle-row">
-        <span class="toggle-label" data-i18n="render_canvas">Canvas Render</span>
-        <label class="switch" data-clickable>
-          <input type="checkbox" id="render-mode-canvas" />
-          <span class="switch-slider"></span>
-        </label>
+      <div class="control-row">
+        <span class="toggle-label" data-i18n="current_engine">Current Engine</span>
+        <select id="render-engine-select" data-clickable>
+          <option value="css" data-i18n="engine_cosmos">Cosmos</option>
+          <option value="canvas" data-i18n="engine_niconicomments">niconicocomments</option>
+        </select>
       </div>
-      <div class="hint-text" data-i18n="render_canvas_hint">Use niconicomments canvas engine</div>
-      <div class="hint-text canvas-unsupported" data-i18n="render_canvas_unsupported" style="display:none;">Only available for Niconico format</div>
+      <div class="hint-text" data-i18n="render_engine_hint">Choose the active danmaku engine</div>
+      <div class="hint-text canvas-unsupported" data-i18n="render_canvas_unsupported" style="display:none;">niconicocomments is unavailable for the current data</div>
       <div class="canvas-mode-options" style="display:none; margin-top: 8px;">
         <div class="control-row">
           <span class="toggle-label" data-i18n="canvas_mode">Mode</span>
@@ -47,6 +47,31 @@
             <option value="flash" data-i18n="canvas_mode_flash">Flash</option>
           </select>
         </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3 class="section-title" data-i18n="default_engine">Default Engine</h3>
+      <div class="engine-default-row">
+        <span data-i18n="format_bilibili_xml">Bilibili XML</span>
+        <select id="default-engine-bilibili-xml" data-clickable>
+          <option value="cosmos" data-i18n="engine_cosmos">Cosmos</option>
+          <option value="niconicocomments" data-i18n="engine_niconicomments">niconicocomments</option>
+        </select>
+      </div>
+      <div class="engine-default-row">
+        <span data-i18n="format_nico_xml">Niconico XML</span>
+        <select id="default-engine-nico-xml" data-clickable>
+          <option value="cosmos" data-i18n="engine_cosmos">Cosmos</option>
+          <option value="niconicocomments" data-i18n="engine_niconicomments">niconicocomments</option>
+        </select>
+      </div>
+      <div class="engine-default-row">
+        <span data-i18n="format_nico_json">Niconico JSON</span>
+        <select id="default-engine-nico-json" data-clickable>
+          <option value="cosmos" data-i18n="engine_cosmos">Cosmos</option>
+          <option value="niconicocomments" data-i18n="engine_niconicomments">niconicocomments</option>
+        </select>
       </div>
     </div>
 
