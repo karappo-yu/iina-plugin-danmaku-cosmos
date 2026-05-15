@@ -35,6 +35,8 @@ let nicoRawData = null;
 let nicoRawFormat = 'legacy';
 let currentDanmakuType = 'none';
 let canvasRafId = null;
+let canvasWarmupRafId = null;
+let canvasWarmupToken = 0;
 let canvasVideoAnchorTime = 0;
 let canvasSystemAnchorTime = 0;
 let canvasIsPlaying = false;
@@ -165,7 +167,10 @@ function toNumericUserId(userId, userMap) {
   const numeric = Number(userId);
   if (!isNaN(numeric) && isFinite(numeric)) return numeric;
   const key = String(userId || '');
-  if (userMap[key] === undefined) userMap[key] = Object.keys(userMap).length + 1;
+  if (userMap[key] === undefined) {
+    userMap._nextId = (userMap._nextId || 0) + 1;
+    userMap[key] = userMap._nextId;
+  }
   return userMap[key];
 }
 
@@ -218,6 +223,54 @@ function buildCanvasPlugins() {
   return plugins;
 }
 
+const canvasEventHandlers = {
+  seekDisable: () => {
+    iina.postMessage("seek-disable", {});
+  },
+  seekEnable: () => {
+    iina.postMessage("seek-enable", {});
+  },
+  jump: (e) => {
+    if (e.targetVpos !== null && e.targetVpos !== undefined) {
+      iina.postMessage("jump", { targetSec: e.targetVpos / 100, message: e.message, to: e.to });
+    } else if (e.to) {
+      iina.postMessage("jump-video", { videoId: e.to, message: e.message });
+    }
+  }
+};
+
+function bindCanvasEvents(instance) {
+  instance.addEventListener("seekDisable", canvasEventHandlers.seekDisable);
+  instance.addEventListener("seekEnable", canvasEventHandlers.seekEnable);
+  instance.addEventListener("jump", canvasEventHandlers.jump);
+}
+
+function unbindCanvasEvents(instance) {
+  if (!instance || typeof instance.removeEventListener !== 'function') return;
+  instance.removeEventListener("seekDisable", canvasEventHandlers.seekDisable);
+  instance.removeEventListener("seekEnable", canvasEventHandlers.seekEnable);
+  instance.removeEventListener("jump", canvasEventHandlers.jump);
+}
+
+function cancelCanvasWarmup() {
+  canvasWarmupToken++;
+  if (canvasWarmupRafId !== null) {
+    cancelAnimationFrame(canvasWarmupRafId);
+    canvasWarmupRafId = null;
+  }
+}
+
+function disposeCanvasRenderer() {
+  if (!niconiComments) return;
+  cancelCanvasWarmup();
+  unbindCanvasEvents(niconiComments);
+  niconiComments.clear();
+  if (typeof niconiComments.destroy === 'function') {
+    niconiComments.destroy();
+  }
+  niconiComments = null;
+}
+
 function initCanvasRenderer(data) {
   const canvas = document.getElementById('niconicomments-canvas');
   if (!canvas || typeof NiconiComments === 'undefined') return;
@@ -226,9 +279,7 @@ function initCanvasRenderer(data) {
   canvas.height = 1080;
   canvas.style.opacity = canvasOpacity;
 
-  if (niconiComments) {
-    niconiComments.clear();
-  }
+  disposeCanvasRenderer();
 
   const renderer = NiconiComments.internal.renderer.createRenderer(canvas);
 
@@ -243,23 +294,12 @@ function initCanvasRenderer(data) {
   });
   nicoRawData = data;
 
-  niconiComments.addEventListener("seekDisable", () => {
-    iina.postMessage("seek-disable", {});
-  });
-  niconiComments.addEventListener("seekEnable", () => {
-    iina.postMessage("seek-enable", {});
-  });
-  niconiComments.addEventListener("jump", (e) => {
-    if (e.targetVpos !== null && e.targetVpos !== undefined) {
-      iina.postMessage("jump", { targetSec: e.targetVpos / 100, message: e.message, to: e.to });
-    } else if (e.to) {
-      iina.postMessage("jump-video", { videoId: e.to, message: e.message });
-    }
-  });
+  bindCanvasEvents(niconiComments);
 }
 
 function destroyCanvasRenderer() {
   stopCanvasLoop();
+  disposeCanvasRenderer();
 }
 
 function canvasRenderLoop() {
@@ -278,10 +318,69 @@ function stopCanvasLoop() {
     cancelAnimationFrame(canvasRafId);
     canvasRafId = null;
   }
-  if (niconiComments) {
-    niconiComments.clear();
-    niconiComments = null;
+}
+
+function warmCanvasTimelineBucket(vposInt, seenComments, maxImages) {
+  if (!niconiComments || !niconiComments.timeline || maxImages <= 0) return 0;
+  const items = niconiComments.timeline[vposInt];
+  if (!items || items.length === 0) return 0;
+
+  let warmed = 0;
+  for (let i = 0; i < items.length && warmed < maxImages; i++) {
+    const comment = items[i];
+    if (!comment || seenComments.has(comment)) continue;
+    seenComments.add(comment);
+    if (typeof comment.getTextImage === 'function') {
+      comment.getTextImage();
+      warmed++;
+    }
   }
+  return warmed;
+}
+
+function warmCanvasImagesAround(targetVpos, immediateBudget) {
+  if (!niconiComments || !niconiComments.timeline) return;
+
+  const center = Math.floor(targetVpos);
+  const immediateSeen = new Set();
+  let warmed = 0;
+  for (let offset = -10; offset <= 40 && warmed < immediateBudget; offset += 5) {
+    warmed += warmCanvasTimelineBucket(center + offset, immediateSeen, immediateBudget - warmed);
+  }
+
+  cancelCanvasWarmup();
+  const token = canvasWarmupToken;
+  const seen = new Set(immediateSeen);
+  let offset = 45;
+  const maxOffset = 800;
+  const stepVpos = 5;
+  const perFrameBudget = 12;
+
+  const runWarmup = () => {
+    if (token !== canvasWarmupToken || !niconiComments) return;
+
+    let frameWarmed = 0;
+    const frameStart = performance.now();
+    while (offset <= maxOffset && frameWarmed < perFrameBudget && performance.now() - frameStart < 4) {
+      frameWarmed += warmCanvasTimelineBucket(center + offset, seen, perFrameBudget - frameWarmed);
+      offset += stepVpos;
+    }
+
+    if (offset <= maxOffset) {
+      canvasWarmupRafId = requestAnimationFrame(runWarmup);
+    } else {
+      canvasWarmupRafId = null;
+    }
+  };
+
+  canvasWarmupRafId = requestAnimationFrame(runWarmup);
+}
+
+function handleCanvasSeek(videoTimeSec) {
+  if (!niconiComments) return;
+  const targetVpos = videoTimeSec * 100;
+  warmCanvasImagesAround(targetVpos, 48);
+  niconiComments.drawCanvas(targetVpos, true);
 }
 
 function switchRenderMode(mode) {
@@ -309,6 +408,17 @@ function switchRenderMode(mode) {
 /**
  * Seek 处理：重置画面并从指定时间点重新渲染
  */
+function findDanmakuStartIndex(vpos) {
+  let low = 0;
+  let high = allDanmaku.length;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (allDanmaku[mid].t < vpos) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
 function handleSeek(timeVpos) {
   // CSS模式专用
   const { scrollDuration, fixedDuration } = getRendererConfig();
@@ -317,8 +427,7 @@ function handleSeek(timeVpos) {
   updateLanes();
 
   const durVpos = Math.max(scrollDuration, fixedDuration) / 10;
-  currentIndex = allDanmaku.findIndex(d => d.t >= timeVpos - durVpos);
-  if (currentIndex === -1) currentIndex = allDanmaku.length;
+  currentIndex = findDanmakuStartIndex(timeVpos - durVpos);
 
   let tempIndex = currentIndex;
   while (tempIndex < allDanmaku.length && allDanmaku[tempIndex].t <= timeVpos) {
@@ -340,8 +449,10 @@ iina.onMessage("time-update", (data) => {
   let t = data.time * 100;
 
   if (isCanvasMode()) {
+    const isSeek = Math.abs(t - lastTime) > 150;
     canvasSyncAnchor(data.time);
     lastTime = t;
+    if (isSeek) handleCanvasSeek(data.time);
     return;
   }
 

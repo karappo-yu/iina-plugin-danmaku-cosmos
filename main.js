@@ -32,6 +32,17 @@ var currentBlockScroll = preferences.get("blockScroll") || false;
 var currentBlockTop = preferences.get("blockTop") || false;
 var currentBlockBottom = preferences.get("blockBottom") || false;
 var overlayReady = false;
+var preferencesSyncTimer = null;
+
+function syncPreferencesSoon() {
+  if (preferencesSyncTimer) {
+    clearTimeout(preferencesSyncTimer);
+  }
+  preferencesSyncTimer = setTimeout(function () {
+    preferences.sync();
+    preferencesSyncTimer = null;
+  }, 250);
+}
 
 function getActiveOpacity() {
   return currentRenderMode === 'canvas' ? canvasOpacity : cssOpacity;
@@ -430,7 +441,7 @@ function registerSidebarHandlers() {
       cssOpacity = data.opacity;
       preferences.set("danmakuOpacity", cssOpacity);
     }
-    preferences.sync();
+    syncPreferencesSoon();
     overlay.postMessage("set-opacity", { opacity: data.opacity });
   });
 
@@ -443,27 +454,27 @@ function registerSidebarHandlers() {
       cssFontScale = data.scale;
       preferences.set("danmakuFontScale", cssFontScale);
     }
-    preferences.sync();
+    syncPreferencesSoon();
     overlay.postMessage("set-fontscale", { scale: data.scale, mode: targetMode ? 'canvas' : 'css' });
   });
 
   sidebar.onMessage("set-speed", function (data) {
     currentSpeed = data.speed;
     preferences.set("danmakuSpeed", currentSpeed);
-    preferences.sync();
+    syncPreferencesSoon();
     overlay.postMessage("set-speed", { speed: data.speed });
   });
 
   sidebar.onMessage("set-scroll-duration", function (data) {
     currentScrollDuration = data.duration;
     preferences.set("scrollDuration", currentScrollDuration);
-    preferences.sync();
+    syncPreferencesSoon();
     overlay.postMessage("set-scroll-duration", { duration: data.duration });
   });
 
   sidebar.onMessage("set-lane-limit", function (data) {
     preferences.set("maxLaneRatio", data.maxLaneRatio);
-    preferences.sync();
+    syncPreferencesSoon();
     overlay.postMessage("set-lane-limit", { maxLaneRatio: data.maxLaneRatio });
   });
 
