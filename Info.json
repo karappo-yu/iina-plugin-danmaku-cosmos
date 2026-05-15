@@ -24,6 +24,8 @@
     "danmakuEnabled": true,
     "danmakuCanvasOpacity": 0.8,
     "niconicommentsFontScale": 1.0,
-    "canvasMode": "default"
+    "canvasMode": "default",
+    "strokeOpacity": 0.4,
+    "strokeWidth": 2.8
   }
 }

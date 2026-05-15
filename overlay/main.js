@@ -8,6 +8,8 @@ let danmakuSeenKeys = {};
 let canvasOpacity = 0.8;
 let canvasFontScale = 1.0;
 let canvasNicoMode = 'default';
+let strokeOpacity = 0.4;
+let strokeWidth = 2.8;
 
 let niconiComments = null;
 let nicoRawData = null;
@@ -146,6 +148,10 @@ function initCanvasRenderer(data) {
     mode: canvasNicoMode,
     keepCA: true,
     scale: canvasFontScale,
+    config: {
+      contextStrokeOpacity: strokeOpacity,
+      contextLineWidth: { html5: strokeWidth, flash: strokeWidth },
+    },
   });
   nicoRawData = data;
   bindCanvasEvents(niconiComments);
@@ -188,6 +194,8 @@ iina.onMessage("time-update", (data) => {
 
 iina.onMessage("load-danmaku", (data) => {
   if (data.canvasFontScale !== undefined) canvasFontScale = data.canvasFontScale;
+  if (data.strokeOpacity !== undefined) strokeOpacity = data.strokeOpacity;
+  if (data.strokeWidth !== undefined) strokeWidth = data.strokeWidth;
   if (data.opacity) {
     canvasOpacity = data.opacity;
     const canvas = document.getElementById('niconicomments-canvas');
@@ -313,6 +321,16 @@ iina.onMessage("set-canvas-mode", (data) => {
   if (nicoRawData) initCanvasRenderer(nicoRawData);
 });
 
+iina.onMessage("set-stroke-opacity", (data) => {
+  strokeOpacity = data.opacity;
+  if (nicoRawData) initCanvasRenderer(nicoRawData);
+});
+
+iina.onMessage("set-stroke-width", (data) => {
+  strokeWidth = data.width;
+  if (nicoRawData) initCanvasRenderer(nicoRawData);
+});
+
 iina.onMessage("clear-danmaku", () => {
   destroyCanvasRenderer();
   allDanmaku = [];
@@ -332,6 +350,8 @@ iina.onMessage("apply-settings", (data) => {
   }
   if (data.canvasFontScale !== undefined) canvasFontScale = data.canvasFontScale;
   if (data.canvasMode !== undefined) canvasNicoMode = data.canvasMode;
+  if (data.strokeOpacity !== undefined) strokeOpacity = data.strokeOpacity;
+  if (data.strokeWidth !== undefined) strokeWidth = data.strokeWidth;
 });
 
 iina.postMessage("overlay-ready", {});

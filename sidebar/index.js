@@ -4,9 +4,13 @@ var opacitySlider = document.getElementById("opacity-slider");
 var opacityValue = document.getElementById("opacity-value");
 var fontsizeSlider = document.getElementById("fontsize-slider");
 var fontsizeValue = document.getElementById("fontsize-value");
+var strokeOpacitySlider = document.getElementById("stroke-opacity-slider");
+var strokeOpacityValue = document.getElementById("stroke-opacity-value");
+var strokeWidthSlider = document.getElementById("stroke-width-slider");
+var strokeWidthValue = document.getElementById("stroke-width-value");
 var fileAddBtn = document.getElementById("danmaku-file-add-btn");
 
-var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closest('.section')];
+var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closest('.section'), strokeOpacitySlider.closest('.section')];
 
 var state = {
   enabled: true,
@@ -17,6 +21,8 @@ var state = {
   danmakuLoaded: false,
   canvasOpacity: 0.8,
   canvasFontScale: 1.0,
+  strokeOpacity: 0.4,
+  strokeWidth: 2.8,
 };
 
 var fileListState = {
@@ -197,6 +203,9 @@ var i18n = {
     canvas_mode_default: "Auto",
     canvas_mode_html5: "HTML5",
     canvas_mode_flash: "Flash",
+    stroke: "Stroke",
+    stroke_opacity: "Opacity",
+    stroke_width: "Width",
     danmaku_not_found: "No danmaku file found",
     file_add: "Add"
   },
@@ -209,6 +218,9 @@ var i18n = {
     canvas_mode_default: "\u81ea\u52d5",
     canvas_mode_html5: "HTML5",
     canvas_mode_flash: "Flash",
+    stroke: "\u7e01\u53d6\u308a",
+    stroke_opacity: "\u900f\u660e\u5ea6",
+    stroke_width: "\u592a\u3055",
     danmaku_not_found: "\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093",
     file_add: "\u8ffd\u52a0"
   },
@@ -221,6 +233,9 @@ var i18n = {
     canvas_mode_default: "\u81ea\u52a8",
     canvas_mode_html5: "HTML5",
     canvas_mode_flash: "Flash",
+    stroke: "\u63cf\u8fb9",
+    stroke_opacity: "\u900f\u660e\u5ea6",
+    stroke_width: "\u7c97\u7ec6",
     danmaku_not_found: "\u672a\u627e\u5230\u5f39\u5e55\u6587\u4ef6",
     file_add: "\u6dfb\u52a0"
   }
@@ -251,6 +266,10 @@ function updateUI() {
   opacityValue.textContent = Math.round(state.canvasOpacity * 100) + "%";
   fontsizeSlider.value = Math.round(state.canvasFontScale * 100);
   fontsizeValue.textContent = Math.round(state.canvasFontScale * 100) + "%";
+  strokeOpacitySlider.value = Math.round(state.strokeOpacity * 100);
+  strokeOpacityValue.textContent = Math.round(state.strokeOpacity * 100) + "%";
+  strokeWidthSlider.value = state.strokeWidth;
+  strokeWidthValue.textContent = String(state.strokeWidth);
   if (canvasModeSelect) canvasModeSelect.value = state.canvasMode || 'default';
 }
 
@@ -287,11 +306,27 @@ fontsizeSlider.addEventListener("input", function () {
   iina.postMessage("set-fontscale", { scale: val });
 });
 
+strokeOpacitySlider.addEventListener("input", function () {
+  var val = parseFloat(strokeOpacitySlider.value) / 100;
+  state.strokeOpacity = val;
+  strokeOpacityValue.textContent = Math.round(val * 100) + "%";
+  iina.postMessage("set-stroke-opacity", { opacity: val });
+});
+
+strokeWidthSlider.addEventListener("input", function () {
+  var val = parseFloat(strokeWidthSlider.value);
+  state.strokeWidth = val;
+  strokeWidthValue.textContent = String(val);
+  iina.postMessage("set-stroke-width", { width: val });
+});
+
 iina.onMessage("danmaku-state", function (data) {
   if (data.enabled !== undefined) state.enabled = data.enabled;
   if (data.canvasMode !== undefined) state.canvasMode = data.canvasMode;
   if (data.canvasOpacity !== undefined) state.canvasOpacity = data.canvasOpacity;
   if (data.canvasFontScale !== undefined) state.canvasFontScale = data.canvasFontScale;
+  if (data.strokeOpacity !== undefined) state.strokeOpacity = data.strokeOpacity;
+  if (data.strokeWidth !== undefined) state.strokeWidth = data.strokeWidth;
   if (data.danmakuFileType !== undefined) state.danmakuType = data.danmakuFileType;
   if (data.danmakuFileName !== undefined) state.danmakuFileName = data.danmakuFileName;
   if (data.danmakuRelativePath !== undefined) state.danmakuRelativePath = data.danmakuRelativePath;

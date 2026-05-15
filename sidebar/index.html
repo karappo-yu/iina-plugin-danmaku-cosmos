@@ -55,6 +55,20 @@
         </select>
       </div>
     </div>
+
+    <div class="section">
+      <h3 class="section-title" data-i18n="stroke">Stroke</h3>
+      <div class="control-row">
+        <span class="toggle-label" data-i18n="stroke_opacity">Opacity</span>
+        <input type="range" id="stroke-opacity-slider" data-clickable min="0" max="100" step="5" value="40" class="slider" />
+        <span id="stroke-opacity-value" class="value-text">40%</span>
+      </div>
+      <div class="control-row" style="margin-top:6px">
+        <span class="toggle-label" data-i18n="stroke_width">Width</span>
+        <input type="range" id="stroke-width-slider" data-clickable min="1" max="8" step="0.5" value="2.8" class="slider" />
+        <span id="stroke-width-value" class="value-text">2.8</span>
+      </div>
+    </div>
   </div>
   <script src="index.js"></script>
 </body>

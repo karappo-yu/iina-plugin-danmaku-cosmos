@@ -12,6 +12,8 @@ var danmakuEnabled = preferences.get("danmakuEnabled");
 var canvasOpacity = preferences.get("danmakuCanvasOpacity") || 0.8;
 var canvasFontScale = preferences.get("niconicommentsFontScale") || 1.0;
 var currentCanvasMode = preferences.get("canvasMode") || 'default';
+var strokeOpacity = preferences.get("strokeOpacity") !== undefined ? preferences.get("strokeOpacity") : 0.4;
+var strokeWidth = preferences.get("strokeWidth") !== undefined ? preferences.get("strokeWidth") : 2.8;
 var currentPlaybackSpeed = 1.0;
 var overlayReady = false;
 var preferencesSyncTimer = null;
@@ -231,6 +233,8 @@ function loadDanmakuForVideo(url) {
     danmakuType: fileType,
     opacity: canvasOpacity,
     canvasFontScale: canvasFontScale,
+    strokeOpacity: strokeOpacity,
+    strokeWidth: strokeWidth,
   };
 
   if (overlayReady) {
@@ -253,6 +257,8 @@ function markOverlayReady() {
     opacity: canvasOpacity,
     canvasFontScale: canvasFontScale,
     canvasMode: currentCanvasMode,
+    strokeOpacity: strokeOpacity,
+    strokeWidth: strokeWidth,
   });
 
   if (pendingDanmaku) {
@@ -340,12 +346,28 @@ function registerSidebarHandlers() {
     overlay.postMessage("set-canvas-mode", { mode: data.mode });
   });
 
+  sidebar.onMessage("set-stroke-opacity", function (data) {
+    strokeOpacity = data.opacity;
+    preferences.set("strokeOpacity", strokeOpacity);
+    syncPreferencesSoon();
+    overlay.postMessage("set-stroke-opacity", { opacity: data.opacity });
+  });
+
+  sidebar.onMessage("set-stroke-width", function (data) {
+    strokeWidth = data.width;
+    preferences.set("strokeWidth", strokeWidth);
+    syncPreferencesSoon();
+    overlay.postMessage("set-stroke-width", { width: data.width });
+  });
+
   sidebar.onMessage("request-state", function () {
     sidebar.postMessage("danmaku-state", {
       enabled: danmakuEnabled,
       canvasMode: currentCanvasMode,
       canvasOpacity: canvasOpacity,
       canvasFontScale: canvasFontScale,
+      strokeOpacity: strokeOpacity,
+      strokeWidth: strokeWidth,
       danmakuFileType: currentDanmakuStatus.fileType,
       danmakuFileName: currentDanmakuStatus.fileName,
       danmakuRelativePath: currentDanmakuStatus.relativePath,
@@ -371,6 +393,8 @@ function registerSidebarHandlers() {
         danmakuType: manualFileType,
         opacity: canvasOpacity,
         canvasFontScale: canvasFontScale,
+        strokeOpacity: strokeOpacity,
+        strokeWidth: strokeWidth,
       });
       core.osd("已加载弹幕: " + manualFileName);
       ensureDanmakuEnabled();
@@ -550,6 +574,8 @@ menu.addItem(
         danmakuType: manualFileType,
         opacity: canvasOpacity,
         canvasFontScale: canvasFontScale,
+        strokeOpacity: strokeOpacity,
+        strokeWidth: strokeWidth,
       });
       core.osd("已发送弹幕: " + path.split("/").pop());
       ensureDanmakuEnabled();
