@@ -142,7 +142,8 @@ function initCanvasRenderer(data) {
   if (!canvas || typeof NiconiComments === 'undefined') return;
   canvas.width = 1920;
   canvas.height = 1080;
-  canvas.style.opacity = canvasOpacity;
+  const useCssMode = canvasNicoMode === 'css';
+  canvas.style.opacity = useCssMode ? 0 : canvasOpacity;
   disposeCanvasRenderer();
   niconiComments = new NiconiComments(canvas, data, {
     format: nicoRawFormat,
@@ -160,6 +161,9 @@ function initCanvasRenderer(data) {
   });
   nicoRawData = data;
   bindCanvasEvents(niconiComments);
+  if (isPaused && useCssMode) {
+    niconiComments.pauseCSS();
+  }
 }
 
 function destroyCanvasRenderer() {
@@ -208,7 +212,9 @@ iina.onMessage("load-danmaku", (data) => {
   if (data.opacity) {
     canvasOpacity = data.opacity;
     const canvas = document.getElementById('niconicomments-canvas');
-    if (canvas) canvas.style.opacity = data.opacity;
+    if (canvas && canvasNicoMode !== 'css') canvas.style.opacity = data.opacity;
+    const cssContainer = document.querySelector('[data-dm-css-container]');
+    if (cssContainer) cssContainer.style.opacity = data.opacity;
   }
 
   const encodedStr = data.xmlContent;
@@ -243,18 +249,29 @@ iina.onMessage("pause-state", (data) => {
   isPaused = data.paused;
   canvasIsPlaying = !isPaused;
   canvasSyncAnchor(canvasGetCurrentTime());
+  if (niconiComments) {
+    if (isPaused) {
+      niconiComments.pauseCSS();
+    } else {
+      niconiComments.resumeCSS();
+    }
+  }
 });
 
 iina.onMessage("toggle-danmaku", (data) => {
   const canvas = document.getElementById('niconicomments-canvas');
   if (canvas) canvas.style.display = data.enabled ? '' : 'none';
+  const cssContainer = document.querySelector('[data-dm-css-container]');
+  if (cssContainer) cssContainer.style.display = data.enabled ? '' : 'none';
   if (!data.enabled && niconiComments) niconiComments.clear();
 });
 
 iina.onMessage("set-opacity", (data) => {
   canvasOpacity = data.opacity;
   const canvas = document.getElementById('niconicomments-canvas');
-  if (canvas) canvas.style.opacity = data.opacity;
+  if (canvas && canvasNicoMode !== 'css') canvas.style.opacity = data.opacity;
+  const cssContainer = document.querySelector('[data-dm-css-container]');
+  if (cssContainer) cssContainer.style.opacity = data.opacity;
 });
 
 iina.onMessage("set-fontscale", (data) => {
@@ -263,8 +280,15 @@ iina.onMessage("set-fontscale", (data) => {
 });
 
 iina.onMessage("set-canvas-mode", (data) => {
+  const oldMode = canvasNicoMode;
   canvasNicoMode = data.mode;
-  if (nicoRawData) initCanvasRenderer(nicoRawData);
+  if (nicoRawData) {
+    initCanvasRenderer(nicoRawData);
+    if (oldMode === 'css' && canvasNicoMode !== 'css') {
+      const cssContainer = document.querySelector('[data-dm-css-container]');
+      if (cssContainer) cssContainer.remove();
+    }
+  }
 });
 
 iina.onMessage("set-stroke-opacity", (data) => {
@@ -310,7 +334,9 @@ iina.onMessage("apply-settings", (data) => {
   if (data.opacity !== undefined) {
     canvasOpacity = data.opacity;
     const canvas = document.getElementById('niconicomments-canvas');
-    if (canvas) canvas.style.opacity = data.opacity;
+    if (canvas && canvasNicoMode !== 'css') canvas.style.opacity = data.opacity;
+    const cssContainer = document.querySelector('[data-dm-css-container]');
+    if (cssContainer) cssContainer.style.opacity = data.opacity;
   }
   if (data.canvasFontScale !== undefined) canvasFontScale = data.canvasFontScale;
   if (data.canvasMode !== undefined) canvasNicoMode = data.canvasMode;
