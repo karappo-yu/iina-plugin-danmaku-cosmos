@@ -213,12 +213,16 @@ iina.onMessage("load-danmaku", (data) => {
 
   const encodedStr = data.xmlContent;
   const rawStr = decodeURIComponent(encodedStr);
-  let list = parseDanmaku(encodedStr);
-
-  allDanmaku = list.sort((a, b) => a.t - b.t);
 
   var danmakuType = data.danmakuType || detectRawDanmakuType(rawStr);
   currentDanmakuType = danmakuType;
+
+  if (danmakuType === 'nico-json') {
+    allDanmaku = [];
+  } else {
+    allDanmaku = parseDanmaku(encodedStr).sort((a, b) => a.t - b.t);
+  }
+
   prepareCanvasSource(rawStr, allDanmaku, danmakuType);
 
   iina.postMessage("danmaku-type", { type: danmakuType });
