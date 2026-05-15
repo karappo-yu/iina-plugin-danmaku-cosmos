@@ -19,7 +19,6 @@
     "name": "Danmaku"
   },
   "allowedDomains": ["*"],
-  "preferencesPage": "preferences.html",
   "preferenceDefaults": {
     "danmakuEnabled": true,
     "danmakuCanvasOpacity": 0.8,
