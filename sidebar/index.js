@@ -225,7 +225,7 @@ var i18n = {
     stroke_color: "Stroke Color",
     stroke_inversion: "Invert Color",
     comment_limit: "Comment Limit",
-    scroll_speed: "Scroll Speed",
+    scroll_speed: "Center Speed",
     stroke_opacity: "Opacity",
     stroke_width: "Width",
     danmaku_not_found: "No danmaku file found",
@@ -247,7 +247,7 @@ var i18n = {
     stroke_opacity: "\u900f\u660e\u5ea6",
     stroke_width: "\u592a\u3055",
     comment_limit: "\u30b3\u30e1\u30f3\u30c8\u5236\u9650",
-    scroll_speed: "\u30b9\u30af\u30ed\u30fc\u30eb\u901f\u5ea6",
+    scroll_speed: "\u4e2d\u592e\u901f\u5ea6",
     danmaku_not_found: "\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093",
     file_add: "\u8ffd\u52a0"
   },
@@ -267,7 +267,7 @@ var i18n = {
     stroke_opacity: "\u900f\u660e\u5ea6",
     stroke_width: "\u7c97\u7ec6",
     comment_limit: "\u5f39\u5e55\u4e0a\u9650",
-    scroll_speed: "\u6eda\u52a8\u901f\u5ea6",
+    scroll_speed: "\u4e2d\u592e\u901f\u5ea6",
     danmaku_not_found: "\u672a\u627e\u5230\u5f39\u5e55\u6587\u4ef6",
     file_add: "\u6dfb\u52a0"
   }

@@ -51,32 +51,6 @@
       </div>
       <div id="advanced-content" style="display:none">
         <div class="control-row" style="margin-top:8px">
-          <span class="toggle-label" data-i18n="canvas_mode_label">Render Mode</span>
-          <select id="canvas-mode-select" data-clickable style="margin-left:auto">
-            <option value="default" data-i18n="canvas_mode_default">Auto</option>
-            <option value="html5" data-i18n="canvas_mode_html5">HTML5</option>
-            <option value="flash" data-i18n="canvas_mode_flash">Flash</option>
-          </select>
-        </div>
-        <div class="control-row" style="margin-top:8px">
-          <span class="toggle-label" data-i18n="stroke_color">Stroke Color</span>
-          <input type="color" id="stroke-color" value="#000000" style="margin-left:auto;padding:0;border:none;width:30px;height:24px;cursor:pointer;background:none" />
-        </div>
-        <div class="control-row" style="margin-top:6px">
-          <span class="toggle-label" data-i18n="stroke_inversion">Invert Color</span>
-          <input type="color" id="stroke-inversion-color" value="#ffffff" style="margin-left:auto;padding:0;border:none;width:30px;height:24px;cursor:pointer;background:none" />
-        </div>
-        <div class="control-row" style="margin-top:6px">
-          <span class="toggle-label" data-i18n="stroke_opacity">Stroke Opacity</span>
-          <input type="range" id="stroke-opacity-slider" data-clickable min="0" max="100" step="5" value="40" class="slider" />
-          <span id="stroke-opacity-value" class="value-text">40%</span>
-        </div>
-        <div class="control-row" style="margin-top:6px">
-          <span class="toggle-label" data-i18n="stroke_width">Stroke Width</span>
-          <input type="range" id="stroke-width-slider" data-clickable min="1" max="8" step="0.5" value="2.8" class="slider" />
-          <span id="stroke-width-value" class="value-text">2.8px</span>
-        </div>
-        <div class="control-row" style="margin-top:10px">
           <span class="toggle-label" data-i18n="comment_limit">Comment Limit</span>
           <label class="switch" data-clickable style="margin-left:auto;flex-shrink:0">
             <input type="checkbox" id="comment-limit-enable" />
@@ -90,9 +64,35 @@
           </div>
         </div>
         <div class="control-row" style="margin-top:8px">
-          <span class="toggle-label" data-i18n="scroll_speed">Scroll Speed</span>
+          <span class="toggle-label" data-i18n="canvas_mode_label">Render Mode</span>
+          <select id="canvas-mode-select" data-clickable style="margin-left:auto">
+            <option value="default" data-i18n="canvas_mode_default">Auto</option>
+            <option value="html5" data-i18n="canvas_mode_html5">HTML5</option>
+            <option value="flash" data-i18n="canvas_mode_flash">Flash</option>
+          </select>
+        </div>
+        <div class="control-row" style="margin-top:8px">
+          <span class="toggle-label" data-i18n="stroke_opacity">Stroke Opacity</span>
+          <input type="range" id="stroke-opacity-slider" data-clickable min="0" max="100" step="5" value="40" class="slider" />
+          <span id="stroke-opacity-value" class="value-text">40%</span>
+        </div>
+        <div class="control-row" style="margin-top:6px">
+          <span class="toggle-label" data-i18n="stroke_width">Stroke Width</span>
+          <input type="range" id="stroke-width-slider" data-clickable min="1" max="8" step="0.5" value="2.8" class="slider" />
+          <span id="stroke-width-value" class="value-text">2.8px</span>
+        </div>
+        <div class="control-row" style="margin-top:6px">
+          <span class="toggle-label" data-i18n="scroll_speed">Center Speed</span>
           <input type="range" id="speed-slider" data-clickable min="50" max="150" step="5" value="95" class="slider" />
           <span id="speed-value" class="value-text">95%</span>
+        </div>
+        <div class="control-row" style="margin-top:8px">
+          <span class="toggle-label" data-i18n="stroke_color">Stroke Color</span>
+          <input type="color" id="stroke-color" value="#000000" style="margin-left:auto;padding:0;border:none;width:30px;height:24px;cursor:pointer;background:none" />
+        </div>
+        <div class="control-row" style="margin-top:6px">
+          <span class="toggle-label" data-i18n="stroke_inversion">Invert Color</span>
+          <input type="color" id="stroke-inversion-color" value="#ffffff" style="margin-left:auto;padding:0;border:none;width:30px;height:24px;cursor:pointer;background:none" />
         </div>
       </div>
     </div>
