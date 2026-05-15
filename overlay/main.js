@@ -104,8 +104,7 @@ function prepareCanvasSource(rawStr, parsedList, sourceType) {
   nicoRawFormat = 'formatted';
   if (sourceType === 'nico-json') {
     try {
-      const parsed = JSON.parse(rawStr);
-      nicoRawData = ensureV1Fields(parsed);
+      nicoRawData = JSON.parse(rawStr);
       nicoRawFormat = detectNicoFormat(nicoRawData);
       return;
     } catch (e) {
