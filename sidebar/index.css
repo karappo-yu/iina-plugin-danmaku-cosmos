@@ -355,6 +355,10 @@ small,
   background: rgba(128, 128, 128, 0.08);
 }
 
+.danmaku-file-item.selected {
+  background: rgba(0, 122, 255, 0.12);
+}
+
 .danmaku-file-item input[type="checkbox"] {
   margin: 0;
   flex-shrink: 0;

@@ -2,9 +2,6 @@ let allDanmaku = [];
 let lastTime = 0;
 let isPaused = false;
 
-let danmakuFileMap = {};
-let danmakuSeenKeys = {};
-
 let canvasOpacity = 0.8;
 let canvasFontScale = 1.0;
 let canvasNicoMode = 'default';
@@ -214,15 +211,10 @@ iina.onMessage("load-danmaku", (data) => {
     if (canvas) canvas.style.opacity = data.opacity;
   }
 
-  danmakuFileMap = {};
-  danmakuSeenKeys = {};
-
   const encodedStr = data.xmlContent;
   const rawStr = decodeURIComponent(encodedStr);
   let list = parseDanmaku(encodedStr);
 
-  var filePath = data.path || '__initial__';
-  danmakuFileMap[filePath] = list;
   allDanmaku = list.sort((a, b) => a.t - b.t);
 
   var danmakuType = data.danmakuType || detectRawDanmakuType(rawStr);
@@ -237,68 +229,6 @@ iina.onMessage("load-danmaku", (data) => {
     initCanvasRenderer(nicoRawData);
     startCanvasLoop();
   }
-});
-
-iina.onMessage("add-danmaku-file", (data) => {
-  const filePath = data.path;
-  const encodedStr = data.xmlContent;
-  let list = parseDanmaku(encodedStr);
-  danmakuFileMap[filePath] = list;
-
-  if (allDanmaku.length > 0) {
-    let empty = true;
-    for (let k in danmakuSeenKeys) { empty = false; break; }
-    if (empty) {
-      for (let i = 0; i < allDanmaku.length; i++) {
-        const d = allDanmaku[i];
-        danmakuSeenKeys[d.t + '|' + d.text] = true;
-      }
-    }
-  }
-
-  let newItems = [];
-  for (let i = 0; i < list.length; i++) {
-    const d = list[i];
-    const key = d.t + '|' + d.text;
-    if (!danmakuSeenKeys[key]) {
-      danmakuSeenKeys[key] = true;
-      newItems.push(d);
-    }
-  }
-
-  if (newItems.length > 0) {
-    allDanmaku = allDanmaku.concat(newItems).sort((a, b) => a.t - b.t);
-    prepareCanvasSource('', allDanmaku, currentDanmakuType);
-    initCanvasRenderer(nicoRawData);
-  }
-});
-
-iina.onMessage("remove-danmaku-file", (data) => {
-  const filePath = data.path;
-  const removedList = danmakuFileMap[filePath];
-  if (!removedList) return;
-
-  for (let i = 0; i < removedList.length; i++) {
-    const d = removedList[i];
-    const key = d.t + '|' + d.text;
-    delete danmakuSeenKeys[key];
-  }
-  delete danmakuFileMap[filePath];
-
-  const removedSet = new Set(removedList);
-  allDanmaku = allDanmaku.filter(d => !removedSet.has(d));
-
-  for (const path in danmakuFileMap) {
-    const fileList = danmakuFileMap[path];
-    for (let i = 0; i < fileList.length; i++) {
-      const d = fileList[i];
-      const key = d.t + '|' + d.text;
-      danmakuSeenKeys[key] = true;
-    }
-  }
-
-  prepareCanvasSource('', allDanmaku, currentDanmakuType);
-  if (nicoRawData) initCanvasRenderer(nicoRawData);
 });
 
 iina.onMessage("resize", () => {
@@ -366,8 +296,6 @@ iina.onMessage("set-scroll-speed", (data) => {
 iina.onMessage("clear-danmaku", () => {
   destroyCanvasRenderer();
   allDanmaku = [];
-  danmakuFileMap = {};
-  danmakuSeenKeys = {};
   nicoRawData = null;
   nicoRawFormat = 'legacy';
   currentDanmakuType = 'none';

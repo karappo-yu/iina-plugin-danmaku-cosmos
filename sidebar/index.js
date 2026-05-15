@@ -49,20 +49,17 @@ var fileListState = {
   errorPaths: {}
 };
 
-var checkDebounceTimer = null;
 
 function createFileItem(fileInfo, isChecked, isDisabled) {
   var item = document.createElement('div');
-  item.className = 'danmaku-file-item' + (isDisabled ? ' disabled' : '');
+  item.className = 'danmaku-file-item' + (isChecked ? ' selected' : '') + (isDisabled ? ' disabled' : '');
   item.dataset.path = fileInfo.path;
+  item.style.cursor = 'pointer';
 
-  var checkbox = document.createElement('input');
-  checkbox.type = 'checkbox';
-  checkbox.checked = isChecked;
-  checkbox.disabled = isDisabled;
-  checkbox.setAttribute('data-clickable', '');
-  checkbox.addEventListener('change', function () {
-    debouncedFileCheck(fileInfo.path, checkbox.checked);
+  item.addEventListener('click', function () {
+    if (isDisabled) return;
+    // Radio-style: clicking this file selects it exclusively
+    iina.postMessage("select-danmaku-file", { path: fileInfo.path });
   });
 
   var info = document.createElement('div');
@@ -95,7 +92,6 @@ function createFileItem(fileInfo, isChecked, isDisabled) {
     iina.postMessage("danmaku-file-delete", { path: fileInfo.path });
   });
 
-  item.appendChild(checkbox);
   item.appendChild(info);
   item.appendChild(pathEl);
   item.appendChild(deleteBtn);
@@ -110,7 +106,7 @@ function createFileItem(fileInfo, isChecked, isDisabled) {
   return item;
 }
 
-function createFileGroup(title, files, selectedPaths, isDisabled) {
+function createFileGroup(title, files, selectedPaths) {
   if (files.length === 0) return null;
   var group = document.createElement('div');
   group.className = 'danmaku-file-group';
@@ -120,7 +116,7 @@ function createFileGroup(title, files, selectedPaths, isDisabled) {
   group.appendChild(titleEl);
   for (var i = 0; i < files.length; i++) {
     var isChecked = selectedPaths.indexOf(files[i].path) !== -1;
-    group.appendChild(createFileItem(files[i], isChecked, isDisabled));
+    group.appendChild(createFileItem(files[i], isChecked, false));
   }
   return group;
 }
@@ -138,11 +134,11 @@ function renderFileList() {
   var unknownTitle = lang === 'zh' ? '\u672a\u8bc6\u522b\u96c6\u6570' : lang === 'ja' ? '\u672a\u8a8d\u8b58\u30a8\u30d4\u30bd\u30fc\u30c9' : 'Unknown Episode';
 
   if (fileListState.xmlFiles.length > 0) {
-    var xmlGroup = createFileGroup(xmlTitle, fileListState.xmlFiles, fileListState.selectedPaths, false);
+    var xmlGroup = createFileGroup(xmlTitle, fileListState.xmlFiles, fileListState.selectedPaths);
     if (xmlGroup) container.appendChild(xmlGroup);
   }
   if (fileListState.jsonFiles.length > 0) {
-    var jsonGroup = createFileGroup(jsonTitle, fileListState.jsonFiles, fileListState.selectedPaths, false);
+    var jsonGroup = createFileGroup(jsonTitle, fileListState.jsonFiles, fileListState.selectedPaths);
     if (jsonGroup) container.appendChild(jsonGroup);
   }
   if (fileListState.unknownFiles.length > 0) {
@@ -163,7 +159,7 @@ function renderFileList() {
 
     var unknownContent = document.createElement('div');
     unknownContent.className = 'danmaku-file-unknown-content' + (fileListState.unknownExpanded ? ' expanded' : '');
-    var unknownGroup = createFileGroup('', fileListState.unknownFiles, fileListState.selectedPaths, false);
+    var unknownGroup = createFileGroup('', fileListState.unknownFiles, fileListState.selectedPaths);
     if (unknownGroup) unknownContent.appendChild(unknownGroup);
     container.appendChild(unknownContent);
   }

@@ -449,54 +449,50 @@ function registerSidebarHandlers() {
     });
   });
 
-  sidebar.onMessage("danmaku-file-check", function (data) {
+  sidebar.onMessage("select-danmaku-file", function (data) {
     var filePath = data.path;
-    var checked = data.checked;
 
-    if (checked) {
-      if (danmakuFileList.selectedPaths.indexOf(filePath) !== -1) return;
-      danmakuFileList.selectedPaths.push(filePath);
-
-      var encodedContent = danmakuCache[filePath];
-      if (!encodedContent) {
-        var rawContent = file.read(filePath);
-        if (!rawContent) {
-          core.osd("无法读取弹幕文件: " + filePath.split("/").pop());
-          sidebar.postMessage("danmaku-file-error", { path: filePath, message: "无法读取文件" });
-          danmakuFileList.selectedPaths = danmakuFileList.selectedPaths.filter(function(p) { return p !== filePath; });
-          sidebar.postMessage("danmaku-file-list", danmakuFileList);
-          return;
-        }
-        encodedContent = encodeContent(rawContent);
-        danmakuCache[filePath] = encodedContent;
+    // Read and load the selected file, replacing any previous
+    var encodedContent = danmakuCache[filePath];
+    if (!encodedContent) {
+      var rawContent = file.read(filePath);
+      if (!rawContent) {
+        core.osd("无法读取弹幕文件: " + filePath.split("/").pop());
+        return;
       }
-
-      overlay.postMessage("add-danmaku-file", { path: filePath, xmlContent: encodedContent });
-
-      var checkFileName = filePath.split("/").pop();
-      var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles).concat(danmakuFileList.unknownFiles);
-      var checkFileInfo = null;
-      for (var fi = 0; fi < allFiles.length; fi++) {
-        if (allFiles[fi].path === filePath) { checkFileInfo = allFiles[fi]; break; }
-      }
-      var checkRelPath = checkFileInfo ? checkFileInfo.relativePath : checkFileName;
-      var checkFileType = detectDanmakuType(decodeURIComponent(encodedContent));
-      updateDanmakuStatus({ fileType: checkFileType, fileName: checkFileName, relativePath: checkRelPath, isLoaded: true });
-
-      sidebar.postMessage("danmaku-file-list", danmakuFileList);
-      core.osd("已加载弹幕: " + checkFileName);
-      ensureDanmakuEnabled();
-    } else {
-      danmakuFileList.selectedPaths = danmakuFileList.selectedPaths.filter(function(p) { return p !== filePath; });
-      overlay.postMessage("remove-danmaku-file", { path: filePath });
-      sidebar.postMessage("danmaku-file-list", danmakuFileList);
-      core.osd("已移除弹幕: " + filePath.split("/").pop());
-
-      if (danmakuFileList.selectedPaths.length === 0) {
-        overlay.postMessage("clear-danmaku", {});
-        updateDanmakuStatus({ fileType: null, fileName: null, relativePath: null, isLoaded: false });
-      }
+      encodedContent = encodeContent(rawContent);
+      danmakuCache[filePath] = encodedContent;
     }
+
+    danmakuFileList.selectedPaths = [filePath];
+
+    var fileName = filePath.split("/").pop();
+    var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles).concat(danmakuFileList.unknownFiles);
+    var fileInfo = null;
+    for (var fi = 0; fi < allFiles.length; fi++) {
+      if (allFiles[fi].path === filePath) { fileInfo = allFiles[fi]; break; }
+    }
+    var relPath = fileInfo ? fileInfo.relativePath : fileName;
+    var fileType = detectDanmakuType(decodeURIComponent(encodedContent));
+    updateDanmakuStatus({ fileType: fileType, fileName: fileName, relativePath: relPath, isLoaded: true });
+
+    sidebar.postMessage("danmaku-file-list", danmakuFileList);
+
+    overlay.postMessage("load-danmaku", {
+      xmlContent: encodedContent,
+      path: filePath,
+      danmakuType: fileType,
+      opacity: canvasOpacity,
+      canvasFontScale: canvasFontScale,
+      strokeColor: strokeColor,
+      strokeInversionColor: strokeInversionColor,
+      strokeOpacity: strokeOpacity,
+      strokeWidth: strokeWidth,
+      commentLimit: commentLimit,
+      scrollSpeed: scrollSpeed,
+    });
+    core.osd("已加载弹幕: " + fileName);
+    ensureDanmakuEnabled();
   });
 
   sidebar.onMessage("danmaku-file-add", function () {
@@ -520,22 +516,18 @@ function registerSidebarHandlers() {
       else if (ext === 'json') danmakuFileList.jsonFiles.push(fileInfo);
       else danmakuFileList.unknownFiles.push(fileInfo);
 
-      danmakuFileList.selectedPaths.push(path);
+      danmakuFileList.selectedPaths = [];
 
       var content = file.read(path);
       if (content) {
         danmakuCache[path] = encodeContent(content);
-        overlay.postMessage("add-danmaku-file", { path: path, xmlContent: danmakuCache[path] });
-        var addFileType = detectDanmakuType(content);
-        updateDanmakuStatus({ fileType: addFileType, fileName: fname, relativePath: relativePath, isLoaded: true });
-        core.osd("已添加弹幕: " + fname);
+        core.osd("已添加弹幕: " + fname + "，点击加载");
       } else {
         core.osd("无法读取弹幕文件: " + fname);
         sidebar.postMessage("danmaku-file-error", { path: path, message: "无法读取文件" });
       }
 
       sidebar.postMessage("danmaku-file-list", danmakuFileList);
-      ensureDanmakuEnabled();
     });
   });
 
@@ -545,10 +537,7 @@ function registerSidebarHandlers() {
     danmakuFileList.jsonFiles = danmakuFileList.jsonFiles.filter(function(f) { return f.path !== filePath; });
     danmakuFileList.unknownFiles = danmakuFileList.unknownFiles.filter(function(f) { return f.path !== filePath; });
 
-    var wasSelected = danmakuFileList.selectedPaths.indexOf(filePath) !== -1;
     danmakuFileList.selectedPaths = danmakuFileList.selectedPaths.filter(function(p) { return p !== filePath; });
-
-    if (wasSelected) overlay.postMessage("remove-danmaku-file", { path: filePath });
     delete danmakuCache[filePath];
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
 
