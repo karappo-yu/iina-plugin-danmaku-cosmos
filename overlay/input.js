@@ -41,11 +41,25 @@ function parseBilibiliXml(xmlStr) {
   let match;
   while ((match = regex.exec(xmlStr)) !== null) {
     let p = match[1].split(",");
+    const mode = parseInt(p[1]);
+    const size = parseInt(p[2]) || 25;
+    let colorVal = parseInt(p[3]);
+    if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
+    const commands = p[5] ? p[5].toLowerCase().split(/\s+/) : [];
+    // Convert Bilibili position mode to niconico mail command
+    if (mode === 4) commands.push('shita');
+    else if (mode === 5) commands.push('ue');
+    else commands.push('naka');
+    // Convert font size to niconico size keyword
+    if (size >= 36) commands.push('big');
+    else if (size <= 15) commands.push('small');
+    // Add hex color (niconicocomments parses #hex)
+    commands.push('#' + colorVal.toString(16).padStart(6, '0'));
     list.push({
       t: Math.round(parseFloat(p[0]) * 100),
       text: match[2].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/<\/d/, ''),
       _isOwner: false,
-      _commands: p[5] ? p[5].toLowerCase().split(/\s+/) : [],
+      _commands: commands,
       _userId: 0,
       _dateSec: 0
     });
