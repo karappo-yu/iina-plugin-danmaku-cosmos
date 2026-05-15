@@ -8,8 +8,12 @@ let danmakuSeenKeys = {};
 let canvasOpacity = 0.8;
 let canvasFontScale = 1.0;
 let canvasNicoMode = 'default';
+let strokeColor = '#000000';
+let strokeInversionColor = '#ffffff';
 let strokeOpacity = 0.4;
 let strokeWidth = 2.8;
+let commentLimit = 0;
+let scrollSpeed = 0.95;
 
 let niconiComments = null;
 let nicoRawData = null;
@@ -149,8 +153,12 @@ function initCanvasRenderer(data) {
     keepCA: true,
     scale: canvasFontScale,
     config: {
+      contextStrokeColor: strokeColor,
+      contextStrokeInversionColor: strokeInversionColor,
       contextStrokeOpacity: strokeOpacity,
       contextLineWidth: { html5: strokeWidth, flash: strokeWidth },
+      commentLimit: commentLimit > 0 ? commentLimit : undefined,
+      nakaCommentSpeedOffset: scrollSpeed,
     },
   });
   nicoRawData = data;
@@ -196,6 +204,10 @@ iina.onMessage("load-danmaku", (data) => {
   if (data.canvasFontScale !== undefined) canvasFontScale = data.canvasFontScale;
   if (data.strokeOpacity !== undefined) strokeOpacity = data.strokeOpacity;
   if (data.strokeWidth !== undefined) strokeWidth = data.strokeWidth;
+  if (data.strokeColor !== undefined) strokeColor = data.strokeColor;
+  if (data.strokeInversionColor !== undefined) strokeInversionColor = data.strokeInversionColor;
+  if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
+  if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
   if (data.opacity) {
     canvasOpacity = data.opacity;
     const canvas = document.getElementById('niconicomments-canvas');
@@ -331,6 +343,26 @@ iina.onMessage("set-stroke-width", (data) => {
   if (nicoRawData) initCanvasRenderer(nicoRawData);
 });
 
+iina.onMessage("set-stroke-color", (data) => {
+  strokeColor = data.color;
+  if (nicoRawData) initCanvasRenderer(nicoRawData);
+});
+
+iina.onMessage("set-stroke-inversion-color", (data) => {
+  strokeInversionColor = data.color;
+  if (nicoRawData) initCanvasRenderer(nicoRawData);
+});
+
+iina.onMessage("set-comment-limit", (data) => {
+  commentLimit = data.limit;
+  if (nicoRawData) initCanvasRenderer(nicoRawData);
+});
+
+iina.onMessage("set-scroll-speed", (data) => {
+  scrollSpeed = data.speed;
+  if (nicoRawData) initCanvasRenderer(nicoRawData);
+});
+
 iina.onMessage("clear-danmaku", () => {
   destroyCanvasRenderer();
   allDanmaku = [];
@@ -350,8 +382,12 @@ iina.onMessage("apply-settings", (data) => {
   }
   if (data.canvasFontScale !== undefined) canvasFontScale = data.canvasFontScale;
   if (data.canvasMode !== undefined) canvasNicoMode = data.canvasMode;
+  if (data.strokeColor !== undefined) strokeColor = data.strokeColor;
+  if (data.strokeInversionColor !== undefined) strokeInversionColor = data.strokeInversionColor;
   if (data.strokeOpacity !== undefined) strokeOpacity = data.strokeOpacity;
   if (data.strokeWidth !== undefined) strokeWidth = data.strokeWidth;
+  if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
+  if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
 });
 
 iina.postMessage("overlay-ready", {});

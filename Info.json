@@ -25,7 +25,11 @@
     "danmakuCanvasOpacity": 0.8,
     "niconicommentsFontScale": 1.0,
     "canvasMode": "default",
+    "strokeColor": "#000000",
+    "strokeInversionColor": "#ffffff",
     "strokeOpacity": 0.4,
-    "strokeWidth": 2.8
+    "strokeWidth": 2.8,
+    "commentLimit": 0,
+    "scrollSpeed": 0.95
   }
 }

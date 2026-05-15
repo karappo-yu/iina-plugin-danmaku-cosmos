@@ -8,6 +8,14 @@ var strokeOpacitySlider = document.getElementById("stroke-opacity-slider");
 var strokeOpacityValue = document.getElementById("stroke-opacity-value");
 var strokeWidthSlider = document.getElementById("stroke-width-slider");
 var strokeWidthValue = document.getElementById("stroke-width-value");
+var strokeColorInput = document.getElementById("stroke-color");
+var strokeInversionInput = document.getElementById("stroke-inversion-color");
+var commentLimitEnable = document.getElementById("comment-limit-enable");
+var commentLimitSlider = document.getElementById("comment-limit-slider");
+var commentLimitValue = document.getElementById("comment-limit-value");
+var commentLimitRow = document.getElementById("comment-limit-row");
+var speedSlider = document.getElementById("speed-slider");
+var speedValue = document.getElementById("speed-value");
 var advancedToggle = document.getElementById("advanced-toggle");
 var advancedContent = document.getElementById("advanced-content");
 var advancedArrow = document.getElementById("advanced-arrow");
@@ -28,6 +36,10 @@ var state = {
   canvasFontScale: 1.0,
   strokeOpacity: 0.4,
   strokeWidth: 2.8,
+  strokeColor: '#000000',
+  strokeInversionColor: '#ffffff',
+  commentLimit: 0,
+  scrollSpeed: 0.95,
 };
 
 var fileListState = {
@@ -210,6 +222,10 @@ var i18n = {
     canvas_mode_flash: "Flash",
     stroke: "Stroke",
     advanced: "Advanced",
+    stroke_color: "Stroke Color",
+    stroke_inversion: "Invert Color",
+    comment_limit: "Comment Limit",
+    scroll_speed: "Scroll Speed",
     stroke_opacity: "Opacity",
     stroke_width: "Width",
     danmaku_not_found: "No danmaku file found",
@@ -276,6 +292,14 @@ function updateUI() {
   strokeOpacityValue.textContent = Math.round(state.strokeOpacity * 100) + "%";
   strokeWidthSlider.value = state.strokeWidth;
   strokeWidthValue.textContent = String(state.strokeWidth);
+  strokeColorInput.value = state.strokeColor;
+  strokeInversionInput.value = state.strokeInversionColor;
+  commentLimitEnable.checked = state.commentLimit > 0;
+  commentLimitRow.style.display = state.commentLimit > 0 ? '' : 'none';
+  commentLimitSlider.value = state.commentLimit > 0 ? state.commentLimit : 40;
+  commentLimitValue.textContent = String(commentLimitSlider.value);
+  speedSlider.value = Math.round(state.scrollSpeed * 100);
+  speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
   if (canvasModeSelect) canvasModeSelect.value = state.canvasMode || 'default';
 }
 
@@ -332,6 +356,41 @@ strokeWidthSlider.addEventListener("input", function () {
   iina.postMessage("set-stroke-width", { width: val });
 });
 
+strokeColorInput.addEventListener("input", function () {
+  state.strokeColor = strokeColorInput.value;
+  iina.postMessage("set-stroke-color", { color: state.strokeColor });
+});
+
+strokeInversionInput.addEventListener("input", function () {
+  state.strokeInversionColor = strokeInversionInput.value;
+  iina.postMessage("set-stroke-inversion-color", { color: state.strokeInversionColor });
+});
+
+commentLimitEnable.addEventListener("change", function () {
+  if (commentLimitEnable.checked) {
+    commentLimitRow.style.display = '';
+    state.commentLimit = parseInt(commentLimitSlider.value, 10);
+  } else {
+    commentLimitRow.style.display = 'none';
+    state.commentLimit = 0;
+  }
+  iina.postMessage("set-comment-limit", { limit: state.commentLimit });
+});
+
+commentLimitSlider.addEventListener("input", function () {
+  var val = parseInt(commentLimitSlider.value, 10);
+  state.commentLimit = val;
+  commentLimitValue.textContent = String(val);
+  iina.postMessage("set-comment-limit", { limit: val });
+});
+
+speedSlider.addEventListener("input", function () {
+  var val = parseFloat(speedSlider.value) / 100;
+  state.scrollSpeed = val;
+  speedValue.textContent = Math.round(val * 100) + '%';
+  iina.postMessage("set-scroll-speed", { speed: val });
+});
+
 iina.onMessage("danmaku-state", function (data) {
   if (data.enabled !== undefined) state.enabled = data.enabled;
   if (data.canvasMode !== undefined) state.canvasMode = data.canvasMode;
@@ -339,6 +398,10 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.canvasFontScale !== undefined) state.canvasFontScale = data.canvasFontScale;
   if (data.strokeOpacity !== undefined) state.strokeOpacity = data.strokeOpacity;
   if (data.strokeWidth !== undefined) state.strokeWidth = data.strokeWidth;
+  if (data.strokeColor !== undefined) state.strokeColor = data.strokeColor;
+  if (data.strokeInversionColor !== undefined) state.strokeInversionColor = data.strokeInversionColor;
+  if (data.commentLimit !== undefined) state.commentLimit = data.commentLimit;
+  if (data.scrollSpeed !== undefined) state.scrollSpeed = data.scrollSpeed;
   if (data.danmakuFileType !== undefined) state.danmakuType = data.danmakuFileType;
   if (data.danmakuFileName !== undefined) state.danmakuFileName = data.danmakuFileName;
   if (data.danmakuRelativePath !== undefined) state.danmakuRelativePath = data.danmakuRelativePath;

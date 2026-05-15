@@ -14,6 +14,10 @@ var canvasFontScale = preferences.get("niconicommentsFontScale") || 1.0;
 var currentCanvasMode = preferences.get("canvasMode") || 'default';
 var strokeOpacity = preferences.get("strokeOpacity") !== undefined ? preferences.get("strokeOpacity") : 0.4;
 var strokeWidth = preferences.get("strokeWidth") !== undefined ? preferences.get("strokeWidth") : 2.8;
+var strokeColor = preferences.get("strokeColor") || '#000000';
+var strokeInversionColor = preferences.get("strokeInversionColor") || '#ffffff';
+var commentLimit = preferences.get("commentLimit") !== undefined ? preferences.get("commentLimit") : 0;
+var scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get("scrollSpeed") : 0.95;
 var currentPlaybackSpeed = 1.0;
 var overlayReady = false;
 var preferencesSyncTimer = null;
@@ -233,8 +237,12 @@ function loadDanmakuForVideo(url) {
     danmakuType: fileType,
     opacity: canvasOpacity,
     canvasFontScale: canvasFontScale,
+    strokeColor: strokeColor,
+    strokeInversionColor: strokeInversionColor,
     strokeOpacity: strokeOpacity,
     strokeWidth: strokeWidth,
+    commentLimit: commentLimit,
+    scrollSpeed: scrollSpeed,
   };
 
   if (overlayReady) {
@@ -257,8 +265,12 @@ function markOverlayReady() {
     opacity: canvasOpacity,
     canvasFontScale: canvasFontScale,
     canvasMode: currentCanvasMode,
+    strokeColor: strokeColor,
+    strokeInversionColor: strokeInversionColor,
     strokeOpacity: strokeOpacity,
     strokeWidth: strokeWidth,
+    commentLimit: commentLimit,
+    scrollSpeed: scrollSpeed,
   });
 
   if (pendingDanmaku) {
@@ -360,6 +372,34 @@ function registerSidebarHandlers() {
     overlay.postMessage("set-stroke-width", { width: data.width });
   });
 
+  sidebar.onMessage("set-stroke-color", function (data) {
+    strokeColor = data.color;
+    preferences.set("strokeColor", strokeColor);
+    syncPreferencesSoon();
+    overlay.postMessage("set-stroke-color", { color: data.color });
+  });
+
+  sidebar.onMessage("set-stroke-inversion-color", function (data) {
+    strokeInversionColor = data.color;
+    preferences.set("strokeInversionColor", strokeInversionColor);
+    syncPreferencesSoon();
+    overlay.postMessage("set-stroke-inversion-color", { color: data.color });
+  });
+
+  sidebar.onMessage("set-comment-limit", function (data) {
+    commentLimit = data.limit;
+    preferences.set("commentLimit", commentLimit);
+    syncPreferencesSoon();
+    overlay.postMessage("set-comment-limit", { limit: data.limit });
+  });
+
+  sidebar.onMessage("set-scroll-speed", function (data) {
+    scrollSpeed = data.speed;
+    preferences.set("scrollSpeed", scrollSpeed);
+    syncPreferencesSoon();
+    overlay.postMessage("set-scroll-speed", { speed: data.speed });
+  });
+
   sidebar.onMessage("request-state", function () {
     sidebar.postMessage("danmaku-state", {
       enabled: danmakuEnabled,
@@ -368,6 +408,10 @@ function registerSidebarHandlers() {
       canvasFontScale: canvasFontScale,
       strokeOpacity: strokeOpacity,
       strokeWidth: strokeWidth,
+      strokeColor: strokeColor,
+      strokeInversionColor: strokeInversionColor,
+      commentLimit: commentLimit,
+      scrollSpeed: scrollSpeed,
       danmakuFileType: currentDanmakuStatus.fileType,
       danmakuFileName: currentDanmakuStatus.fileName,
       danmakuRelativePath: currentDanmakuStatus.relativePath,
@@ -393,8 +437,12 @@ function registerSidebarHandlers() {
         danmakuType: manualFileType,
         opacity: canvasOpacity,
         canvasFontScale: canvasFontScale,
+        strokeColor: strokeColor,
+        strokeInversionColor: strokeInversionColor,
         strokeOpacity: strokeOpacity,
         strokeWidth: strokeWidth,
+        commentLimit: commentLimit,
+        scrollSpeed: scrollSpeed,
       });
       core.osd("已加载弹幕: " + manualFileName);
       ensureDanmakuEnabled();
@@ -574,8 +622,12 @@ menu.addItem(
         danmakuType: manualFileType,
         opacity: canvasOpacity,
         canvasFontScale: canvasFontScale,
+        strokeColor: strokeColor,
+        strokeInversionColor: strokeInversionColor,
         strokeOpacity: strokeOpacity,
         strokeWidth: strokeWidth,
+        commentLimit: commentLimit,
+        scrollSpeed: scrollSpeed,
       });
       core.osd("已发送弹幕: " + path.split("/").pop());
       ensureDanmakuEnabled();
