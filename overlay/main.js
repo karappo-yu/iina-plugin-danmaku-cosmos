@@ -155,8 +155,7 @@ function initCanvasRenderer(data) {
   canvas.height = 1080;
   canvas.style.opacity = canvasOpacity;
   disposeCanvasRenderer();
-  const renderer = NiconiComments.internal.renderer.createRenderer(canvas);
-  niconiComments = new NiconiComments(renderer, data, {
+  niconiComments = new NiconiComments(canvas, data, {
     format: nicoRawFormat,
     mode: canvasNicoMode,
     keepCA: true,
