@@ -301,7 +301,7 @@ function updateUI() {
   strokeOpacitySlider.value = Math.round(state.strokeOpacity * 100);
   strokeOpacityValue.textContent = Math.round(state.strokeOpacity * 100) + "%";
   strokeWidthSlider.value = state.strokeWidth;
-  strokeWidthValue.textContent = String(state.strokeWidth);
+  strokeWidthValue.textContent = String(state.strokeWidth) + 'px';
   strokeColorInput.value = state.strokeColor;
   strokeInversionInput.value = state.strokeInversionColor;
   commentLimitEnable.checked = state.commentLimit > 0;
@@ -362,7 +362,7 @@ strokeOpacitySlider.addEventListener("input", function () {
 strokeWidthSlider.addEventListener("input", function () {
   var val = parseFloat(strokeWidthSlider.value);
   state.strokeWidth = val;
-  strokeWidthValue.textContent = String(val);
+  strokeWidthValue.textContent = String(val) + 'px';
   iina.postMessage("set-stroke-width", { width: val });
 });
 
