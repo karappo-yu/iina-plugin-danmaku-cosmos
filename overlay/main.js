@@ -284,7 +284,6 @@ function initCanvasRenderer(data) {
   nicoRawData = data;
 
   bindCanvasEvents(niconiComments);
-  warmCanvasCache();
 }
 
 function destroyCanvasRenderer() {
@@ -308,18 +307,6 @@ function stopCanvasLoop() {
     cancelAnimationFrame(canvasRafId);
     canvasRafId = null;
   }
-}
-
-function warmCanvasCache() {
-  if (!niconiComments || allDanmaku.length === 0) return;
-  const lastVpos = allDanmaku[allDanmaku.length - 1].t;
-  if (lastVpos <= 0) return;
-  const canvas = document.getElementById('niconicomments-canvas');
-  const orig = canvas.style.opacity;
-  canvas.style.opacity = '0';
-  niconiComments.drawCanvas(lastVpos, true);
-  niconiComments.drawCanvas(0, true);
-  canvas.style.opacity = orig;
 }
 
 function switchRenderMode(mode) {
