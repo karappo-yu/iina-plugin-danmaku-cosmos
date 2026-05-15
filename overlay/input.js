@@ -61,7 +61,7 @@ function parseBilibiliXml(xmlStr) {
       _isOwner: false,
       _commands: commands,
       _userId: 0,
-      _dateSec: 0
+      _dateSec: 2000000000
     });
   }
   return list;
