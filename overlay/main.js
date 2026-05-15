@@ -311,45 +311,15 @@ function stopCanvasLoop() {
 }
 
 function warmCanvasCache() {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (!niconiComments || !niconiComments.timeline || allDanmaku.length === 0) return;
-      const keys = Object.keys(niconiComments.timeline);
-      if (keys.length === 0) return;
-      keys.sort((a, b) => Number(a) - Number(b));
-
-      const canvas = document.getElementById('niconicomments-canvas');
-      const origOpacity = canvas.style.opacity;
-      canvas.style.opacity = '0';
-
-      let idx = 0;
-      const perFrameBatch = 8;
-      const maxMsPerFrame = 5;
-
-      function scan() {
-        if (!niconiComments) { canvas.style.opacity = origOpacity; return; }
-        const frameEnd = performance.now() + maxMsPerFrame;
-        let done = 0;
-        while (idx < keys.length && done < perFrameBatch && performance.now() < frameEnd) {
-          const items = niconiComments.timeline[keys[idx]];
-          if (items) {
-            for (let i = 0; i < items.length; i++) {
-              const c = items[i];
-              if (c && typeof c.getTextImage === 'function') c.getTextImage();
-            }
-          }
-          idx++;
-          done++;
-        }
-        if (idx < keys.length) {
-          requestAnimationFrame(scan);
-        } else {
-          canvas.style.opacity = origOpacity;
-        }
-      }
-      requestAnimationFrame(scan);
-    });
-  });
+  if (!niconiComments || allDanmaku.length === 0) return;
+  const lastVpos = allDanmaku[allDanmaku.length - 1].t;
+  if (lastVpos <= 0) return;
+  const canvas = document.getElementById('niconicomments-canvas');
+  const orig = canvas.style.opacity;
+  canvas.style.opacity = '0';
+  niconiComments.drawCanvas(lastVpos, true);
+  niconiComments.drawCanvas(0, true);
+  canvas.style.opacity = orig;
 }
 
 function switchRenderMode(mode) {
