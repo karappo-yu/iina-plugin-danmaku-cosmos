@@ -218,17 +218,12 @@ iina.onMessage("load-danmaku", (data) => {
   currentDanmakuType = danmakuType;
 
   if (danmakuType === 'nico-json') {
-    nicoRawData = JSON.parse(rawStr);
-    nicoRawFormat = detectNicoFormat(nicoRawData);
-  } else if (danmakuType === 'nico-xml') {
-    const parser = new DOMParser();
-    nicoRawData = parser.parseFromString(rawStr, "text/xml");
-    nicoRawFormat = 'niconicome';
+    allDanmaku = [];
   } else {
-    // bilibili-xml
     allDanmaku = parseDanmaku(encodedStr).sort((a, b) => a.t - b.t);
-    prepareCanvasSource(rawStr, allDanmaku, danmakuType);
   }
+
+  prepareCanvasSource(rawStr, allDanmaku, danmakuType);
 
   iina.postMessage("danmaku-type", { type: danmakuType });
 
