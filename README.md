@@ -1,8 +1,8 @@
-# Danmaku (niconicocomments)
+# Danmaku Cosmos
 
 [日本語](#日本語) / [中文](#中文) / [English](#english)
 
-IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconicomments) Canvas 渲染。支持 Niconico（XML / V1 JSON）和 Bilibili（XML）三种格式。
+IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconicomments)（已 fork 增强）。支持 Niconico（XML / V1 JSON）和 Bilibili（XML）三种格式，提供 CSS 和 Canvas 双渲染模式。
 
 ---
 
@@ -11,11 +11,24 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 ### 功能特性
 
 - **三种格式支持**：Niconico XML、Niconico V1 JSON、Bilibili XML
-- **Canvas 渲染**：基于 niconicomments 库，支持 Auto / HTML5 / Flash 三种模式
+- **双渲染模式**：
+  - **CSS 模式**：利用 WebKit GPU 合成加速（`transform` + `will-change`），在 IINA 的 WKWebView 环境下流畅度远超 Canvas
+  - **Canvas 模式**：基于 niconicomments 库，支持 Auto / HTML5 / Flash 三种模式
 - **自动加载弹幕**：按优先级自动查找同目录下的弹幕文件
 - **手动加载弹幕**：通过菜单或侧边栏手动选择弹幕文件
 - **侧边栏控制面板**：实时调整透明度、字体缩放、渲染模式
 - **快捷键**：`D` 键快速切换弹幕显示
+
+### 渲染模式说明
+
+| 模式 | 说明 | 推荐场景 |
+|------|------|----------|
+| **CSS** | DOM 元素 + CSS 动画，WebKit GPU 加速 | IINA 播放（推荐） |
+| **Auto** | 自动判断 HTML5 / Flash 弹幕 | 通用 |
+| **HTML5** | 仅渲染 HTML5 弹幕 | 仅新格式 |
+| **Flash** | 仅渲染 Flash 弹幕 | 仅旧格式 |
+
+CSS 模式在侧边栏的「渲染模式」下拉框中选择。CSS 模式同样支持 Auto 逻辑——自动判断每条弹幕是 HTML5 还是 Flash 类型并分别渲染。
 
 ### 安装
 
@@ -42,7 +55,8 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 ### 注意事项
 
-- 字符画（コメントアート）在 IINA 的 WebKit 渲染下可能出现错位或混乱，这是因为 niconicomments 库的 canvas 文字渲染在 Safari 内核下存在兼容性问题，属于浏览器引擎差异，在 Chrome 中正常
+- CSS 模式下字符画（コメントアート）的垂直位置可能与 Canvas 模式略有差异
+- Canvas 模式下字符画在 IINA 的 WebKit 渲染中可能出现错位（Safari canvas 2D 无 GPU 加速）
 - 文件名包含特殊字符（如 `[`、`]`）可能导致自动加载失败
 - 最小化窗口后再恢复，弹幕会重新渲染（已知限制）
 
@@ -53,11 +67,24 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 ### 機能
 
 - **3フォーマット対応**：Niconico XML、Niconico V1 JSON、Bilibili XML
-- **Canvas 描画**：niconicomments ベース、Auto / HTML5 / Flash モード対応
+- **デュアル描画モード**：
+  - **CSS モード**：WebKit GPU 合成加速（`transform` + `will-change`）により、IINA の WKWebView で Canvas より滑らかに描画
+  - **Canvas モード**：niconicomments ベース、Auto / HTML5 / Flash モード対応
 - **自動読み込み**：同じフォルダから優先順位に従って自動検索
 - **手動読み込み**：メニューやサイドバーからコメントファイルを選択
 - **サイドバーコントロール**：透明度・フォント倍率・描画モードをリアルタイム調整
 - **ショートカット**：`D` キーでコメント表示切替
+
+### 描画モード
+
+| モード | 説明 | 推奨用途 |
+|--------|------|----------|
+| **CSS** | DOM 要素 + CSS アニメーション、WebKit GPU 加速 | IINA 再生（推奨） |
+| **Auto** | HTML5 / Flash を自動判定 | 汎用 |
+| **HTML5** | HTML5 コメントのみ | 新フォーマットのみ |
+| **Flash** | Flash コメントのみ | 旧フォーマットのみ |
+
+CSS モードはサイドバーの「描画モード」ドロップダウンから選択できます。CSS モードも Auto 判定に対応し、各コメントの HTML5 / Flash タイプを自動判定して描画します。
 
 ### インストール
 
@@ -89,11 +116,24 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 ### Features
 
 - **Three format support**: Niconico XML, Niconico V1 JSON, Bilibili XML
-- **Canvas rendering**: Based on [niconicomments](https://github.com/xpadev-net/niconicomments), with Auto / HTML5 / Flash modes
+- **Dual rendering modes**:
+  - **CSS mode**: Leverages WebKit GPU compositing (`transform` + `will-change`) for significantly smoother rendering in IINA's WKWebView
+  - **Canvas mode**: Based on [niconicomments](https://github.com/xpadev-net/niconicomments), with Auto / HTML5 / Flash modes
 - **Auto-load**: Automatically searches for danmaku files in the same directory by priority
 - **Manual load**: Select danmaku files via menu or sidebar
 - **Sidebar control panel**: Real-time adjustment of opacity, font scale, and render mode
 - **Keyboard shortcut**: Press `D` to toggle danmaku visibility
+
+### Render Modes
+
+| Mode | Description | Recommended For |
+|------|-------------|-----------------|
+| **CSS** | DOM elements + CSS animations with WebKit GPU acceleration | IINA playback (recommended) |
+| **Auto** | Auto-detect HTML5 / Flash per comment | General use |
+| **HTML5** | HTML5 comments only | New format only |
+| **Flash** | Flash comments only | Legacy format only |
+
+CSS mode is selected from the "Render Mode" dropdown in the sidebar. CSS mode also supports Auto logic — it automatically determines whether each comment is HTML5 or Flash type and renders accordingly.
 
 ### Installation
 
@@ -120,7 +160,8 @@ Automatically searches in the same directory with this priority:
 
 ### Notes
 
-- Comment Art (CA) may appear misaligned or garbled in IINA's WebKit renderer. This is a Safari canvas text rendering compatibility issue with the niconicomments library — it renders correctly in Chrome
+- Comment Art (CA) vertical positioning may differ slightly between CSS and Canvas modes
+- Canvas mode CA may appear misaligned in IINA's WebKit renderer (Safari canvas 2D lacks GPU acceleration)
 - Filenames with special characters (like `[`, `]`) may cause auto-load to fail
 - Minimizing and restoring the window causes danmaku to re-render (known limitation)
 
@@ -130,7 +171,7 @@ Automatically searches in the same directory with this priority:
 
 | Library | License | Repository |
 |---------|---------|------------|
-| [niconicomments](https://github.com/xpadev-net/niconicomments) | MIT | https://github.com/xpadev-net/niconicomments |
+| [niconicomments](https://github.com/xpadev-net/niconicomments) (forked with CSS renderer) | MIT | https://github.com/karappo-yu/niconicomments |
 
 The MIT License requires that the copyright notice and license text be included in any distribution. The original copyright notices are preserved in the bundled minified JavaScript files distributed with this plugin.
 

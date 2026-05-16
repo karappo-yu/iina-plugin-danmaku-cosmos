@@ -23,7 +23,7 @@ Danmaku Cosmos/
 │   ├── index.html            # Entry point
 │   ├── index.css             # Render styles & animation definitions
 │   ├── main.js               # Engine entry: message handling, render mode, state mgmt
-│   ├── renderer.js           # CSS mode: DOM creation, object pool, danmaku layout
+│   ├── renderer.js           # CSS mode (plugin's own): DOM creation, object pool, danmaku layout
 │   ├── lane.js               # Lane allocation & management (multi-level offset collision)
 │   ├── config.js             # Global constants (colors, fonts, size maps)
 │   ├── command.js            # mail/commands parser
@@ -32,7 +32,7 @@ Danmaku Cosmos/
 │   ├── input.js              # Three-format danmaku data parser
 │   ├── ca-score.js           # Comment Art scoring & layer separation
 │   └── lib/                  # Third-party libs (read-only, do not modify)
-│       ├── niconicomments.min.js
+│       ├── niconicomments.min.js  # Forked niconicomments with CSSRenderer
 │       ├── niconicomments-plugin-niwango.min.js
 │       └── niwango.min.js
 ├── sidebar/                  # IINA sidebar control panel
@@ -41,6 +41,31 @@ Danmaku Cosmos/
 │   └── index.js
 └── .github/workflows/       # Release packaging
 ```
+
+## Dual Rendering Architecture
+
+### CSS Mode (niconicomments CSSRenderer)
+
+When `mode: "css"` is passed to NiconiComments, a `CSSRenderer` is created instead of using canvas drawing. The CSSRenderer:
+
+- Creates a 16:9 aspect ratio container (`[data-dm-css-container]`) centered in the viewport
+- Uses `--dm-unit` CSS custom property (`min(100vh, 56.25vw) / 1080`) for responsive coordinate mapping
+- Renders each danmaku as a `div[data-dm-comment]` with `will-change: transform, opacity; contain: layout style`
+- Scroll danmaku: Web Animations API `translateX()` animation, matching `getPosX()` formula
+- Fixed danmaku (ue/shita): CSS `@keyframes dm-fade` animation
+- Stroke: `-webkit-text-stroke` + `paint-order: stroke fill`
+- Object pool (max 512 elements) for DOM reuse
+- Pause/resume via Web Animations API `pause()`/`play()`
+- Supports both HTML5 and Flash danmaku (auto-detection like default mode)
+- Tracks reverse state per danmaku, reanimates when `@reverse` activates/deactivates
+
+### Canvas Mode (niconicomments original)
+
+Based on the original niconicomments library. Supports Auto / HTML5 / Flash modes. Not recommended to modify Canvas mode internals.
+
+### CSS Mode (plugin's own renderer.js)
+
+The plugin also has its own CSS rendering system (`renderer.js`, `lane.js`, etc.) for non-Niconico V1 JSON formats (Niconico XML, Bilibili XML). This is separate from the niconicomments CSSRenderer.
 
 ## Architecture Key Conventions
 
@@ -88,7 +113,15 @@ Later scripts depend on functions mounted on `window` by earlier scripts (e.g., 
 
 - **Communication encoding**: Danmaku XML/JSON content is encoded with `encodeURIComponent()` (via the `encodeContent` function) in `main.js` before sending to overlay, then decoded with `decodeURIComponent()` on the overlay side. Do not change this encoding protocol unless replacing it entirely (both ends must stay in sync).
 
-### CSS Mode Render Flow
+### CSS Mode (niconicomments) Render Flow
+
+1. `time-update` fires → `canvasRenderLoop` calls `niconiComments.drawCanvas(vpos)`
+2. `drawCanvas` with `cssRenderer` calls `cssRenderer.updateComments(timeline, vpos, frameActiveState)`
+3. `updateComments` diffs visible comments vs `activeElements`, creates/recycles DOM elements
+4. CSS animations drive movement; Web Animations API handles pause/resume
+5. When video pauses, `pauseCSS()` pauses all active animations; `resumeCSS()` resumes them
+
+### CSS Mode (plugin's own) Render Flow
 
 1. `time-update` fires on each time change → `main.js` scans `allDanmaku` for entries ≤ current time
 2. `createDanmaku()` gets a DOM element from the object pool (`danmakuPool`), applies styles
@@ -113,6 +146,7 @@ Based on the `niconicomments` third-party library. Only available for Niconico V
 - Filenames containing `[` or `]` may cause auto-load to fail (regex matching in `extractEpisodeNumber`)
 - Restoring from window minimize triggers a full `handleSeek` re-render
 - Canvas mode does not support CSS-mode-specific settings (font scale, scroll duration, blocking, lane limits)
+- CSS mode (niconicomments) Comment Art vertical positioning may differ slightly from Canvas mode
 - `preferences.sync()` is called on every change with no debounce
 
 ## Avoid
@@ -123,3 +157,7 @@ Based on the `niconicomments` third-party library. Only available for Niconico V
 - ❌ Do not change the `<script>` loading order in the overlay HTML
 - ❌ Do not use `console.log` for high-frequency output in production code (especially in `time-update` callbacks)
 - ❌ Do not create or remove danmaku DOM elements directly — always use the object pool
+
+## Related Repository
+
+- **niconicomments (forked)**: https://github.com/karappo-yu/niconicomments — The fork adds `CSSRenderer` (`src/renderer/css.ts`) and `mode: "css"` support. Changes are on the `develop` branch.
