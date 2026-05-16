@@ -13,7 +13,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **三种格式支持**：Niconico XML、Niconico V1 JSON、Bilibili XML
 - **双渲染模式**：
   - **CSS 模式**：利用 WebKit GPU 合成加速（`transform` + `will-change`），在 IINA 的 WKWebView 环境下流畅度远超 Canvas
-  - **Canvas 模式**：基于 niconicomments 库，支持 Auto / HTML5 / Flash 三种模式
+  - **Canvas 模式**：基于魔改 niconicomments（已 fork 增加 CSS 渲染器），支持 Auto / HTML5 / Flash 三种模式
 - **自动加载弹幕**：按优先级自动查找同目录下的弹幕文件
 - **手动加载弹幕**：通过菜单或侧边栏手动选择弹幕文件
 - **侧边栏控制面板**：实时调整透明度、字体缩放、渲染模式
@@ -68,7 +68,7 @@ Auto、HTML5、Flash 均为 Canvas 渲染，使用 niconicomments 库的渲染�
 - **3フォーマット対応**：Niconico XML、Niconico V1 JSON、Bilibili XML
 - **デュアル描画モード**：
   - **CSS モード**：WebKit GPU 合成加速（`transform` + `will-change`）により、IINA の WKWebView で Canvas より滑らかに描画
-  - **Canvas モード**：niconicomments ベース、Auto / HTML5 / Flash モード対応
+  - **Canvas モード**：改造 niconicomments（CSS レンダラー追加版 fork）、Auto / HTML5 / Flash モード対応
 - **自動読み込み**：同じフォルダから優先順位に従って自動検索
 - **手動読み込み**：メニューやサイドバーからコメントファイルを選択
 - **サイドバーコントロール**：透明度・フォント倍率・描画モードをリアルタイム調整
@@ -116,7 +116,7 @@ Auto・HTML5・Flash はいずれも Canvas 描画で、niconicomments ライブ
 - **Three format support**: Niconico XML, Niconico V1 JSON, Bilibili XML
 - **Dual rendering modes**:
   - **CSS mode**: Leverages WebKit GPU compositing (`transform` + `will-change`) for significantly smoother rendering in IINA's WKWebView
-  - **Canvas mode**: Based on [niconicomments](https://github.com/xpadev-net/niconicomments), with Auto / HTML5 / Flash modes
+  - **Canvas mode**: Based on a forked [niconicomments](https://github.com/karappo-yu/niconicomments) (with CSS renderer added), with Auto / HTML5 / Flash modes
 - **Auto-load**: Automatically searches for danmaku files in the same directory by priority
 - **Manual load**: Select danmaku files via menu or sidebar
 - **Sidebar control panel**: Real-time adjustment of opacity, font scale, and render mode
