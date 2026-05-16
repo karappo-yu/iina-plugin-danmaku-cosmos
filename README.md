@@ -8,6 +8,13 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 ## 中文
 
+### 安装
+
+1. 安装 [IINA](https://iina.io/)（如尚未安装）
+2. 从 [Releases](https://github.com/karappo-yu/iina-plugin-danmaku-cosmos/releases) 下载 `.iinaplgz` 文件
+3. 打开 IINA → 设置 → 插件 → 添加插件，选择下载的 `.iinaplgz` 文件
+4. 重启 IINA
+
 ### 功能特性
 
 - **三种格式支持**：Niconico XML、Niconico V1 JSON、Bilibili XML
@@ -28,12 +35,6 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 | **Flash** | 所有弹幕按 Flash 模式渲染 | — |
 
 Auto、HTML5、Flash 均为 Canvas 渲染，使用 niconicomments 库的渲染方式。CSS 模式在侧边栏的「渲染模式」下拉框中选择。
-
-### 安装
-
-1. 从 [Releases](https://github.com/karappo-yu/iina-plugin-danmaku-cosmos/releases) 下载 `.iinaplgz` 文件
-2. 打开 IINA → 设置 → 插件 → 添加插件，选择下载的 `.iinaplgz` 文件
-3. 重启 IINA
 
 ### 弹幕文件加载
 
@@ -63,6 +64,13 @@ Auto、HTML5、Flash 均为 Canvas 渲染，使用 niconicomments 库的渲染�
 
 ## 日本語
 
+### インストール
+
+1. [IINA](https://iina.io/) をインストール（未インストールの場合）
+2. [Releases](https://github.com/karappo-yu/iina-plugin-danmaku-cosmos/releases) から `.iinaplgz` ファイルをダウンロード
+3. IINA → 設定 → プラグイン → プラグインを追加 で `.iinaplgz` ファイルを選択
+4. IINA を再起動
+
 ### 機能
 
 - **3フォーマット対応**：Niconico XML、Niconico V1 JSON、Bilibili XML
@@ -83,12 +91,6 @@ Auto、HTML5、Flash 均为 Canvas 渲染，使用 niconicomments 库的渲染�
 | **Flash** | 全コメントを Flash モードで描画 | — |
 
 Auto・HTML5・Flash はいずれも Canvas 描画で、niconicomments ライブラリの描画方式です。CSS モードはサイドバーの「描画モード」ドロップダウンから選択できます。
-
-### インストール
-
-1. [Releases](https://github.com/karappo-yu/iina-plugin-danmaku-cosmos/releases) から `.iinaplgz` ファイルをダウンロード
-2. IINA → 設定 → プラグイン → プラグインを追加 で `.iinaplgz` ファイルを選択
-3. IINA を再起動
 
 ### コメントファイルの読み込み
 
@@ -111,6 +113,13 @@ Auto・HTML5・Flash はいずれも Canvas 描画で、niconicomments ライブ
 
 ## English
 
+### Installation
+
+1. Install [IINA](https://iina.io/) if you haven't already
+2. Download the `.iinaplgz` file from [Releases](https://github.com/karappo-yu/iina-plugin-danmaku-cosmos/releases)
+3. Open IINA → Preferences → Plugins → Add Plugin, select the `.iinaplgz` file
+4. Restart IINA
+
 ### Features
 
 - **Three format support**: Niconico XML, Niconico V1 JSON, Bilibili XML
@@ -131,12 +140,6 @@ Auto・HTML5・Flash はいずれも Canvas 描画で、niconicomments ライブ
 | **Flash** | All comments rendered as Flash | — |
 
 Auto, HTML5, and Flash are all Canvas rendering modes from the niconicomments library. CSS mode is selected from the "Render Mode" dropdown in the sidebar.
-
-### Installation
-
-1. Download the `.iinaplgz` file from [Releases](https://github.com/karappo-yu/iina-plugin-danmaku-cosmos/releases)
-2. Open IINA → Preferences → Plugins → Add Plugin, select the `.iinaplgz` file
-3. Restart IINA
 
 ### Loading Comment Files
 
