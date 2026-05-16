@@ -17,7 +17,6 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **自动加载弹幕**：按优先级自动查找同目录下的弹幕文件
 - **手动加载弹幕**：通过菜单或侧边栏手动选择弹幕文件
 - **侧边栏控制面板**：实时调整透明度、字体缩放、渲染模式
-- **快捷键**：`D` 键快速切换弹幕显示
 
 ### 渲染模式说明
 
@@ -25,10 +24,10 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 |------|------|----------|
 | **CSS** | DOM 元素 + CSS 动画，WebKit GPU 加速 | IINA 播放（推荐） |
 | **Auto** | 自动判断 HTML5 / Flash 弹幕 | 通用 |
-| **HTML5** | 仅渲染 HTML5 弹幕 | 仅新格式 |
-| **Flash** | 仅渲染 Flash 弹幕 | 仅旧格式 |
+| **HTML5** | 所有弹幕按 HTML5 模式渲染 | — |
+| **Flash** | 所有弹幕按 Flash 模式渲染 | — |
 
-CSS 模式在侧边栏的「渲染模式」下拉框中选择。CSS 模式同样支持 Auto 逻辑——自动判断每条弹幕是 HTML5 还是 Flash 类型并分别渲染。
+Auto、HTML5、Flash 均为 Canvas 渲染，使用 niconicomments 库的渲染方式。CSS 模式在侧边栏的「渲染模式」下拉框中选择。
 
 ### 安装
 
@@ -73,7 +72,6 @@ CSS 模式在侧边栏的「渲染模式」下拉框中选择。CSS 模式同样
 - **自動読み込み**：同じフォルダから優先順位に従って自動検索
 - **手動読み込み**：メニューやサイドバーからコメントファイルを選択
 - **サイドバーコントロール**：透明度・フォント倍率・描画モードをリアルタイム調整
-- **ショートカット**：`D` キーでコメント表示切替
 
 ### 描画モード
 
@@ -81,10 +79,10 @@ CSS 模式在侧边栏的「渲染模式」下拉框中选择。CSS 模式同样
 |--------|------|----------|
 | **CSS** | DOM 要素 + CSS アニメーション、WebKit GPU 加速 | IINA 再生（推奨） |
 | **Auto** | HTML5 / Flash を自動判定 | 汎用 |
-| **HTML5** | HTML5 コメントのみ | 新フォーマットのみ |
-| **Flash** | Flash コメントのみ | 旧フォーマットのみ |
+| **HTML5** | 全コメントを HTML5 モードで描画 | — |
+| **Flash** | 全コメントを Flash モードで描画 | — |
 
-CSS モードはサイドバーの「描画モード」ドロップダウンから選択できます。CSS モードも Auto 判定に対応し、各コメントの HTML5 / Flash タイプを自動判定して描画します。
+Auto・HTML5・Flash はいずれも Canvas 描画で、niconicomments ライブラリの描画方式です。CSS モードはサイドバーの「描画モード」ドロップダウンから選択できます。
 
 ### インストール
 
@@ -122,7 +120,6 @@ CSS モードはサイドバーの「描画モード」ドロップダウンか�
 - **Auto-load**: Automatically searches for danmaku files in the same directory by priority
 - **Manual load**: Select danmaku files via menu or sidebar
 - **Sidebar control panel**: Real-time adjustment of opacity, font scale, and render mode
-- **Keyboard shortcut**: Press `D` to toggle danmaku visibility
 
 ### Render Modes
 
@@ -130,10 +127,10 @@ CSS モードはサイドバーの「描画モード」ドロップダウンか�
 |------|-------------|-----------------|
 | **CSS** | DOM elements + CSS animations with WebKit GPU acceleration | IINA playback (recommended) |
 | **Auto** | Auto-detect HTML5 / Flash per comment | General use |
-| **HTML5** | HTML5 comments only | New format only |
-| **Flash** | Flash comments only | Legacy format only |
+| **HTML5** | All comments rendered as HTML5 | — |
+| **Flash** | All comments rendered as Flash | — |
 
-CSS mode is selected from the "Render Mode" dropdown in the sidebar. CSS mode also supports Auto logic — it automatically determines whether each comment is HTML5 or Flash type and renders accordingly.
+Auto, HTML5, and Flash are all Canvas rendering modes from the niconicomments library. CSS mode is selected from the "Render Mode" dropdown in the sidebar.
 
 ### Installation
 
