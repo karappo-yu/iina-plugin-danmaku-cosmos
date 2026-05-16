@@ -131,7 +131,7 @@ function renderFileList() {
   var lang = getBrowserLang();
   var xmlTitle = lang === 'zh' ? 'XML 弹幕' : lang === 'ja' ? 'XML\u30b3\u30e1\u30f3\u30c8' : 'XML Danmaku';
   var jsonTitle = lang === 'zh' ? 'JSON 弹幕' : lang === 'ja' ? 'JSON\u30b3\u30e1\u30f3\u30c8' : 'JSON Danmaku';
-  var unknownTitle = lang === 'zh' ? '\u672a\u8bc6\u522b\u96c6\u6570' : lang === 'ja' ? '\u672a\u8a8d\u8b58\u30a8\u30d4\u30bd\u30fc\u30c9' : 'Unknown Episode';
+  var unknownTitle = lang === 'zh' ? '\u5176\u4ed6\u5f39\u5e55' : lang === 'ja' ? '\u305d\u306e\u4ed6\u30b3\u30e1\u30f3\u30c8' : 'Other Danmaku';
 
   if (fileListState.xmlFiles.length > 0) {
     var xmlGroup = createFileGroup(xmlTitle, fileListState.xmlFiles, fileListState.selectedPaths);
@@ -210,10 +210,9 @@ var i18n = {
     opacity: "Danmaku Opacity",
     font_scale: "Font Scale",
     canvas_mode_label: "Render Mode",
-    canvas_mode_default: "Auto",
-    canvas_mode_css: "CSS",
-    canvas_mode_html5: "HTML5",
-    canvas_mode_flash: "Flash",
+    canvas_mode_default: "Canvas Auto",
+    canvas_mode_html5: "Canvas HTML5",
+    canvas_mode_flash: "Canvas Flash",
     advanced: "Advanced",
     comment_limit: "Comment Limit",
     stroke_color: "Stroke Color",
@@ -231,10 +230,9 @@ var i18n = {
     opacity: "\u30b3\u30e1\u30f3\u30c8\u900f\u660e\u5ea6",
     font_scale: "\u30d5\u30a9\u30f3\u30c8\u500d\u7387",
     canvas_mode_label: "\u30e2\u30fc\u30c9",
-    canvas_mode_default: "\u81ea\u52d5",
-    canvas_mode_css: "CSS",
-    canvas_mode_html5: "HTML5",
-    canvas_mode_flash: "Flash",
+    canvas_mode_default: "\u30ad\u30e3\u30f3\u30d0\u30b9 Auto",
+    canvas_mode_html5: "\u30ad\u30e3\u30f3\u30d0\u30b9 HTML5",
+    canvas_mode_flash: "\u30ad\u30e3\u30f3\u30d0\u30b9 Flash",
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
     comment_limit: "\u30b3\u30e1\u30f3\u30c8\u5236\u9650",
     stroke_color: "\u7e01\u53d6\u308a\u306e\u8272",
@@ -250,10 +248,9 @@ var i18n = {
     opacity: "\u5f39\u5e55\u900f\u660e\u5ea6",
     font_scale: "\u5b57\u4f53\u7f29\u653e",
     canvas_mode_label: "\u6e32\u67d3\u6a21\u5f0f",
-    canvas_mode_default: "\u81ea\u52a8",
-    canvas_mode_css: "CSS",
-    canvas_mode_html5: "HTML5",
-    canvas_mode_flash: "Flash",
+    canvas_mode_default: "\u753b\u5e03 Auto",
+    canvas_mode_html5: "\u753b\u5e03 HTML5",
+    canvas_mode_flash: "\u753b\u5e03 Flash",
     advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
     comment_limit: "\u5f39\u5e55\u4e0a\u9650",
     stroke_color: "\u63cf\u8fb9\u989c\u8272",
