@@ -400,11 +400,18 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.danmakuFileName !== undefined) state.danmakuFileName = data.danmakuFileName;
   if (data.danmakuRelativePath !== undefined) state.danmakuRelativePath = data.danmakuRelativePath;
   if (data.danmakuLoaded !== undefined) state.danmakuLoaded = data.danmakuLoaded;
-  document.title = "DBG mode=" + state.canvasMode + " sel=" + (canvasModeSelect ? canvasModeSelect.value : "null");
+  var dbgEl = document.getElementById('dbg-info');
+  if (!dbgEl) {
+    dbgEl = document.createElement('div');
+    dbgEl.id = 'dbg-info';
+    dbgEl.style.cssText = 'color:#ff0;font-size:11px;padding:4px;background:#333;';
+    document.getElementById('root').insertBefore(dbgEl, document.getElementById('root').firstChild);
+  }
+  dbgEl.textContent = "DBG mode=" + state.canvasMode + " sel=" + (canvasModeSelect ? canvasModeSelect.value : "null");
   updateUI();
   updateEnabledUI();
   if (canvasModeSelect) canvasModeSelect.value = state.canvasMode || 'default';
-  document.title = "DBG2 mode=" + state.canvasMode + " sel=" + (canvasModeSelect ? canvasModeSelect.value : "null");
+  dbgEl.textContent += " => " + (canvasModeSelect ? canvasModeSelect.value : "null");
 });
 
 iina.onMessage("danmaku-type", function (data) {
