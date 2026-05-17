@@ -164,10 +164,6 @@ function initCanvasRenderer(data) {
   if (isPaused && useCssMode) {
     niconiComments.pauseCSS();
   }
-  if (useCssMode) {
-    const cssContainer = document.querySelector('[data-dm-css-container]');
-    if (cssContainer) cssContainer.style.opacity = canvasOpacity;
-  }
 }
 
 function destroyCanvasRenderer() {
