@@ -400,26 +400,6 @@ function registerSidebarHandlers() {
     overlay.postMessage("set-scroll-speed", { speed: data.speed });
   });
 
-  sidebar.onMessage("request-state", function () {
-    sidebar.postMessage("danmaku-state", {
-      enabled: danmakuEnabled,
-      canvasMode: currentCanvasMode,
-      canvasOpacity: canvasOpacity,
-      canvasFontScale: canvasFontScale,
-      strokeOpacity: strokeOpacity,
-      strokeWidth: strokeWidth,
-      strokeColor: strokeColor,
-      strokeInversionColor: strokeInversionColor,
-      commentLimit: commentLimit,
-      scrollSpeed: scrollSpeed,
-      danmakuFileType: currentDanmakuStatus.fileType,
-      danmakuFileName: currentDanmakuStatus.fileName,
-      danmakuRelativePath: currentDanmakuStatus.relativePath,
-      danmakuLoaded: currentDanmakuStatus.isLoaded,
-    });
-    sidebar.postMessage("danmaku-file-list", danmakuFileList);
-  });
-
   sidebar.onMessage("manual-load-danmaku", function () {
     iina.utils.chooseFile("选择弹幕文件", { allowedFileTypes: ["json", "xml"] }).then(function(path) {
       if (!path) { core.osd("未选择文件"); return; }
@@ -554,6 +534,26 @@ event.on("iina.window-loaded", function () {
 });
 
 overlay.onMessage("overlay-ready", function () { markOverlayReady(); });
+
+sidebar.onMessage("request-state", function () {
+  sidebar.postMessage("danmaku-state", {
+    enabled: danmakuEnabled,
+    canvasMode: currentCanvasMode,
+    canvasOpacity: canvasOpacity,
+    canvasFontScale: canvasFontScale,
+    strokeOpacity: strokeOpacity,
+    strokeWidth: strokeWidth,
+    strokeColor: strokeColor,
+    strokeInversionColor: strokeInversionColor,
+    commentLimit: commentLimit,
+    scrollSpeed: scrollSpeed,
+    danmakuFileType: currentDanmakuStatus.fileType,
+    danmakuFileName: currentDanmakuStatus.fileName,
+    danmakuRelativePath: currentDanmakuStatus.relativePath,
+    danmakuLoaded: currentDanmakuStatus.isLoaded,
+  });
+  sidebar.postMessage("danmaku-file-list", danmakuFileList);
+});
 
 event.on("iina.plugin-overlay-loaded", function () {
   overlay.show();
