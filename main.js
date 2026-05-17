@@ -320,7 +320,7 @@ function toggleDanmaku() {
   overlay.postMessage("toggle-danmaku", { enabled: danmakuEnabled });
   if (danmakuEnabled) { overlay.show(); setObserver(true); core.osd("弹幕已开启"); }
   else { setObserver(false); core.osd("弹幕已关闭"); }
-  sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled });
+  sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled, canvasMode: currentCanvasMode });
 }
 
 function ensureDanmakuEnabled() {
@@ -331,7 +331,7 @@ function ensureDanmakuEnabled() {
   overlay.postMessage("toggle-danmaku", { enabled: true });
   overlay.show();
   setObserver(true);
-  sidebar.postMessage("danmaku-state", { enabled: true });
+  sidebar.postMessage("danmaku-state", { enabled: true, canvasMode: currentCanvasMode });
 }
 
 function registerSidebarHandlers() {
@@ -549,8 +549,8 @@ function registerSidebarHandlers() {
 
 event.on("iina.window-loaded", function () {
   overlay.loadFile("overlay/index.html");
-  sidebar.loadFile("sidebar/index.html");
   registerSidebarHandlers();
+  sidebar.loadFile("sidebar/index.html");
 });
 
 overlay.onMessage("overlay-ready", function () { markOverlayReady(); });
