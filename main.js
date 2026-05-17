@@ -401,7 +401,6 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("request-state", function () {
-    core.osd("request-state: canvasMode=" + currentCanvasMode);
     sidebar.postMessage("danmaku-state", {
       enabled: danmakuEnabled,
       canvasMode: currentCanvasMode,

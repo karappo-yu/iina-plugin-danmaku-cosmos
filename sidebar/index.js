@@ -297,10 +297,8 @@ function updateUI() {
   strokeWidthValue.textContent = String(state.strokeWidth) + 'px';
   strokeColorInput.value = state.strokeColor;
   strokeInversionInput.value = state.strokeInversionColor;
-  commentLimitEnable.checked = state.commentLimit > 0;
-  commentLimitRow.style.display = state.commentLimit > 0 ? '' : 'none';
-  commentLimitEnable.checked = state.commentLimit > 0;
-  commentLimitRow.style.display = state.commentLimit > 0 ? '' : 'none';
+  if (commentLimitEnable) commentLimitEnable.checked = state.commentLimit > 0;
+  if (commentLimitRow) commentLimitRow.style.display = state.commentLimit > 0 ? '' : 'none';
   commentLimitSlider.value = state.commentLimit;
   commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : 'Off';
   speedSlider.value = Math.round(state.scrollSpeed * 100);
@@ -403,14 +401,6 @@ iina.onMessage("danmaku-state", function (data) {
   updateUI();
   updateEnabledUI();
   if (canvasModeSelect) canvasModeSelect.value = state.canvasMode || 'default';
-  var dbgEl = document.getElementById('dbg-info');
-  if (!dbgEl) {
-    dbgEl = document.createElement('div');
-    dbgEl.id = 'dbg-info';
-    dbgEl.style.cssText = 'color:#ff0;font-size:11px;padding:4px;background:#333;';
-    document.getElementById('root').insertBefore(dbgEl, document.getElementById('root').firstChild);
-  }
-  dbgEl.textContent = "mode=" + state.canvasMode + " sel=" + (canvasModeSelect ? canvasModeSelect.value : "null");
 });
 
 iina.onMessage("danmaku-type", function (data) {
