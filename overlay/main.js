@@ -242,7 +242,10 @@ iina.onMessage("load-danmaku", (data) => {
 });
 
 iina.onMessage("resize", () => {
-  if (niconiComments) niconiComments.clear();
+  if (niconiComments) {
+    niconiComments.clear();
+    niconiComments.drawCanvas(canvasGetCurrentTime() * 100);
+  }
 });
 
 iina.onMessage("pause-state", (data) => {
