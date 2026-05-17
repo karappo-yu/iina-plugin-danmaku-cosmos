@@ -244,7 +244,7 @@ iina.onMessage("load-danmaku", (data) => {
 iina.onMessage("resize", () => {
   if (niconiComments) {
     niconiComments.clear();
-    niconiComments.drawCanvas(canvasGetCurrentTime() * 100);
+    niconiComments.drawCanvas(canvasGetCurrentTime() * 100, true);
   }
 });
 
