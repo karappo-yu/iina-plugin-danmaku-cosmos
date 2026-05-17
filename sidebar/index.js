@@ -400,6 +400,9 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.danmakuFileName !== undefined) state.danmakuFileName = data.danmakuFileName;
   if (data.danmakuRelativePath !== undefined) state.danmakuRelativePath = data.danmakuRelativePath;
   if (data.danmakuLoaded !== undefined) state.danmakuLoaded = data.danmakuLoaded;
+  updateUI();
+  updateEnabledUI();
+  if (canvasModeSelect) canvasModeSelect.value = state.canvasMode || 'default';
   var dbgEl = document.getElementById('dbg-info');
   if (!dbgEl) {
     dbgEl = document.createElement('div');
@@ -407,11 +410,7 @@ iina.onMessage("danmaku-state", function (data) {
     dbgEl.style.cssText = 'color:#ff0;font-size:11px;padding:4px;background:#333;';
     document.getElementById('root').insertBefore(dbgEl, document.getElementById('root').firstChild);
   }
-  dbgEl.textContent = "DBG mode=" + state.canvasMode + " sel=" + (canvasModeSelect ? canvasModeSelect.value : "null");
-  updateUI();
-  updateEnabledUI();
-  if (canvasModeSelect) canvasModeSelect.value = state.canvasMode || 'default';
-  dbgEl.textContent += " => " + (canvasModeSelect ? canvasModeSelect.value : "null");
+  dbgEl.textContent = "mode=" + state.canvasMode + " sel=" + (canvasModeSelect ? canvasModeSelect.value : "null");
 });
 
 iina.onMessage("danmaku-type", function (data) {
