@@ -68,6 +68,8 @@ Auto、HTML5、Flash 均为 Canvas 渲染，使用 niconicomments 库的渲染�
 
 ## 日本語
 
+> **注意**：本プラグインは niconico コメントスタイルを中心に設計されており、Bilibili など中国語コメントフォーマットのサポートは限定的です。中国語コメントは niconico スタイルで描画され、Bilibili 固有の高度なコメント（mode 7）、スクリプトコメント（mode 8）、BAS コメント（mode 9）などには対応していません。
+
 ### インストール
 
 1. [IINA](https://iina.io/) をインストール（未インストールの場合）
