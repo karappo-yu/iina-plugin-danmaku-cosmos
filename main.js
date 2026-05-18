@@ -596,6 +596,59 @@ function ddpCachePath(episodeId) {
   return '@data/danmaku-cache/' + episodeId + '.json';
 }
 
+function ddpMappingPath() {
+  return '@data/danmaku-cache/file-mapping.json';
+}
+
+function ddpReadFileMapping() {
+  try {
+    var path = ddpMappingPath();
+    if (!file.exists(path)) return {};
+    var content = file.read(path);
+    if (!content) return {};
+    return JSON.parse(content);
+  } catch (e) {
+    return {};
+  }
+}
+
+function ddpWriteFileMapping(mapping) {
+  try {
+    file.write(ddpMappingPath(), JSON.stringify(mapping));
+  } catch (e) {}
+}
+
+function ddpGetCachedEpisode(filePath) {
+  if (!filePath) return null;
+  var mapping = ddpReadFileMapping();
+  var entry = mapping[filePath];
+  if (!entry) return null;
+  var cached = ddpReadCache(entry.episodeId);
+  if (!cached || !cached.comments || cached.comments.length === 0) {
+    delete mapping[filePath];
+    ddpWriteFileMapping(mapping);
+    return null;
+  }
+  return entry;
+}
+
+function ddpSaveFileMapping(filePath, episodeId, animeTitle, episodeTitle) {
+  if (!filePath) return;
+  var mapping = ddpReadFileMapping();
+  mapping[filePath] = {
+    episodeId: episodeId,
+    animeTitle: animeTitle || '',
+    episodeTitle: episodeTitle || '',
+    mappedAt: Date.now()
+  };
+  var keys = Object.keys(mapping);
+  if (keys.length > 200) {
+    keys.sort(function(a, b) { return (mapping[a].mappedAt || 0) - (mapping[b].mappedAt || 0); });
+    for (var i = 0; i < keys.length - 100; i++) delete mapping[keys[i]];
+  }
+  ddpWriteFileMapping(mapping);
+}
+
 function ddpReadCache(episodeId) {
   try {
     var path = ddpCachePath(episodeId);
@@ -666,6 +719,14 @@ function ddpAutoMatchAndLoad(url) {
   };
   ddpSyncState();
 
+  var cachedEpisode = ddpGetCachedEpisode(path);
+  if (cachedEpisode) {
+    console.log('[ddp] cache hit: filePath=' + path + ' episodeId=' + cachedEpisode.episodeId);
+    var forceLoad = (dandanplayPriority === 'network-first' || dandanplayPriority === 'network-only');
+    ddpLoadComments(cachedEpisode.episodeId, cachedEpisode.animeTitle, cachedEpisode.episodeTitle, forceLoad);
+    return;
+  }
+
   ddpMatchVideo(fileName, path).then(function(res) {
     console.log('[ddp] autoMatch: statusCode=' + res.statusCode);
     var data = ddpParseBody(res);
@@ -700,6 +761,7 @@ function ddpAutoMatchAndLoad(url) {
 
     if (data.isMatched) {
       var match = data.matches[0];
+      ddpSaveFileMapping(path, match.episodeId, match.animeTitle, match.episodeTitle);
       var forceLoad = (dandanplayPriority === 'network-first' || dandanplayPriority === 'network-only');
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, forceLoad);
     } else {
@@ -1290,6 +1352,8 @@ function registerSidebarHandlers() {
   sidebar.onMessage("dandanplay-select-match", function (data) {
     var match = data.match;
     if (match && match.episodeId) {
+      var path = filePathFromUrl(currentVideoUrl);
+      ddpSaveFileMapping(path, match.episodeId, match.animeTitle, match.episodeTitle);
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, true);
     }
   });
