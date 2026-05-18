@@ -766,12 +766,14 @@ function ddpAutoMatchAndLoad(url) {
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, forceLoad);
     } else {
       ddpSyncState();
+      ddpFallbackToLocal();
     }
   }).catch(function(err) {
     dandanplayState.status = 'error';
     dandanplayState.error = ddpErrStr(err);
     ddpSyncState();
     core.osd("弹弹play: 网络错误");
+    ddpFallbackToLocal();
   });
 }
 
@@ -862,12 +864,14 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad) {
       dandanplayState.status = 'error';
       dandanplayState.error = 'API response error';
       ddpSyncState();
+      ddpFallbackToLocal();
       return;
     }
     if (!data.comments || data.comments.length === 0) {
       dandanplayState.status = 'error';
       dandanplayState.error = 'No comments available';
       ddpSyncState();
+      ddpFallbackToLocal();
       return;
     }
 
@@ -891,7 +895,17 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad) {
     dandanplayState.error = ddpErrStr(err);
     ddpSyncState();
     core.osd("弹弹play: 加载弹幕失败");
+    ddpFallbackToLocal();
   });
+}
+
+function ddpFallbackToLocal() {
+  if (dandanplayPriority !== 'network-first' && dandanplayPriority !== 'network-only') return;
+  if (currentDanmakuStatus.isLoaded) return;
+  var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles);
+  if (allFiles.length > 0) {
+    loadLocalDanmaku(allFiles[0]);
+  }
 }
 
 function loadDanmakuForVideo(url) {
@@ -926,10 +940,7 @@ function loadDanmakuForVideo(url) {
 
   if (dandanplayPriority === 'network-first') {
     ddpAutoMatchAndLoad(url);
-    if (hasLocal) {
-      var firstFile = allMatched[0];
-      loadLocalDanmaku(firstFile);
-    } else {
+    if (!hasLocal) {
       danmakuNotFound();
     }
   } else if (dandanplayPriority === 'network-only') {
