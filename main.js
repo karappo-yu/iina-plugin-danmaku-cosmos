@@ -319,22 +319,62 @@ function ddpParseBody(res) {
   return null;
 }
 
-var _ddpLog = [];
-function ddpLog(msg) {
-  var line = new Date().toISOString().substr(11,12) + ' ' + msg;
-  _ddpLog.push(line);
-  if (_ddpLog.length > 200) _ddpLog.shift();
-  console.log(line);
+function ddpCalcFileHash(filePath) {
+  if (!filePath) return null;
+  try {
+    var scriptPath = iina.utils.resolvePath('@data/ddp_hash.py');
+    var script = 'import hashlib,sys,os\n'
+      + 'try:\n'
+      + '  p=sys.argv[1];f=open(p,"rb");h=hashlib.md5(f.read(16*1024*1024)).hexdigest();f.close()\n'
+      + '  print(h+" "+str(os.path.getsize(p)))\n'
+      + 'except Exception as e:\n'
+      + '  print("ERROR "+str(e))';
+    try { file.write(scriptPath, script); } catch(e) { console.log('[ddp] hash write: ' + e); }
+
+    var escapedPath = filePath.replace(/'/g, "'\\''");
+    var cmd = 'python3 ' + "'" + scriptPath + "' " + "'" + escapedPath + "'";
+    console.log('[ddp] hash cmd: ' + cmd);
+    return iina.utils.exec('/bin/sh', ['-c', cmd]).then(function(result) {
+      console.log('[ddp] hash: status=' + (result ? result.status : 'null') + ' stdout=' + (result && result.stdout ? result.stdout.trim() : 'null'));
+      if (!result || result.status !== 0 || !result.stdout) return null;
+      var parts = result.stdout.trim().split(' ');
+      if (parts.length >= 2 && parts[0].length === 32 && parts[0] !== 'ERROR') {
+        return { hash: parts[0], fileSize: parseInt(parts[1], 10) || 0 };
+      }
+      return null;
+    }).catch(function(err) {
+      console.log('[ddp] hash catch: ' + err);
+      return null;
+    });
+  } catch(e) {
+    console.log('[ddp] hash: ' + e);
+    return Promise.resolve(null);
+  }
 }
 
-function ddpMatchVideo(fileName) {
+function ddpMatchVideo(fileName, filePath) {
   var nameWithoutExt = fileName.replace(/\.[^.]+$/, '');
-  return ddpRequest('POST', '/api/v2/match', null, {
-    fileName: nameWithoutExt,
-    fileHash: '00000000000000000000000000000000',
-    fileSize: 0,
-    videoDuration: 0,
-    matchMode: 'fileNameOnly'
+  console.log('[ddp] match: fileName=' + nameWithoutExt + ' filePath=' + filePath);
+  return ddpCalcFileHash(filePath).then(function(hashInfo) {
+    console.log('[ddp] match: hashInfo=' + JSON.stringify(hashInfo));
+    if (hashInfo) {
+      console.log('[ddp] match: using hashAndFileName');
+      return ddpRequest('POST', '/api/v2/match', null, {
+        fileName: nameWithoutExt,
+        fileHash: hashInfo.hash,
+        fileSize: hashInfo.fileSize,
+        videoDuration: 0,
+        matchMode: 'hashAndFileName'
+      });
+    }
+    console.log('[ddp] match: fallback to fileNameOnly');
+    return ddpRequest('POST', '/api/v2/match', null, {
+      fileName: nameWithoutExt,
+      fileHash: '00000000000000000000000000000000',
+      fileSize: 0,
+      videoDuration: 0,
+      matchMode: 'fileNameOnly'
+    });
   });
 }
 
@@ -464,14 +504,16 @@ function ddpAutoMatchAndLoad(url) {
   };
   ddpSyncState();
 
-  ddpMatchVideo(fileName).then(function(res) {
+  ddpMatchVideo(fileName, path).then(function(res) {
+    console.log('[ddp] autoMatch: statusCode=' + res.statusCode);
+    var data = ddpParseBody(res);
+    console.log('[ddp] autoMatch: isMatched=' + (data ? data.isMatched : 'null') + ' matches=' + (data && data.matches ? data.matches.length : 0));
     if (res.statusCode === 403) {
       dandanplayState.status = 'error';
       dandanplayState.error = 'Auth error (403): ' + (res.reason || 'check AppId/AppSecret');
       ddpSyncState();
       return;
     }
-    var data = ddpParseBody(res);
     if (!data) {
       dandanplayState.status = 'error';
       dandanplayState.error = 'API response error (status=' + res.statusCode + ', text=' + (res.text ? res.text.substring(0, 100) : 'empty') + ')';
@@ -492,19 +534,15 @@ function ddpAutoMatchAndLoad(url) {
       return;
     }
 
-    if (!data.isMatched && data.matches.length > 1) {
-      dandanplayState.matches = JSON.parse(JSON.stringify(data.matches));
-      ddpSyncState();
-      if (dandanplayPriority === 'network-first' || dandanplayPriority === 'network-only') {
-        var firstMatch = data.matches[0];
-        ddpLoadComments(firstMatch.episodeId, firstMatch.animeTitle, firstMatch.episodeTitle);
-      }
-      return;
-    }
-
-    var match = data.matches[0];
     dandanplayState.matches = JSON.parse(JSON.stringify(data.matches));
-    ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle);
+
+    if (data.isMatched) {
+      var match = data.matches[0];
+      var forceLoad = (dandanplayPriority === 'network-first' || dandanplayPriority === 'network-only');
+      ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, forceLoad);
+    } else {
+      ddpSyncState();
+    }
   }).catch(function(err) {
     dandanplayState.status = 'error';
     dandanplayState.error = ddpErrStr(err);
@@ -643,13 +681,11 @@ function loadDanmakuForVideo(url) {
     danmakuFileList = { xmlFiles: [], jsonFiles: [], unknownFiles: [], selectedPaths: [] };
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
     if (overlayReady) overlay.postMessage("clear-danmaku", {});
-    if (dandanplayPriority === 'network-first' || dandanplayPriority === 'network-only') {
+    if (dandanplayPriority !== 'local-only') {
       ddpAutoMatchAndLoad(url);
     }
     return;
   }
-
-  var skipLocal = dandanplayPriority === 'network-only';
 
   var discovered = findDanmakuByEpisode(url);
   danmakuFileList = {
@@ -662,53 +698,76 @@ function loadDanmakuForVideo(url) {
   sidebar.postMessage("danmaku-file-list", danmakuFileList);
 
   var allMatched = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles);
-  if (allMatched.length === 0 || skipLocal) {
-    danmakuNotFound();
-    if (overlayReady && skipLocal) overlay.postMessage("clear-danmaku", {});
-  } else {
-    var firstFile = allMatched[0];
-    danmakuFileList.selectedPaths = [firstFile.path];
+  var hasLocal = allMatched.length > 0;
 
-    var xmlContent = file.read(firstFile.path);
-    if (!xmlContent) {
-      core.osd("无法读取弹幕文件: " + firstFile.filename);
-      danmakuNotFound();
+  if (dandanplayPriority === 'network-first') {
+    ddpAutoMatchAndLoad(url);
+    if (hasLocal) {
+      var firstFile = allMatched[0];
+      loadLocalDanmaku(firstFile);
     } else {
-      var encodedContent = encodeContent(xmlContent);
-      danmakuCache[firstFile.path] = encodedContent;
-
-      var fileType = detectDanmakuType(xmlContent);
-      updateDanmakuStatus({ fileType: fileType, fileName: firstFile.filename, relativePath: firstFile.relativePath, isLoaded: true });
-
-      sidebar.postMessage("danmaku-file-list", danmakuFileList);
-
-      var payload = {
-        xmlContent: encodedContent,
-        path: firstFile.path,
-        danmakuType: fileType,
-        opacity: canvasOpacity,
-        canvasFontScale: canvasFontScale,
-        strokeColor: strokeColor,
-        strokeInversionColor: strokeInversionColor,
-        strokeOpacity: strokeOpacity,
-        strokeWidth: strokeWidth,
-        commentLimit: commentLimit,
-        scrollSpeed: scrollSpeed,
-      };
-
-      if (overlayReady) {
-        overlay.postMessage("load-danmaku", payload);
-        core.osd("已加载弹幕: " + firstFile.filename);
-        setObserver(true);
-      } else {
-        pendingDanmaku = payload;
-        core.osd("弹幕排队中…");
-      }
+      danmakuNotFound();
+    }
+  } else if (dandanplayPriority === 'network-only') {
+    danmakuNotFound();
+    if (overlayReady) overlay.postMessage("clear-danmaku", {});
+    ddpAutoMatchAndLoad(url);
+  } else if (dandanplayPriority === 'local-first') {
+    if (hasLocal) {
+      var firstFile = allMatched[0];
+      loadLocalDanmaku(firstFile);
+    } else {
+      danmakuNotFound();
+      ddpAutoMatchAndLoad(url);
+    }
+  } else {
+    if (hasLocal) {
+      var firstFile = allMatched[0];
+      loadLocalDanmaku(firstFile);
+    } else {
+      danmakuNotFound();
     }
   }
+}
 
-  if (dandanplayPriority === 'network-first' || dandanplayPriority === 'network-only') {
-    ddpAutoMatchAndLoad(url);
+function loadLocalDanmaku(fileInfo) {
+  danmakuFileList.selectedPaths = [fileInfo.path];
+
+  var xmlContent = file.read(fileInfo.path);
+  if (!xmlContent) {
+    core.osd("无法读取弹幕文件: " + fileInfo.filename);
+    danmakuNotFound();
+    return;
+  }
+  var encodedContent = encodeContent(xmlContent);
+  danmakuCache[fileInfo.path] = encodedContent;
+
+  var fileType = detectDanmakuType(xmlContent);
+  updateDanmakuStatus({ fileType: fileType, fileName: fileInfo.filename, relativePath: fileInfo.relativePath, isLoaded: true });
+
+  sidebar.postMessage("danmaku-file-list", danmakuFileList);
+
+  var payload = {
+    xmlContent: encodedContent,
+    path: fileInfo.path,
+    danmakuType: fileType,
+    opacity: canvasOpacity,
+    canvasFontScale: canvasFontScale,
+    strokeColor: strokeColor,
+    strokeInversionColor: strokeInversionColor,
+    strokeOpacity: strokeOpacity,
+    strokeWidth: strokeWidth,
+    commentLimit: commentLimit,
+    scrollSpeed: scrollSpeed,
+  };
+
+  if (overlayReady) {
+    overlay.postMessage("load-danmaku", payload);
+    core.osd("已加载弹幕: " + fileInfo.filename);
+    setObserver(true);
+  } else {
+    pendingDanmaku = payload;
+    core.osd("弹幕排队中…");
   }
 }
 
