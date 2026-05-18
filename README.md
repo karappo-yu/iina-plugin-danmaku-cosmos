@@ -120,6 +120,8 @@ Auto・HTML5・Flash はいずれも Canvas 描画で、niconicomments ライブ
 
 ## English
 
+> **Note**: This plugin is designed around the niconico comment style. Bilibili and other Chinese danmaku formats have limited support — they are rendered in niconico style, and Bilibili-specific features like advanced comments (mode 7), scripting comments (mode 8), and BAS comments (mode 9) are not supported.
+
 ### Installation
 
 1. Install [IINA](https://iina.io/) if you haven't already

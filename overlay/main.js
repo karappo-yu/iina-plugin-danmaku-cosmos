@@ -227,7 +227,13 @@ iina.onMessage("load-danmaku", (data) => {
   var danmakuType = data.danmakuType || detectRawDanmakuType(rawStr);
   currentDanmakuType = danmakuType;
 
-  if (danmakuType === 'nico-json') {
+  if (danmakuType === 'dandanplay') {
+    try {
+      allDanmaku = JSON.parse(rawStr).sort((a, b) => a.t - b.t);
+    } catch (e) {
+      allDanmaku = [];
+    }
+  } else if (danmakuType === 'nico-json') {
     allDanmaku = [];
   } else {
     allDanmaku = parseDanmaku(encodedStr).sort((a, b) => a.t - b.t);

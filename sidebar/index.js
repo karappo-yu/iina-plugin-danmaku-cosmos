@@ -21,7 +21,28 @@ var fileAddBtn = document.getElementById("danmaku-file-add-btn");
 var commentLimitEnable = document.getElementById("comment-limit-enable");
 var commentLimitRow = document.getElementById("comment-limit-row");
 
-var advancedOpen = false; // Start collapsed
+var advancedOpen = false;
+
+var ddpError = document.getElementById("dandanplay-error");
+var ddpMatches = document.getElementById("dandanplay-matches");
+var ddpMatchesList = document.getElementById("dandanplay-matches-list");
+var ddpSearchBtn = document.getElementById("dandanplay-search-btn");
+var ddpSearchPanel = document.getElementById("dandanplay-search-panel");
+var ddpSearchInput = document.getElementById("dandanplay-search-input");
+var ddpSearchGoBtn = document.getElementById("dandanplay-search-go-btn");
+var ddpSearchResults = document.getElementById("dandanplay-search-results");
+var ddpPrioritySelect = document.getElementById("dandanplay-priority-select");
+
+var ddpState = {
+  status: 'idle',
+  animeTitle: '',
+  episodeTitle: '',
+  episodeId: null,
+  commentCount: 0,
+  error: '',
+  matches: null,
+  priority: 'local-first'
+};
 
 var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closest('.section'), strokeOpacitySlider.closest('.section')];
 
@@ -220,13 +241,32 @@ var i18n = {
     comment_limit: "Comment Limit",
     stroke_color: "Stroke Color",
     stroke_inversion: "Invert Color",
-    stroke_opacity: "Stroke Opacity",
-    stroke_width: "Stroke Width",
-    scroll_speed: "Center Speed",
     stroke_opacity: "Opacity",
     stroke_width: "Width",
+    scroll_speed: "Center Speed",
     danmaku_not_found: "No danmaku file found",
-    file_add: "Add"
+    file_add: "Add",
+    dandanplay_label: "DanDanPlay",
+    dandanplay_anime: "Anime",
+    dandanplay_episode: "Episode",
+    dandanplay_count: "Comments",
+    dandanplay_refresh: "Refresh",
+    dandanplay_search: "Search",
+    dandanplay_search_go: "Go",
+    dandanplay_priority: "Priority",
+    dandanplay_priority_local: "Local First",
+    dandanplay_priority_network: "Network First",
+    dandanplay_priority_local_only: "Local Only",
+    dandanplay_priority_network_only: "Network Only",
+    dandanplay_auto_match: "Auto Match",
+    dandanplay_select_match: "Network Danmaku",
+    dandanplay_status_idle: "Not active",
+    dandanplay_status_matching: "Matching...",
+    dandanplay_status_loading: "Loading comments...",
+    dandanplay_status_loaded: "Loaded",
+    dandanplay_status_error: "Error",
+    dandanplay_status_no_match: "No match found",
+    dandanplay_status_multiple_matches: "Select a match"
   },
   ja: {
     danmaku_visible: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a",
@@ -245,7 +285,28 @@ var i18n = {
     stroke_width: "\u7e01\u53d6\u308a\u306e\u592a\u3055",
     scroll_speed: "\u4e2d\u592e\u901f\u5ea6",
     danmaku_not_found: "\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093",
-    file_add: "\u8ffd\u52a0"
+    file_add: "\u8ffd\u52a0",
+    dandanplay_label: "\u5f3e\u5f3ePlay",
+    dandanplay_anime: "\u30a2\u30cb\u30e1",
+    dandanplay_episode: "\u8a71",
+    dandanplay_count: "\u30b3\u30e1\u30f3\u30c8\u6570",
+    dandanplay_refresh: "\u66f4\u65b0",
+    dandanplay_search: "\u691c\u7d22",
+    dandanplay_search_go: "Go",
+    dandanplay_priority: "\u512a\u5148\u5ea6",
+    dandanplay_priority_local: "\u30ed\u30fc\u30ab\u30eb\u512a\u5148",
+    dandanplay_priority_network: "\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u512a\u5148",
+    dandanplay_priority_local_only: "\u30ed\u30fc\u30ab\u30eb\u306e\u307f",
+    dandanplay_priority_network_only: "\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u306e\u307f",
+    dandanplay_auto_match: "\u81ea\u52d5\u30de\u30c3\u30c1",
+    dandanplay_select_match: "\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u30b3\u30e1\u30f3\u30c8",
+    dandanplay_status_idle: "\u672a\u4f7f\u7528",
+    dandanplay_status_matching: "\u30de\u30c3\u30c1\u4e2d...",
+    dandanplay_status_loading: "\u30b3\u30e1\u30f3\u30c8\u8aad\u307f\u8fbc\u307f\u4e2d...",
+    dandanplay_status_loaded: "\u8aad\u307f\u8fbc\u307f\u5b8c\u4e86",
+    dandanplay_status_error: "\u30a8\u30e9\u30fc",
+    dandanplay_status_no_match: "\u30de\u30c3\u30c1\u306a\u3057",
+    dandanplay_status_multiple_matches: "\u30de\u30c3\u30c1\u3092\u9078\u629e"
   },
   zh: {
     danmaku_visible: "\u5f39\u5e55\u663e\u793a",
@@ -264,7 +325,28 @@ var i18n = {
     stroke_width: "\u63cf\u8fb9\u7c97\u7ec6",
     scroll_speed: "\u4e2d\u592e\u901f\u5ea6",
     danmaku_not_found: "\u672a\u627e\u5230\u5f39\u5e55\u6587\u4ef6",
-    file_add: "\u6dfb\u52a0"
+    file_add: "\u6dfb\u52a0",
+    dandanplay_label: "\u5f39\u5f39Play",
+    dandanplay_anime: "\u756a\u5267",
+    dandanplay_episode: "\u96c6\u6570",
+    dandanplay_count: "\u5f39\u5e55\u6570",
+    dandanplay_refresh: "\u5237\u65b0",
+    dandanplay_search: "\u624b\u52a8\u641c\u7d22",
+    dandanplay_search_go: "\u641c\u7d22",
+    dandanplay_priority: "\u52a0\u8f7d\u4f18\u5148\u7ea7",
+    dandanplay_priority_local: "\u672c\u5730\u4f18\u5148",
+    dandanplay_priority_network: "\u7f51\u7edc\u4f18\u5148",
+    dandanplay_priority_local_only: "\u4ec5\u672c\u5730",
+    dandanplay_priority_network_only: "\u4ec5\u7f51\u7edc",
+    dandanplay_auto_match: "\u81ea\u52a8\u5339\u914d",
+    dandanplay_select_match: "\u7f51\u7edc\u5f39\u5e55",
+    dandanplay_status_idle: "\u672a\u542f\u7528",
+    dandanplay_status_matching: "\u5339\u914d\u4e2d...",
+    dandanplay_status_loading: "\u52a0\u8f7d\u5f39\u5e55\u4e2d...",
+    dandanplay_status_loaded: "\u5df2\u52a0\u8f7d",
+    dandanplay_status_error: "\u9519\u8bef",
+    dandanplay_status_no_match: "\u672a\u627e\u5230\u5339\u914d",
+    dandanplay_status_multiple_matches: "\u8bf7\u9009\u62e9\u5339\u914d"
   }
 };
 
@@ -430,3 +512,225 @@ iina.onMessage("danmaku-file-error", function (data) {
 
 applyI18n();
 iina.postMessage("request-state");
+
+var ddpMatchesExpanded = false;
+
+function ddpUpdateUI() {
+  try {
+    if (ddpError) {
+      ddpError.style.display = (ddpState.status === 'error' || ddpState.status === 'no-match') ? '' : 'none';
+      if (ddpState.error && (ddpState.status === 'error' || ddpState.status === 'no-match')) {
+        ddpError.textContent = ddpState.error;
+      }
+    }
+
+    var hasMatches = ddpState.matches && ddpState.matches.length > 0;
+    if (ddpMatches) ddpMatches.style.display = '';
+    if (ddpMatchesList) {
+      if (hasMatches) {
+        ddpMatchesList.innerHTML = '';
+        for (var i = 0; i < ddpState.matches.length; i++) {
+          (function(match) {
+            var item = document.createElement('div');
+            var isSelected = ddpState.episodeId && String(match.episodeId) === String(ddpState.episodeId);
+            item.className = 'dandanplay-match-item' + (isSelected ? ' selected' : '');
+            item.setAttribute('data-clickable', '');
+            var title = document.createElement('div');
+            title.className = 'dandanplay-match-title';
+            title.textContent = match.animeTitle + ' - ' + match.episodeTitle;
+            item.appendChild(title);
+            item.addEventListener('click', function() {
+              iina.postMessage("dandanplay-select-match", { match: match });
+            });
+            ddpMatchesList.appendChild(item);
+          })(ddpState.matches[i]);
+        }
+        ddpMatchesList.style.display = ddpMatchesExpanded ? '' : 'none';
+      } else {
+        ddpMatchesList.style.display = 'none';
+      }
+    }
+    if (ddpMatchesArrow) ddpMatchesArrow.className = 'toggle-arrow' + (ddpMatchesExpanded ? ' expanded' : '');
+
+    if (ddpPrioritySelect) ddpPrioritySelect.value = ddpState.priority;
+  } catch (e) {}
+}
+
+if (ddpPrioritySelect) {
+  ddpPrioritySelect.addEventListener("change", function () {
+    ddpState.priority = ddpPrioritySelect.value;
+    iina.postMessage("dandanplay-set-priority", { priority: ddpState.priority });
+  });
+}
+
+var ddpMatchesToggle = document.getElementById("dandanplay-matches-toggle");
+var ddpMatchesArrow = document.getElementById("dandanplay-matches-arrow");
+if (ddpMatchesToggle) {
+  ddpMatchesToggle.addEventListener("click", function () {
+    ddpMatchesExpanded = !ddpMatchesExpanded;
+    if (ddpMatchesExpanded && !ddpState.matches && ddpState.status !== 'matching' && ddpState.status !== 'loading') {
+      iina.postMessage("dandanplay-trigger-match");
+    }
+    if (ddpMatchesList) ddpMatchesList.style.display = ddpMatchesExpanded ? '' : 'none';
+    if (ddpMatchesArrow) ddpMatchesArrow.className = 'toggle-arrow' + (ddpMatchesExpanded ? ' expanded' : '');
+  });
+}
+
+if (ddpSearchBtn) {
+  ddpSearchBtn.addEventListener("click", function () {
+    var visible = ddpSearchPanel.style.display !== 'none';
+    ddpSearchPanel.style.display = visible ? 'none' : '';
+    if (!visible && ddpSearchInput) ddpSearchInput.focus();
+  });
+}
+
+var ddpSearchTimer = null;
+var ddpSearchPending = false;
+
+function ddpDoSearch() {
+  var keyword = ddpSearchInput ? ddpSearchInput.value.trim() : '';
+  if (!keyword) return;
+  if (ddpSearchTimer) clearTimeout(ddpSearchTimer);
+  if (!ddpSearchPending && ddpSearchResults) {
+    ddpSearchResults.innerHTML = '<div style="font-size:11px;opacity:0.5;padding:4px">...</div>';
+  }
+  ddpSearchPending = true;
+  ddpSearchTimer = setTimeout(function() {
+    iina.postMessage("dandanplay-search", { keyword: keyword });
+    ddpSearchTimer = null;
+  }, 500);
+}
+
+if (ddpSearchGoBtn) {
+  ddpSearchGoBtn.addEventListener("click", ddpDoSearch);
+}
+
+if (ddpSearchInput) {
+  ddpSearchInput.addEventListener("keydown", function (e) {
+    if (e.key === 'Enter') ddpDoSearch();
+  });
+}
+
+iina.onMessage("dandanplay-status", function (data) {
+  try {
+    if (data.status !== undefined) ddpState.status = data.status;
+    if (data.animeTitle !== undefined) ddpState.animeTitle = data.animeTitle;
+    if (data.episodeTitle !== undefined) ddpState.episodeTitle = data.episodeTitle;
+    if (data.episodeId !== undefined) ddpState.episodeId = data.episodeId;
+    if (data.commentCount !== undefined) ddpState.commentCount = data.commentCount;
+    if (data.error !== undefined) ddpState.error = data.error;
+    if (data.matches !== undefined) ddpState.matches = data.matches;
+    if (data.priority !== undefined) ddpState.priority = data.priority;
+    ddpUpdateUI();
+  } catch (e) {}
+});
+
+iina.onMessage("dandanplay-search-result", function (data) {
+  var parsed = (typeof data === 'string') ? JSON.parse(data) : data;
+  ddpSearchPending = false;
+  try {
+    if (!ddpSearchResults) {
+      return;
+    }
+    ddpSearchResults.innerHTML = '';
+
+    if (parsed.error) {
+      var errEl = document.createElement('div');
+      errEl.className = 'dandanplay-error';
+      errEl.textContent = parsed.error;
+      ddpSearchResults.appendChild(errEl);
+      return;
+    }
+
+    var animes = parsed.animes || [];
+    if (animes.length === 0) {
+      var emptyEl = document.createElement('div');
+      emptyEl.style.cssText = 'font-size:11px;opacity:0.5;padding:4px';
+      emptyEl.textContent = '—';
+      ddpSearchResults.appendChild(emptyEl);
+      return;
+    }
+
+    for (var i = 0; i < animes.length; i++) {
+      (function(anime) {
+        var item = document.createElement('div');
+        item.className = 'dandanplay-search-result-item';
+        item.setAttribute('data-clickable', '');
+
+        var title = document.createElement('div');
+        title.className = 'dandanplay-search-result-title';
+        title.textContent = anime.animeTitle || '—';
+
+        var sub = document.createElement('div');
+        sub.className = 'dandanplay-search-result-episodes';
+        sub.textContent = 'Click to load episodes';
+
+        item.appendChild(title);
+        item.appendChild(sub);
+
+        var epList = null;
+        var epLoading = false;
+        item.addEventListener('click', function () {
+          if (epList) {
+            var visible = epList.style.display !== 'none';
+            epList.style.display = visible ? 'none' : '';
+            return;
+          }
+          if (epLoading) return;
+          epLoading = true;
+          sub.textContent = 'Loading episodes...';
+          iina.postMessage("dandanplay-get-bangumi", { bangumiId: String(anime.animeId), animeTitle: anime.animeTitle });
+        });
+
+        ddpSearchResults.appendChild(item);
+      })(animes[i]);
+    }
+  } catch (e) {
+    ddpSearchResults.innerHTML = '';
+    var errEl = document.createElement('div');
+    errEl.className = 'dandanplay-error';
+    errEl.textContent = 'Render error: ' + e.message;
+    ddpSearchResults.appendChild(errEl);
+  }
+});
+
+iina.onMessage("dandanplay-bangumi-result", function (data) {
+  var parsed = (typeof data === 'string') ? JSON.parse(data) : data;
+  try {
+    if (!ddpSearchResults || parsed.error) return;
+    var animeTitle = parsed.animeTitle;
+    var episodes = parsed.episodes || [];
+
+    var items = ddpSearchResults.querySelectorAll('.dandanplay-search-result-item');
+    for (var i = 0; i < items.length; i++) {
+      (function(item) {
+        var titleEl = item.querySelector('.dandanplay-search-result-title');
+        if (!titleEl || titleEl.textContent !== animeTitle) return;
+
+        var subEl = item.querySelector('.dandanplay-search-result-episodes');
+        if (subEl) subEl.textContent = episodes.length + ' episodes';
+
+        var epList = document.createElement('div');
+        epList.className = 'dandanplay-episode-list';
+        for (var j = 0; j < episodes.length; j++) {
+          (function(ep) {
+            var epItem = document.createElement('div');
+            epItem.className = 'dandanplay-episode-item';
+            epItem.setAttribute('data-clickable', '');
+            epItem.textContent = ep.episodeTitle || ('Episode ' + (j + 1));
+            epItem.addEventListener('click', function (e) {
+              e.stopPropagation();
+              iina.postMessage("dandanplay-select-episode", {
+                episodeId: ep.episodeId,
+                animeTitle: animeTitle,
+                episodeTitle: ep.episodeTitle
+              });
+            });
+            epList.appendChild(epItem);
+          })(episodes[j]);
+        }
+        item.appendChild(epList);
+      })(items[i]);
+    }
+  } catch (e) {}
+});
