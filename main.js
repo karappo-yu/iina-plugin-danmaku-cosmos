@@ -90,6 +90,12 @@ function detectDanmakuType(content) {
   if (!content) return 'bilibili-xml';
   var s = content.trim();
   if (s.charAt(0) === '[') return 'nico-json';
+  if (s.charAt(0) === '{') {
+    try {
+      var obj = JSON.parse(s);
+      if (obj.source === 'dandanplay' && obj.comments) return 'dandanplay';
+    } catch (e) {}
+  }
   if (s.indexOf('<packet') !== -1) return 'nico-xml';
   return 'bilibili-xml';
 }
@@ -135,6 +141,11 @@ function findDanmakuByEpisode(videoUrl) {
     var altDir = videoDir + '/' + altDirNames[i];
     if (file.exists(altDir)) searchDirs.push(altDir);
   }
+  var cacheDir = '';
+  try {
+    cacheDir = iina.utils.resolvePath('@data/danmaku-cache/');
+    if (cacheDir && file.exists(cacheDir)) searchDirs.push(cacheDir);
+  } catch (e) {}
 
   var exactXmlFiles = [];
   var exactJsonFiles = [];
@@ -176,6 +187,19 @@ function findDanmakuByEpisode(videoUrl) {
         relativePath: relativePath,
         type: ext.toUpperCase()
       };
+
+      if (ext === 'json' && dir === cacheDir) {
+        try {
+          var content = file.read(filePath);
+          if (content && content.trim().charAt(0) === '{') {
+            var obj = JSON.parse(content);
+            if (obj.source === 'dandanplay' && obj.comments) {
+              fileInfo.type = 'dandanplay';
+              fileInfo.filename = '🌐 ' + (obj.animeTitle || 'DanDanPlay') + ' - ' + (obj.episodeTitle || '') + '.json';
+            }
+          }
+        } catch (e) {}
+      }
 
       if (isExactMatch) {
         if (ext === 'xml') exactXmlFiles.push(fileInfo); else exactJsonFiles.push(fileInfo);
@@ -596,57 +620,22 @@ function ddpCachePath(episodeId) {
   return '@data/danmaku-cache/' + episodeId + '.json';
 }
 
-function ddpMappingPath() {
-  return '@data/danmaku-cache/file-mapping.json';
-}
-
-function ddpReadFileMapping() {
+function ddpSaveLocalCache(videoPath, episodeId, animeTitle, episodeTitle, converted) {
   try {
-    var path = ddpMappingPath();
-    if (!file.exists(path)) return {};
-    var content = file.read(path);
-    if (!content) return {};
-    return JSON.parse(content);
+    var baseName = videoPath.replace(/.*[/\\]/, '').replace(/\.[^.]+$/, '');
+    var cacheData = {
+      source: 'dandanplay',
+      episodeId: episodeId,
+      animeTitle: animeTitle || '',
+      episodeTitle: episodeTitle || '',
+      cachedAt: Date.now(),
+      comments: converted
+    };
+    file.write('@data/danmaku-cache/' + baseName + '.json', JSON.stringify(cacheData));
+    console.log('[ddp] saved local cache: ' + baseName + '.json');
   } catch (e) {
-    return {};
+    console.log('[ddp] save local cache error: ' + e);
   }
-}
-
-function ddpWriteFileMapping(mapping) {
-  try {
-    file.write(ddpMappingPath(), JSON.stringify(mapping));
-  } catch (e) {}
-}
-
-function ddpGetCachedEpisode(filePath) {
-  if (!filePath) return null;
-  var mapping = ddpReadFileMapping();
-  var entry = mapping[filePath];
-  if (!entry) return null;
-  var cached = ddpReadCache(entry.episodeId);
-  if (!cached || !cached.comments || cached.comments.length === 0) {
-    delete mapping[filePath];
-    ddpWriteFileMapping(mapping);
-    return null;
-  }
-  return entry;
-}
-
-function ddpSaveFileMapping(filePath, episodeId, animeTitle, episodeTitle) {
-  if (!filePath) return;
-  var mapping = ddpReadFileMapping();
-  mapping[filePath] = {
-    episodeId: episodeId,
-    animeTitle: animeTitle || '',
-    episodeTitle: episodeTitle || '',
-    mappedAt: Date.now()
-  };
-  var keys = Object.keys(mapping);
-  if (keys.length > 200) {
-    keys.sort(function(a, b) { return (mapping[a].mappedAt || 0) - (mapping[b].mappedAt || 0); });
-    for (var i = 0; i < keys.length - 100; i++) delete mapping[keys[i]];
-  }
-  ddpWriteFileMapping(mapping);
 }
 
 function ddpReadCache(episodeId) {
@@ -719,14 +708,6 @@ function ddpAutoMatchAndLoad(url) {
   };
   ddpSyncState();
 
-  var cachedEpisode = ddpGetCachedEpisode(path);
-  if (cachedEpisode) {
-    console.log('[ddp] cache hit: filePath=' + path + ' episodeId=' + cachedEpisode.episodeId);
-    var forceLoad = (dandanplayPriority === 'network-first' || dandanplayPriority === 'network-only');
-    ddpLoadComments(cachedEpisode.episodeId, cachedEpisode.animeTitle, cachedEpisode.episodeTitle, forceLoad);
-    return;
-  }
-
   ddpMatchVideo(fileName, path).then(function(res) {
     console.log('[ddp] autoMatch: statusCode=' + res.statusCode);
     var data = ddpParseBody(res);
@@ -761,7 +742,6 @@ function ddpAutoMatchAndLoad(url) {
 
     if (data.isMatched) {
       var match = data.matches[0];
-      ddpSaveFileMapping(path, match.episodeId, match.animeTitle, match.episodeTitle);
       var forceLoad = (dandanplayPriority === 'network-first' || dandanplayPriority === 'network-only');
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, forceLoad);
     } else {
@@ -781,6 +761,8 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
   var virtualPath = 'dandanplay://' + episodeId;
   var displayName = '🌐 ' + (animeTitle || 'DanDanPlay') + ' - ' + (episodeTitle || '');
   danmakuCache[virtualPath] = encodeContent(JSON.stringify(converted));
+
+  ddpSaveLocalCache(currentVideoUrl || '', episodeId, animeTitle, episodeTitle, converted);
 
   var alreadyExists = false;
   var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles);
@@ -937,16 +919,26 @@ function loadDanmakuForVideo(url) {
 
   var allMatched = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles);
   var hasLocal = allMatched.length > 0;
+  var cachedDDPFile = null;
+  for (var i = 0; i < danmakuFileList.jsonFiles.length; i++) {
+    if (danmakuFileList.jsonFiles[i].type === 'dandanplay') { cachedDDPFile = danmakuFileList.jsonFiles[i]; break; }
+  }
 
   if (dandanplayPriority === 'network-first') {
-    ddpAutoMatchAndLoad(url);
-    if (!hasLocal) {
-      danmakuNotFound();
+    if (cachedDDPFile) {
+      loadLocalDanmaku(cachedDDPFile);
+    } else {
+      ddpAutoMatchAndLoad(url);
+      if (!hasLocal) danmakuNotFound();
     }
   } else if (dandanplayPriority === 'network-only') {
-    danmakuNotFound();
-    if (overlayReady) overlay.postMessage("clear-danmaku", {});
-    ddpAutoMatchAndLoad(url);
+    if (cachedDDPFile) {
+      loadLocalDanmaku(cachedDDPFile);
+    } else {
+      danmakuNotFound();
+      if (overlayReady) overlay.postMessage("clear-danmaku", {});
+      ddpAutoMatchAndLoad(url);
+    }
   } else if (dandanplayPriority === 'local-first') {
     if (hasLocal) {
       var firstFile = allMatched[0];
@@ -974,10 +966,19 @@ function loadLocalDanmaku(fileInfo) {
     danmakuNotFound();
     return;
   }
-  var encodedContent = encodeContent(xmlContent);
-  danmakuCache[fileInfo.path] = encodedContent;
 
   var fileType = detectDanmakuType(xmlContent);
+  var contentToSend = xmlContent;
+  if (fileType === 'dandanplay') {
+    try {
+      var obj = JSON.parse(xmlContent);
+      if (obj.comments) contentToSend = JSON.stringify(obj.comments);
+    } catch (e) {}
+  }
+
+  var encodedContent = encodeContent(contentToSend);
+  danmakuCache[fileInfo.path] = encodedContent;
+
   updateDanmakuStatus({ fileType: fileType, fileName: fileInfo.filename, relativePath: fileInfo.relativePath, isLoaded: true });
 
   sidebar.postMessage("danmaku-file-list", danmakuFileList);
@@ -1363,8 +1364,6 @@ function registerSidebarHandlers() {
   sidebar.onMessage("dandanplay-select-match", function (data) {
     var match = data.match;
     if (match && match.episodeId) {
-      var path = filePathFromUrl(currentVideoUrl);
-      ddpSaveFileMapping(path, match.episodeId, match.animeTitle, match.episodeTitle);
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, true);
     }
   });
