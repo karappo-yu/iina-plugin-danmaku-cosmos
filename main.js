@@ -170,13 +170,9 @@ function findDanmakuByEpisode(videoUrl) {
     }
   }
 
-  if (exactXmlFiles.length > 0 || exactJsonFiles.length > 0) {
-    return { xmlFiles: exactXmlFiles, jsonFiles: exactJsonFiles, unknownFiles: unknownFiles };
-  }
-  if (prefixXmlFiles.length > 0 || prefixJsonFiles.length > 0) {
-    return { xmlFiles: prefixXmlFiles, jsonFiles: prefixJsonFiles, unknownFiles: unknownFiles };
-  }
-  return { xmlFiles: epNumXmlFiles, jsonFiles: epNumJsonFiles, unknownFiles: unknownFiles };
+  var xmlFiles = exactXmlFiles.concat(prefixXmlFiles).concat(epNumXmlFiles);
+  var jsonFiles = exactJsonFiles.concat(prefixJsonFiles).concat(epNumJsonFiles);
+  return { xmlFiles: xmlFiles, jsonFiles: jsonFiles, unknownFiles: unknownFiles };
 }
 
 function encodeContent(str) {
