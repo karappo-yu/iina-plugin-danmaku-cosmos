@@ -2,7 +2,9 @@
 
 [日本語](#日本語) / [中文](#中文) / [English](#english)
 
-IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconicomments)（已 fork 增强）。支持 Niconico（XML / V1 JSON）和 Bilibili（XML）三种格式，提供 CSS 和 Canvas 双渲染模式。
+IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconicomments)（已 fork 增强）。这是一款完全 niconico 风格的弹幕插件，专注于 Niconico 格式（XML / V1 JSON）的渲染，同时提供 Bilibili XML 的基础支持。CSS 和 Canvas 双渲染模式。
+
+> **注意**：本插件以 niconico 弹幕风格为核心设计，对 Bilibili 等中文弹幕格式的支持有限。中文弹幕将以 niconico 风格渲染，不支持 Bilibili 特有的高级弹幕（mode 7）、代码弹幕（mode 8）、BAS 弹幕（mode 9）等功能。
 
 ---
 
@@ -17,7 +19,8 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 ### 功能特性
 
-- **三种格式支持**：Niconico XML、Niconico V1 JSON、Bilibili XML
+- **Niconico 格式完整支持**：Niconico XML、Niconico V1 JSON
+- **Bilibili XML 基础支持**：普通滚动弹幕、顶部/底部固定弹幕（以 niconico 风格渲染）
 - **双渲染模式**：
   - **CSS 模式**：利用 WebKit GPU 合成加速（`transform` + `will-change`），在 IINA 的 WKWebView 环境下流畅度远超 Canvas
   - **Canvas 模式**：基于魔改 niconicomments（已 fork 增加 CSS 渲染器），支持 Auto / HTML5 / Flash 三种模式
@@ -55,6 +58,7 @@ Auto、HTML5、Flash 均为 Canvas 渲染，使用 niconicomments 库的渲染�
 
 ### 注意事项
 
+- 本插件以 niconico 弹幕风格为核心，Bilibili 等中文弹幕将以 niconico 风格渲染，不支持 Bilibili 高级弹幕、代码弹幕、BAS 弹幕等特有功能
 - CSS 模式下字符画（コメントアート）的垂直位置可能与 Canvas 模式略有差异
 - Canvas 模式下字符画在 IINA 的 WebKit 渲染中可能出现错位（Safari canvas 2D 无 GPU 加速）
 - 文件名包含特殊字符（如 `[`、`]`）可能导致自动加载失败
@@ -73,7 +77,8 @@ Auto、HTML5、Flash 均为 Canvas 渲染，使用 niconicomments 库的渲染�
 
 ### 機能
 
-- **3フォーマット対応**：Niconico XML、Niconico V1 JSON、Bilibili XML
+- **Niconico フォーマット完全対応**：Niconico XML、Niconico V1 JSON
+- **Bilibili XML 基本対応**：通常スクロールコメント、上部/下部固定コメント（niconico スタイルで描画）
 - **デュアル描画モード**：
   - **CSS モード**：WebKit GPU 合成加速（`transform` + `will-change`）により、IINA の WKWebView で Canvas より滑らかに描画
   - **Canvas モード**：改造 niconicomments（CSS レンダラー追加版 fork）、Auto / HTML5 / Flash モード対応
@@ -122,7 +127,8 @@ Auto・HTML5・Flash はいずれも Canvas 描画で、niconicomments ライブ
 
 ### Features
 
-- **Three format support**: Niconico XML, Niconico V1 JSON, Bilibili XML
+- **Full Niconico format support**: Niconico XML, Niconico V1 JSON
+- **Basic Bilibili XML support**: Normal scrolling, top/bottom fixed comments (rendered in niconico style)
 - **Dual rendering modes**:
   - **CSS mode**: Leverages WebKit GPU compositing (`transform` + `will-change`) for significantly smoother rendering in IINA's WKWebView
   - **Canvas mode**: Based on a forked [niconicomments](https://github.com/karappo-yu/niconicomments) (with CSS renderer added), with Auto / HTML5 / Flash modes
@@ -160,6 +166,7 @@ Automatically searches in the same directory with this priority:
 
 ### Notes
 
+- This plugin is designed around the niconico comment style. Bilibili and other Chinese danmaku formats have limited support — they are rendered in niconico style, and Bilibili-specific features like advanced comments (mode 7), scripting comments (mode 8), and BAS comments (mode 9) are not supported
 - Comment Art (CA) vertical positioning may differ slightly between CSS and Canvas modes
 - Canvas mode CA may appear misaligned in IINA's WebKit renderer (Safari canvas 2D lacks GPU acceleration)
 - Filenames with special characters (like `[`, `]`) may cause auto-load to fail
