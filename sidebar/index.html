@@ -52,7 +52,13 @@
           <input type="text" id="dandanplay-search-input" data-clickable placeholder="Anime title..." />
           <button id="dandanplay-search-go-btn" class="danmaku-file-action-btn" data-clickable data-i18n="dandanplay_search_go">Go</button>
         </div>
-        <div id="dandanplay-search-results"></div>
+        <div id="dandanplay-search-results" style="display:none">
+          <div class="toggle-row" id="dandanplay-search-results-toggle" data-clickable style="cursor:pointer;display:none;margin-top:8px">
+            <span class="section-title" id="dandanplay-search-results-header">搜索结果</span>
+            <span class="toggle-arrow" id="dandanplay-search-results-arrow" style="font-size:10px;opacity:0.5">▶</span>
+          </div>
+          <div id="dandanplay-search-results-list"></div>
+        </div>
       </div>
     </div>
 

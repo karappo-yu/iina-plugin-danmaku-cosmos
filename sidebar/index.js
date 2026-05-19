@@ -30,7 +30,11 @@ var ddpSearchBtn = document.getElementById("dandanplay-search-btn");
 var ddpSearchPanel = document.getElementById("dandanplay-search-panel");
 var ddpSearchInput = document.getElementById("dandanplay-search-input");
 var ddpSearchGoBtn = document.getElementById("dandanplay-search-go-btn");
-var ddpSearchResults = document.getElementById("dandanplay-search-results");
+var ddpSearchResults = document.getElementById("dandanplay-search-results-list");
+var ddpSearchResultsToggle = document.getElementById("dandanplay-search-results-toggle");
+var ddpSearchResultsHeader = document.getElementById("dandanplay-search-results-header");
+var ddpSearchResultsArrow = document.getElementById("dandanplay-search-results-arrow");
+var ddpSearchResultsWrapper = document.getElementById("dandanplay-search-results");
 var ddpAutoNetwork = document.getElementById("ddp-auto-network");
 
 var ddpState = {
@@ -589,6 +593,14 @@ if (ddpSearchBtn) {
   });
 }
 
+if (ddpSearchResultsToggle) {
+  ddpSearchResultsToggle.addEventListener("click", function () {
+    var hidden = ddpSearchResults.style.display === 'none';
+    ddpSearchResults.style.display = hidden ? '' : 'none';
+    if (ddpSearchResultsArrow) ddpSearchResultsArrow.textContent = hidden ? '\u25BC' : '\u25B6';
+  });
+}
+
 var ddpSearchTimer = null;
 var ddpSearchPending = false;
 
@@ -597,9 +609,16 @@ function ddpDoSearch() {
   iina.postMessage("sidebar-log", { msg: 'ddpDoSearch called, keyword="' + keyword + '"' });
   if (!keyword) return;
   if (ddpSearchTimer) clearTimeout(ddpSearchTimer);
-  if (!ddpSearchPending && ddpSearchResults) {
-    ddpSearchResults.innerHTML = '<div style="font-size:11px;opacity:0.5;padding:4px">...</div>';
+  if (ddpSearchResults) {
+    ddpSearchResults.innerHTML = '';
+    if (ddpSearchResultsWrapper) ddpSearchResultsWrapper.style.display = '';
+    if (ddpSearchResultsToggle) ddpSearchResultsToggle.style.display = 'none';
+    var loadingEl = document.createElement('div');
+    loadingEl.style.cssText = 'font-size:11px;opacity:0.5;padding:4px';
+    loadingEl.textContent = '...';
+    ddpSearchResults.appendChild(loadingEl);
   }
+  if (ddpSearchResultsArrow) ddpSearchResultsArrow.textContent = '\u25B6';
   ddpSearchPending = true;
   ddpSearchTimer = setTimeout(function() {
     iina.postMessage("sidebar-log", { msg: 'sending dandanplay-search, keyword="' + keyword + '"' });
@@ -642,9 +661,11 @@ iina.onMessage("dandanplay-search-result", function (data) {
       return;
     }
     ddpSearchResults.innerHTML = '';
+    if (ddpSearchResultsWrapper) ddpSearchResultsWrapper.style.display = '';
 
     if (data && data.error) {
       iina.postMessage("sidebar-log", { msg: 'error in result: ' + data.error });
+      if (ddpSearchResultsToggle) ddpSearchResultsToggle.style.display = 'none';
       var errEl = document.createElement('div');
       errEl.className = 'dandanplay-error';
       errEl.textContent = data.error;
@@ -655,12 +676,18 @@ iina.onMessage("dandanplay-search-result", function (data) {
     var animes = (data && data.animes) || [];
     iina.postMessage("sidebar-log", { msg: 'rendering ' + animes.length + ' animes, childCount before=' + ddpSearchResults.childElementCount + ' html="' + ddpSearchResults.innerHTML.substring(0, 100) + '"' });
     if (animes.length === 0) {
+      if (ddpSearchResultsToggle) ddpSearchResultsToggle.style.display = 'none';
       var emptyEl = document.createElement('div');
       emptyEl.style.cssText = 'font-size:11px;opacity:0.5;padding:4px';
-      emptyEl.textContent = '—';
+      emptyEl.textContent = '\u2014';
       ddpSearchResults.appendChild(emptyEl);
       return;
     }
+
+    if (ddpSearchResultsHeader) ddpSearchResultsHeader.textContent = '\u641C\u7D22\u7ED3\u679C (' + animes.length + ')';
+    if (ddpSearchResultsArrow) ddpSearchResultsArrow.textContent = '\u25BC';
+    if (ddpSearchResultsToggle) ddpSearchResultsToggle.style.display = '';
+    ddpSearchResults.style.display = '';
 
     for (var i = 0; i < animes.length; i++) {
       (function(anime) {
@@ -670,7 +697,7 @@ iina.onMessage("dandanplay-search-result", function (data) {
 
         var title = document.createElement('div');
         title.className = 'dandanplay-search-result-title';
-        title.textContent = anime.animeTitle || '—';
+        title.textContent = anime.animeTitle || '\u2014';
 
         var sub = document.createElement('div');
         sub.className = 'dandanplay-search-result-episodes';
@@ -679,15 +706,14 @@ iina.onMessage("dandanplay-search-result", function (data) {
         item.appendChild(title);
         item.appendChild(sub);
 
-        var epList = null;
         var epLoading = false;
         item.addEventListener('click', function () {
           if (item._epList) {
             item._epList.style.display = item._epList.style.display === 'none' ? '' : 'none';
             return;
           }
-          if (item._epLoading) return;
-          item._epLoading = true;
+          if (epLoading) return;
+          epLoading = true;
           sub.textContent = 'Loading episodes...';
           iina.postMessage("dandanplay-get-bangumi", { bangumiId: String(anime.animeId), animeTitle: anime.animeTitle });
         });
