@@ -5,6 +5,7 @@
 html {
   margin: 0;
   padding: 0;
+  overflow-y: auto;
 }
 
 body {
@@ -15,6 +16,11 @@ body {
     Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
   color: #1f2023;
   background: none;
+  overflow-y: auto;
+}
+
+body::-webkit-scrollbar {
+  display: none;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -453,6 +459,16 @@ small,
   opacity: 0.7;
 }
 
+.toggle-arrow {
+  display: inline-block;
+  transition: transform 0.2s;
+  font-size: 10px;
+}
+
+.toggle-arrow.expanded {
+  transform: rotate(90deg);
+}
+
 .danmaku-file-unknown-toggle .toggle-arrow {
   display: inline-block;
   transition: transform 0.2s;
@@ -522,4 +538,129 @@ select:focus {
     background: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.2);
   }
+}
+
+.dandanplay-error {
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.08);
+  border-radius: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .dandanplay-error {
+    color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.08);
+  }
+}
+
+.dandanplay-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.dandanplay-search-input-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.dandanplay-search-input-row input[type="text"] {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 4px;
+  background: rgba(128, 128, 128, 0.08);
+  color: inherit;
+  outline: none;
+}
+
+.dandanplay-search-input-row input[type="text"]:focus {
+  border-color: #007aff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .dandanplay-search-input-row input[type="text"] {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+}
+
+.dandanplay-search-result-item,
+.dandanplay-match-item {
+  padding: 6px 8px;
+  margin-top: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  background: rgba(128, 128, 128, 0.06);
+  transition: background 0.15s;
+}
+
+.dandanplay-search-result-item:hover,
+.dandanplay-match-item:hover {
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.dandanplay-match-item.selected {
+  background: rgba(0, 122, 255, 0.12);
+  border-left: 2px solid #007aff;
+}
+
+#dandanplay-matches-list {
+  overflow: hidden;
+}
+
+.dandanplay-search-result-title,
+.dandanplay-match-title {
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.dandanplay-match-type-label {
+  opacity: 0.5;
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+.dandanplay-search-result-episodes,
+.dandanplay-match-sub {
+  opacity: 0.5;
+  font-size: 10px;
+}
+
+.dandanplay-episode-item {
+  padding: 3px 8px 3px 16px;
+  margin-top: 2px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  opacity: 0.8;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.dandanplay-episode-item:hover {
+  background: rgba(0, 122, 255, 0.1);
+  opacity: 1;
+}
+
+.switch-small {
+  width: 36px;
+  height: 22px;
+}
+
+.switch-small .switch-slider:before {
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+}
+
+.switch-small input:checked + .switch-slider:before {
+  transform: translateX(14px);
 }

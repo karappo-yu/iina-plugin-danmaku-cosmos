@@ -17,6 +17,13 @@
           <span class="switch-slider"></span>
         </label>
       </div>
+      <div class="toggle-row" style="margin-top:6px">
+        <span class="toggle-label">自动加载网络弹幕</span>
+        <label class="switch" data-clickable>
+          <input type="checkbox" id="ddp-auto-network" checked />
+          <span class="switch-slider"></span>
+        </label>
+      </div>
       <div id="danmaku-file-list-section" class="danmaku-file-list-section">
         <div id="danmaku-file-list-container"></div>
         <div class="danmaku-file-list-footer">
@@ -24,6 +31,33 @@
           <div class="danmaku-file-list-actions">
             <button id="danmaku-file-add-btn" class="danmaku-file-action-btn" data-i18n="file_add">Add</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="dandanplay-section">
+      <div id="dandanplay-error" class="dandanplay-error" style="display:none"></div>
+      <div id="dandanplay-matches">
+        <div class="toggle-row" id="dandanplay-matches-toggle" data-clickable style="cursor:pointer">
+          <span class="section-title" data-i18n="dandanplay_select_match">Network Danmaku</span>
+          <span class="toggle-arrow" id="dandanplay-matches-arrow" style="font-size:10px;opacity:0.5">▶</span>
+        </div>
+        <div id="dandanplay-matches-list" style="display:none"></div>
+      </div>
+      <div class="dandanplay-actions">
+        <button id="dandanplay-search-btn" class="danmaku-file-action-btn" data-i18n="dandanplay_search">Search</button>
+      </div>
+      <div id="dandanplay-search-panel" style="display:none">
+        <div class="dandanplay-search-input-row">
+          <input type="text" id="dandanplay-search-input" data-clickable placeholder="Anime title..." />
+          <button id="dandanplay-search-go-btn" class="danmaku-file-action-btn" data-clickable data-i18n="dandanplay_search_go">Go</button>
+        </div>
+        <div id="dandanplay-search-results" style="display:none">
+          <div class="toggle-row" id="dandanplay-search-results-toggle" data-clickable style="cursor:pointer;display:none;margin-top:8px">
+            <span class="section-title" id="dandanplay-search-results-header">搜索结果</span>
+            <span class="toggle-arrow" id="dandanplay-search-results-arrow" style="font-size:10px;opacity:0.5">▶</span>
+          </div>
+          <div id="dandanplay-search-results-list"></div>
         </div>
       </div>
     </div>
@@ -50,14 +84,12 @@
         <span id="advanced-arrow" style="font-size:10px;opacity:0.5">▶</span>
       </div>
       <div id="advanced-content" style="display:none">
-        <div class="control-row" style="margin-top:8px">
-          <span class="toggle-label" data-i18n="canvas_mode_label">Render Mode</span>
-          <select id="canvas-mode-select" data-clickable style="margin-left:auto">
-            <option value="default" data-i18n="canvas_mode_default">Canvas Auto</option>
-            <option value="css" data-i18n="canvas_mode_css">CSS Auto</option>
-            <option value="html5" data-i18n="canvas_mode_html5">Canvas HTML5</option>
-            <option value="flash" data-i18n="canvas_mode_flash">Canvas Flash</option>
-          </select>
+        <div class="toggle-row" style="margin-top:10px">
+          <span class="toggle-label">使用 canvas 渲染</span>
+          <label class="switch" data-clickable>
+            <input type="checkbox" id="canvas-renderer-toggle" />
+            <span class="switch-slider"></span>
+          </label>
         </div>
         <h3 class="section-title" data-i18n="comment_limit" style="margin-top:10px">Comment Limit</h3>
         <div class="control-row">

@@ -2,7 +2,12 @@
 
 ## Overview
 
-An IINA danmaku plugin supporting Niconico (XML / V1 JSON) and Bilibili (XML) formats with dual CSS and Canvas rendering modes.
+An IINA danmaku plugin supporting Niconico (XML / V1 JSON), Bilibili (XML), and **Dandanplay network danmaku** with dual CSS and Canvas rendering modes. This is a niconico-style danmaku plugin — Bilibili and other Chinese formats have limited support and are rendered in niconico style.
+
+## Reference Links
+
+- **Dandanplay API (Swagger)**: https://api.dandanplay.net/swagger/index.html#/
+- **IINA plugin API docs**: https://docs.iina.io/index.html
 
 ## Tech Constraints
 
@@ -10,13 +15,14 @@ An IINA danmaku plugin supporting Niconico (XML / V1 JSON) and Bilibili (XML) fo
 - **Rendering engine**: IINA uses Safari (WebKit) internally
 - **Language**: Plain vanilla JavaScript (ES5/ES6 mixed), no TypeScript
 - **Modularity**: Overlay files are loaded via `<script>` tags in order, sharing global functions and variables through the `window` object. `main.js` (plugin entry) and `sidebar/` run in separate contexts.
+- **Network access**: Requires `permissions: ["network-request"]` and `allowedDomains` in `Info.json`. Use `iina.http` module (not browser `fetch`).
 
 ## Project Structure
 
 ```
 Danmaku Cosmos/
 ├── Info.json                 # Plugin metadata & preference defaults
-├── main.js                   # Plugin entry: IINA API, file loading, message relay
+├── main.js                   # Plugin entry: IINA API, file loading, message relay, DDP integration
 ├── global.js                 # Global entry (logging only)
 ├── preferences.html          # IINA preference page (CSS font family/weight/stroke)
 ├── overlay/                  # Danmaku render layer (WebView container)
@@ -42,7 +48,9 @@ Danmaku Cosmos/
 └── .github/workflows/       # Release packaging
 ```
 
-## Dual Rendering Architecture
+## Unified Rendering Architecture
+
+All danmaku formats (Niconico XML, Niconico V1 JSON, Bilibili XML, DDP converted) are rendered through the **niconicomments** library. The plugin does not have its own CSS renderer for nico formats — the CSS renderer is integrated into the forked niconicomments library. For non-nico formats (XML, Bilibili, DDP), the plugin's own renderer (`renderer.js` + `lane.js`) is used.
 
 ### CSS Mode (niconicomments CSSRenderer)
 
@@ -65,7 +73,40 @@ Based on the original niconicomments library. Supports Auto / HTML5 / Flash mode
 
 ### CSS Mode (plugin's own renderer.js)
 
-The plugin also has its own CSS rendering system (`renderer.js`, `lane.js`, etc.) for non-Niconico V1 JSON formats (Niconico XML, Bilibili XML). This is separate from the niconicomments CSSRenderer.
+The plugin has its own CSS rendering system (`renderer.js`, `lane.js`) for non-Niconico V1 JSON formats (Niconico XML, Bilibili XML, DDP converted format). Uses object pool pattern with CSS animations.
+
+## Dandanplay Network Danmaku
+
+### Auto-Match Flow
+
+1. **Hash exact match** (`/api/v2/match`) → `isMatched=true` → auto-load
+2. **Filename fuzzy match** → `isMatched=false` → show candidate list in sidebar
+3. **Manual search** → user searches by anime name → selects episode
+
+### Cache
+
+- Single hash-keyed cache file per video: `@data/danmaku-cache/{pathHash}.json`
+- Contains `{episodeId, animeTitle, episodeTitle, cachedAt, comments}` (converted nico format)
+- 24h TTL; each new DDP load overwrites previous cache for same video path
+
+### Priority (auto-network toggle)
+
+| Setting | Behavior |
+|---------|----------|
+| **ON** (`dandanplayAutoNetwork=true`) | Network-first: auto-load DDP cache/network, background auto-match |
+| **OFF** (`dandanplayAutoNetwork=false`) | Local-first: load local files, DDP cache shown in list but not auto-loaded |
+
+### Render Mode Toggle
+
+OFF (default) = CSS Auto, ON = Canvas Auto. HTML5/Flash modes removed.
+
+### DDP Comment Conversion
+
+DDP `p` format: `time,mode,color,userId` → nico-like format with `_dateSec: 1767196800` (2026-01-01) for correct Canvas Auto HTML5 detection.
+
+### API Credentials
+
+Hardcoded in `main.js:25-26`. No user configuration needed.
 
 ## Architecture Key Conventions
 
@@ -87,6 +128,10 @@ All communication uses `postMessage` / `onMessage` across three channels:
 2. `main.js` pushes the full current state in the `request-state` callback
 3. Subsequent state changes use event-driven incremental `sidebar.postMessage` updates
 4. Never assume `main.js` can push messages to sidebar at initialization time
+
+**Backtick sanitization**: U+0060 backtick in any string causes IINA IPC to silently drop `sidebar.postMessage` messages. Always sanitize with `.replace(/[`\u2018\u2019]/g, "'")`.
+
+**sidebar.postMessage must receive plain objects**, not `JSON.stringify()` strings.
 
 ### Overlay Script Load Order (Immutable)
 
@@ -111,26 +156,32 @@ Later scripts depend on functions mounted on `window` by earlier scripts (e.g., 
   - `_lane` / `_offsetLevel` / `_forced` — lane allocation results (assigned at runtime)
   - `font` / `invisible` / `live` / `full` / `ender` / `patissier` / `durationSec` etc.
 
-- **Communication encoding**: Danmaku XML/JSON content is encoded with `encodeURIComponent()` (via the `encodeContent` function) in `main.js` before sending to overlay, then decoded with `decodeURIComponent()` on the overlay side. Do not change this encoding protocol unless replacing it entirely (both ends must stay in sync).
+- **Communication encoding**: Danmaku content is encoded with `encodeURIComponent()` in `main.js` before sending to overlay, then decoded with `decodeURIComponent()` on the overlay side. Do not change this encoding protocol without updating both ends.
 
-### CSS Mode (niconicomments) Render Flow
+### Render Flow
 
 1. `time-update` fires → `canvasRenderLoop` calls `niconiComments.drawCanvas(vpos)`
-2. `drawCanvas` with `cssRenderer` calls `cssRenderer.updateComments(timeline, vpos, frameActiveState)`
-3. `updateComments` diffs visible comments vs `activeElements`, creates/recycles DOM elements
-4. CSS animations drive movement; Web Animations API handles pause/resume
-5. When video pauses, `pauseCSS()` pauses all active animations; `resumeCSS()` resumes them
+2. **CSS mode**: `drawCanvas` with `cssRenderer` calls `cssRenderer.updateComments(timeline, vpos, frameActiveState)` — diffs visible comments vs active elements, creates/recycles DOM
+3. **Canvas mode**: `drawCanvas` renders directly to `<canvas>`
 
-### CSS Mode (plugin's own) Render Flow
+For plugin's own CSS renderer (non-nico formats):
+- `time-update` → `main.js` scans `allDanmaku` for entries ≤ current time
+- `createDanmaku()` from object pool → lane allocation → CSS animation
+- `animationend` → element returns to pool
 
-1. `time-update` fires on each time change → `main.js` scans `allDanmaku` for entries ≤ current time
-2. `createDanmaku()` gets a DOM element from the object pool (`danmakuPool`), applies styles
-3. Lane allocation (`lane.js`): tries Level 0 first, then Level 1/2, falls back to forced
-4. CSS animations drive movement; `animationend` event triggers element return to the pool
+### Danmaku File Auto-Loading
 
-### Canvas Mode
+1. Same-name JSON → 2. Same-name XML → 3. Danmaku folder/same-name → 4. Danmaku folder/episode number
 
-Based on the `niconicomments` third-party library. Only available for Niconico V1 JSON format. Not recommended to modify Canvas mode internals.
+DDP cache entries (type `DDP`) are added to file list separately and never discovered as local files.
+
+### Format Detection
+
+`detectDanmakuType()` in `main.js` inspects file content to determine format:
+- Niconico V1 JSON: `{ "thread": ... }` structure
+- Niconico XML: `<packet>` root element
+- Bilibili XML: `<d p="...">` elements
+- Unknown: falls back to Bilibili XML parsing
 
 ## Coding Conventions
 
@@ -138,16 +189,22 @@ Based on the `niconicomments` third-party library. Only available for Niconico V
 - **Naming**: camelCase. Private/run-time fields prefix with `_` (e.g., `_layer`, `_lane`)
 - **DOM operations**: Danmaku DOM elements **must** be obtained from the object pool (`getDanmakuElement()`) and returned via `recycleDanmakuElement()`. Do NOT use `createElement` / `removeChild` directly.
 - **Communication**: `iina.postMessage(key, value)` / `iina.onMessage(key, callback)` is the standard pattern. Keep naming consistent.
-- **Danmaku toggle**: Use the shared `toggleDanmaku()` or `ensureDanmakuEnabled()` functions. Do not manually repeat `preferences.set` + `overlay.postMessage` logic.
+- **Danmaku toggle**: Use `toggleDanmaku()` or `ensureDanmakuEnabled()`. Do not manually repeat `preferences.set` + `overlay.postMessage` logic.
+- **Network requests**: Use `iina.http` module. DDP API uses `X-AppId`/`X-AppSecret` header auth (hardcoded, no user config).
+- **File system**: Use `iina.file` module. Paths use `@data/` prefix for plugin data directory.
+- **Backtick sanitization**: Always sanitize strings with U+0060 backtick before `sidebar.postMessage`.
 
 ## Known Limitations
 
 - `canvas.width = 1920; canvas.height = 1080` is hardcoded and does not adapt to window aspect ratio
-- Filenames containing `[` or `]` may cause auto-load to fail (regex matching in `extractEpisodeNumber`)
+- Filenames containing `[` or `]` may cause auto-load to fail
 - Restoring from window minimize triggers a full `handleSeek` re-render
 - Canvas mode does not support CSS-mode-specific settings (font scale, scroll duration, blocking, lane limits)
-- CSS mode (niconicomments) Comment Art vertical positioning may differ slightly from Canvas mode
+- CSS mode Comment Art vertical positioning may differ slightly from Canvas mode
 - `preferences.sync()` is called on every change with no debounce
+- Bilibili advanced danmaku (mode 7), scripting (mode 8), and BAS (mode 9) are not supported
+- DDP cache only stores the last loaded episode per video (hash overwrite)
+- Backtick U+0060 in sidebar messages causes IINA IPC to silently drop the entire message
 
 ## Avoid
 
@@ -157,6 +214,7 @@ Based on the `niconicomments` third-party library. Only available for Niconico V
 - ❌ Do not change the `<script>` loading order in the overlay HTML
 - ❌ Do not use `console.log` for high-frequency output in production code (especially in `time-update` callbacks)
 - ❌ Do not create or remove danmaku DOM elements directly — always use the object pool
+- ❌ Do not send `JSON.stringify` payloads to `sidebar.postMessage` — always send plain objects
 
 ## Related Repository
 

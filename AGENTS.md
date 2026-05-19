@@ -2,7 +2,12 @@
 
 ## Overview
 
-An IINA danmaku plugin supporting Niconico (XML / V1 JSON) and Bilibili (XML) formats with dual CSS and Canvas rendering modes.
+An IINA danmaku plugin supporting Niconico (XML / V1 JSON), Bilibili (XML), and **Dandanplay network danmaku** with dual CSS and Canvas rendering modes.
+
+## Reference Links
+
+- **Dandanplay API (Swagger)**: https://api.dandanplay.net/swagger/index.html#/
+- **IINA plugin API docs**: https://docs.iina.io/index.html
 
 ## Tech Constraints
 
@@ -10,13 +15,14 @@ An IINA danmaku plugin supporting Niconico (XML / V1 JSON) and Bilibili (XML) fo
 - **Rendering engine**: IINA uses Safari (WebKit) internally
 - **Language**: Plain vanilla JavaScript (ES5/ES6 mixed), no TypeScript
 - **Modularity**: Overlay files are loaded via `<script>` tags in order, sharing global functions and variables through the `window` object. `main.js` (plugin entry) and `sidebar/` run in separate contexts.
+- **Network access**: Requires `permissions: ["network-request"]` and `allowedDomains` in `Info.json`. Use `iina.http` module.
 
 ## Project Structure
 
 ```
 Danmaku Cosmos/
 ├── Info.json                 # Plugin metadata & preference defaults
-├── main.js                   # Plugin entry: IINA API, file loading, message relay
+├── main.js                   # Plugin entry: IINA API, file loading, message relay, DDP integration
 ├── global.js                 # Global entry (logging only)
 ├── preferences.html          # IINA preference page (CSS font family/weight/stroke)
 ├── overlay/                  # Danmaku render layer (WebView container)
@@ -65,7 +71,46 @@ Based on the original niconicomments library. Supports Auto / HTML5 / Flash mode
 
 ### CSS Mode (plugin's own renderer.js)
 
-The plugin also has its own CSS rendering system (`renderer.js`, `lane.js`, etc.) for non-Niconico V1 JSON formats (Niconico XML, Bilibili XML). This is separate from the niconicomments CSSRenderer.
+The plugin also has its own CSS rendering system (`renderer.js`, `lane.js`, etc.) for non-Niconico V1 JSON formats (Niconico XML, Bilibili XML, DDP converted format). This is separate from the niconicomments CSSRenderer.
+
+## Dandanplay Network Danmaku
+
+### Auto-Match Flow
+
+1. **Hash exact match** (`/api/v2/match`) → `isMatched=true` → auto-load
+2. **Filename fuzzy match** → `isMatched=false` → show candidate list in sidebar
+3. **Manual search** → user searches by anime name → selects episode
+
+### Cache
+
+- Single hash-keyed cache file per video: `@data/danmaku-cache/{pathHash}.json`
+- Contains `{episodeId, animeTitle, episodeTitle, cachedAt, comments}` (converted nico format)
+- 24h TTL; each new DDP load overwrites previous cache for same video path
+- Cache is NOT discoverable as a local file — only loaded via `ddpReadVideoCache()`
+
+### Priority (auto-network toggle)
+
+| Setting | Behavior |
+|---------|----------|
+| **ON** (`dandanplayAutoNetwork=true`) | Network-first: auto-load DDP cache/network, background auto-match |
+| **OFF** (`dandanplayAutoNetwork=false`) | Local-first: load local files, DDP cache shown in list but not auto-loaded |
+
+### Render Mode Toggle
+
+| Setting | Mode |
+|---------|------|
+| **OFF** (default) | CSS Auto (`'css'`) |
+| **ON** | Canvas Auto (`'default'`) |
+
+HTML5 and Flash modes have been removed.
+
+### DDP Comment Conversion
+
+DDP `p` format: `time,mode,color,userId` → converted to nico-like internal format with `_dateSec: 1767196800` (2026-01-01) for correct Canvas Auto HTML5 detection.
+
+### API Credentials
+
+Hardcoded in `main.js:25-26` as fallback defaults. No user configuration needed.
 
 ## Architecture Key Conventions
 
@@ -87,6 +132,10 @@ All communication uses `postMessage` / `onMessage` across three channels:
 2. `main.js` pushes the full current state in the `request-state` callback
 3. Subsequent state changes use event-driven incremental `sidebar.postMessage` updates
 4. Never assume `main.js` can push messages to sidebar at initialization time
+
+**Backtick sanitization**: U+0060 backtick in any string causes IINA IPC to silently drop `sidebar.postMessage` messages. Always sanitize with `.replace(/[`\u2018\u2019]/g, "'")` before sending.
+
+**sidebar.postMessage must receive plain objects**, not pre-serialized JSON strings. IINA may silently drop messages wrapped in `JSON.stringify()`.
 
 ### Overlay Script Load Order (Immutable)
 
@@ -130,7 +179,7 @@ Later scripts depend on functions mounted on `window` by earlier scripts (e.g., 
 
 ### Canvas Mode
 
-Based on the `niconicomments` third-party library. Only available for Niconico V1 JSON format. Not recommended to modify Canvas mode internals.
+Based on the `niconicomments` third-party library. Only available for Niconico V1 JSON format and DDP nico-converted format. Not recommended to modify Canvas mode internals.
 
 ## Coding Conventions
 
@@ -139,6 +188,8 @@ Based on the `niconicomments` third-party library. Only available for Niconico V
 - **DOM operations**: Danmaku DOM elements **must** be obtained from the object pool (`getDanmakuElement()`) and returned via `recycleDanmakuElement()`. Do NOT use `createElement` / `removeChild` directly.
 - **Communication**: `iina.postMessage(key, value)` / `iina.onMessage(key, callback)` is the standard pattern. Keep naming consistent.
 - **Danmaku toggle**: Use the shared `toggleDanmaku()` or `ensureDanmakuEnabled()` functions. Do not manually repeat `preferences.set` + `overlay.postMessage` logic.
+- **Network requests**: Use `iina.http` module. DDP API uses `X-AppId`/`X-AppSecret` header auth.
+- **Backtick sanitization**: Always sanitize strings with U+0060 backtick before `sidebar.postMessage`.
 
 ## Known Limitations
 
@@ -148,6 +199,8 @@ Based on the `niconicomments` third-party library. Only available for Niconico V
 - Canvas mode does not support CSS-mode-specific settings (font scale, scroll duration, blocking, lane limits)
 - CSS mode (niconicomments) Comment Art vertical positioning may differ slightly from Canvas mode
 - `preferences.sync()` is called on every change with no debounce
+- DDP cache only stores the last loaded episode per video (hash overwrite)
+- Backtick U+0060 in any sidebar message field causes IINA IPC to silently drop the entire message
 
 ## Avoid
 
@@ -157,6 +210,7 @@ Based on the `niconicomments` third-party library. Only available for Niconico V
 - ❌ Do not change the `<script>` loading order in the overlay HTML
 - ❌ Do not use `console.log` for high-frequency output in production code (especially in `time-update` callbacks)
 - ❌ Do not create or remove danmaku DOM elements directly — always use the object pool
+- ❌ Do not send `JSON.stringify` payloads to `sidebar.postMessage` — always send plain objects
 
 ## Related Repository
 
