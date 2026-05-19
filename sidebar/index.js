@@ -694,14 +694,12 @@ iina.onMessage("dandanplay-search-result", function (data) {
         var epList = null;
         var epLoading = false;
         item.addEventListener('click', function () {
-          iina.postMessage("sidebar-log", { msg: 'search item click: animeTitle="' + anime.animeTitle + '" epList=' + (epList ? 'exists' : 'null') + ' epLoading=' + epLoading });
-          if (epList) {
-            var visible = epList.style.display !== 'none';
-            epList.style.display = visible ? 'none' : '';
+          if (item._epList) {
+            item._epList.style.display = item._epList.style.display === 'none' ? '' : 'none';
             return;
           }
-          if (epLoading) return;
-          epLoading = true;
+          if (item._epLoading) return;
+          item._epLoading = true;
           sub.textContent = 'Loading episodes...';
           iina.postMessage("dandanplay-get-bangumi", { bangumiId: String(anime.animeId), animeTitle: anime.animeTitle });
         });
@@ -743,6 +741,7 @@ iina.onMessage("dandanplay-bangumi-result", function (data) {
 
         var epList = document.createElement('div');
         epList.className = 'dandanplay-episode-list';
+        item._epList = epList;          // store for click handler toggle
         for (var j = 0; j < episodes.length; j++) {
           (function(ep) {
             var epItem = document.createElement('div');
