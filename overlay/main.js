@@ -225,21 +225,26 @@ iina.onMessage("load-danmaku", (data) => {
   const rawStr = decodeURIComponent(encodedStr);
 
   var danmakuType = data.danmakuType || detectRawDanmakuType(rawStr);
+  console.log('[overlay] load-danmaku: type=' + danmakuType + ' rawStr.length=' + rawStr.length + ' path=' + (data.path || ''));
   currentDanmakuType = danmakuType;
 
   if (danmakuType === 'dandanplay') {
     try {
       allDanmaku = JSON.parse(rawStr).sort((a, b) => a.t - b.t);
+      console.log('[overlay] parsed dandanplay: count=' + allDanmaku.length);
     } catch (e) {
+      console.log('[overlay] parse dandanplay failed: ' + e);
       allDanmaku = [];
     }
   } else if (danmakuType === 'nico-json') {
     allDanmaku = [];
   } else {
     allDanmaku = parseDanmaku(encodedStr).sort((a, b) => a.t - b.t);
+    console.log('[overlay] parsed xml: type=' + danmakuType + ' count=' + allDanmaku.length);
   }
 
   prepareCanvasSource(rawStr, allDanmaku, danmakuType);
+  console.log('[overlay] nicoRawData=' + (nicoRawData ? 'present' : 'null') + ' format=' + nicoRawFormat);
 
   iina.postMessage("danmaku-type", { type: danmakuType });
 
@@ -248,6 +253,9 @@ iina.onMessage("load-danmaku", (data) => {
     canvasSyncAnchor(0);
     initCanvasRenderer(nicoRawData);
     startCanvasLoop();
+    console.log('[overlay] renderer initialized and loop started');
+  } else {
+    console.log('[overlay] no nicoRawData, skipping renderer init');
   }
 });
 
