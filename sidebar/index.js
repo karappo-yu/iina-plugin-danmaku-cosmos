@@ -18,7 +18,6 @@ var advancedToggle = document.getElementById("advanced-toggle");
 var advancedContent = document.getElementById("advanced-content");
 var advancedArrow = document.getElementById("advanced-arrow");
 var fileAddBtn = document.getElementById("danmaku-file-add-btn");
-var commentLimitEnable = document.getElementById("comment-limit-enable");
 var commentLimitRow = document.getElementById("comment-limit-row");
 
 var advancedOpen = false;
