@@ -1302,7 +1302,7 @@ function registerSidebarHandlers() {
     ddpGetBangumi(bangumiId).then(function(res) {
       console.log('[bangumi] API response: statusCode=' + (res ? res.statusCode : 'null') + ' text.length=' + (res && res.text ? res.text.length : 0));
       var result = ddpParseBody(res);
-      console.log('[bangumi] parsed: error=' + (result && result.error ? result.error : 'null') + ' episodes=' + (result && result.episodes ? result.episodes.length : 0));
+      console.log('[bangumi] parsed: error=' + (result && result.error ? result.error : 'null') + ' episodes=' + (result && result.episodes ? result.episodes.length : 0) + ' keys=' + (result ? Object.keys(result).join(',') : 'null') + ' first200=' + (res && res.text ? res.text.substring(0, 200) : 'null'));
       if (!result) {
         sidebar.postMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: [], error: 'Parse error' });
         return;
