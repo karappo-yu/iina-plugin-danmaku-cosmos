@@ -665,7 +665,7 @@ iina.onMessage("dandanplay-search-result", function (data) {
     }
 
     var animes = (data && data.animes) || [];
-    iina.postMessage("sidebar-log", { msg: 'rendering ' + animes.length + ' animes' });
+    iina.postMessage("sidebar-log", { msg: 'rendering ' + animes.length + ' animes, childCount before=' + ddpSearchResults.childElementCount + ' html="' + ddpSearchResults.innerHTML.substring(0, 100) + '"' });
     if (animes.length === 0) {
       var emptyEl = document.createElement('div');
       emptyEl.style.cssText = 'font-size:11px;opacity:0.5;padding:4px';
@@ -708,6 +708,7 @@ iina.onMessage("dandanplay-search-result", function (data) {
         ddpSearchResults.appendChild(item);
       })(animes[i]);
     }
+    iina.postMessage("sidebar-log", { msg: 'after render childCount=' + ddpSearchResults.childElementCount + ' html="' + ddpSearchResults.innerHTML.substring(0, 100) + '" ddpSearchPanel.display=' + (ddpSearchPanel ? ddpSearchPanel.style.display : 'null') });
   } catch (e) {
     iina.postMessage("sidebar-log", { msg: 'catch: ' + (e.message || e) + ' stack=' + (e.stack || 'none') });
     ddpSearchResults.innerHTML = '';
