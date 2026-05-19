@@ -4,6 +4,11 @@
 
 An IINA danmaku plugin supporting Niconico (XML / V1 JSON), Bilibili (XML), and **Dandanplay network danmaku** with dual CSS and Canvas rendering modes. This is a niconico-style danmaku plugin — Bilibili and other Chinese formats have limited support and are rendered in niconico style.
 
+## 参考链接
+
+- **弹弹play API (Swagger)**: https://api.dandanplay.net/swagger/index.html#/
+- **IINA 插件 API 文档**: https://docs.iina.io/index.html
+
 ## Tech Constraints
 
 - **IINA plugin environment**: No build tools, bundlers, or npm package managers
