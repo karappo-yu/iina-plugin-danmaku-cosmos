@@ -497,6 +497,13 @@ iina.onMessage("danmaku-type", function (data) {
 });
 
 iina.onMessage("danmaku-file-list", function (data) {
+  var count = (data.jsonFiles ? data.jsonFiles.length : 0);
+  iina.postMessage("sidebar-log", { msg: 'danmaku-file-list received, jsonFiles=' + count + ' selected=' + (data.selectedPaths ? data.selectedPaths.length : 0) });
+  if (data.jsonFiles) {
+    for (var i = 0; i < data.jsonFiles.length; i++) {
+      iina.postMessage("sidebar-log", { msg: '  [' + i + '] filename="' + data.jsonFiles[i].filename + '" len=' + data.jsonFiles[i].filename.length + ' type=' + data.jsonFiles[i].type });
+    }
+  }
   fileListState.xmlFiles = data.xmlFiles || [];
   fileListState.jsonFiles = data.jsonFiles || [];
   fileListState.unknownFiles = data.unknownFiles || [];
