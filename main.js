@@ -782,6 +782,7 @@ function addDDPToFileList(episodeId, animeTitle, episodeTitle, comments) {
 }
 
 function loadDanmakuForVideo(url) {
+  danmakuCache = {};
   currentVideoUrl = url;
   ddpResetState();
   currentDanmakuStatus = { fileType: null, fileName: null, relativePath: null, isLoaded: false };
