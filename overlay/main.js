@@ -39,14 +39,6 @@ function detectNicoFormat(data) {
   return 'legacy';
 }
 
-function detectNicoFormat(data) {
-  if (Array.isArray(data) && data.length > 0) {
-    if (data[0].comments !== undefined && Array.isArray(data[0].comments)) return 'v1';
-    if (data[0].chat !== undefined) return 'legacy';
-  }
-  return 'legacy';
-}
-
 function detectRawDanmakuType(rawStr) {
   const s = rawStr ? rawStr.trim() : '';
   if (!s) return 'bilibili-xml';
