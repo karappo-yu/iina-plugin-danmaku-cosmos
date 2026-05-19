@@ -1302,12 +1302,13 @@ function registerSidebarHandlers() {
     ddpGetBangumi(bangumiId).then(function(res) {
       console.log('[bangumi] API response: statusCode=' + (res ? res.statusCode : 'null') + ' text.length=' + (res && res.text ? res.text.length : 0));
       var result = ddpParseBody(res);
-      console.log('[bangumi] parsed: error=' + (result && result.error ? result.error : 'null') + ' episodes=' + (result && result.episodes ? result.episodes.length : 0) + ' keys=' + (result ? Object.keys(result).join(',') : 'null') + ' first200=' + (res && res.text ? res.text.substring(0, 200) : 'null'));
-      if (!result) {
+      if (!result || !result.bangumi) {
+        console.log('[bangumi] parse failed or no bangumi field, result=' + (result ? Object.keys(result).join(',') : 'null'));
         sidebar.postMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: [], error: 'Parse error' });
         return;
       }
-      var episodes = result.episodes || [];
+      var episodes = result.bangumi.episodes || [];
+      console.log('[bangumi] parsed OK, episodes=' + episodes.length);
       for (var i = 0; i < episodes.length; i++) {
         if (episodes[i].episodeTitle) episodes[i].episodeTitle = episodes[i].episodeTitle.replace(/[`\u2018\u2019]/g, "'");
       }
