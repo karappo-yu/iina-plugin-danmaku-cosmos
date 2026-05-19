@@ -32,7 +32,7 @@
     "scrollSpeed": 0.95,
     "dandanplayAppId": "",
     "dandanplayAppSecret": "",
-    "dandanplayPriority": "local-first",
+    "dandanplayAutoNetwork": true,
     "dandanplayChConvert": 0,
     "dandanplayWithRelated": true
   }

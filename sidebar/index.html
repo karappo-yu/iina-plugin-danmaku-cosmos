@@ -17,6 +17,13 @@
           <span class="switch-slider"></span>
         </label>
       </div>
+      <div class="toggle-row" style="margin-top:6px">
+        <span class="toggle-label">自动加载网络弹幕</span>
+        <label class="switch" data-clickable>
+          <input type="checkbox" id="ddp-auto-network" checked />
+          <span class="switch-slider"></span>
+        </label>
+      </div>
       <div id="danmaku-file-list-section" class="danmaku-file-list-section">
         <div id="danmaku-file-list-container"></div>
         <div class="danmaku-file-list-footer">
@@ -71,15 +78,6 @@
         <span id="advanced-arrow" style="font-size:10px;opacity:0.5">▶</span>
       </div>
       <div id="advanced-content" style="display:none">
-        <div class="control-row" style="margin-top:8px">
-          <span class="toggle-label" data-i18n="dandanplay_priority">Danmaku Source</span>
-          <select id="dandanplay-priority-select" data-clickable style="margin-left:auto">
-            <option value="local-first" data-i18n="dandanplay_priority_local">Local First</option>
-            <option value="network-first" data-i18n="dandanplay_priority_network">Network First</option>
-            <option value="local-only" data-i18n="dandanplay_priority_local_only">Local Only</option>
-            <option value="network-only" data-i18n="dandanplay_priority_network_only">Network Only</option>
-          </select>
-        </div>
         <div class="control-row" style="margin-top:10px">
           <span class="toggle-label" data-i18n="canvas_mode_label">Render Mode</span>
           <select id="canvas-mode-select" data-clickable style="margin-left:auto">

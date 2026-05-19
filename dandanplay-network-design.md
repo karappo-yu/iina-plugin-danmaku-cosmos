@@ -413,7 +413,7 @@ IINA 插件运行在 JavaScriptCore 中，无法直接读取文件二进制内�
     "dandanplayEnabled": false,
     "dandanplayAppId": "",
     "dandanplayAppSecret": "",
-    "dandanplayPriority": "local-first",
+    "dandanplayAutoNetwork": true,
     "dandanplayChConvert": 0,
     "dandanplayWithRelated": true,
     "dandanplayAutoMatch": true

@@ -31,7 +31,7 @@ var ddpSearchPanel = document.getElementById("dandanplay-search-panel");
 var ddpSearchInput = document.getElementById("dandanplay-search-input");
 var ddpSearchGoBtn = document.getElementById("dandanplay-search-go-btn");
 var ddpSearchResults = document.getElementById("dandanplay-search-results");
-var ddpPrioritySelect = document.getElementById("dandanplay-priority-select");
+var ddpAutoNetwork = document.getElementById("ddp-auto-network");
 
 var ddpState = {
   status: 'idle',
@@ -41,8 +41,8 @@ var ddpState = {
   commentCount: 0,
   error: null,
   matches: null,
-  priority: 'local-first',
-  matchType: ''
+  matchType: '',
+  autoNetwork: true
 };
 
 var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closest('.section'), strokeOpacitySlider.closest('.section')];
@@ -532,6 +532,8 @@ function ddpUpdateUI() {
       }
     }
 
+    if (ddpAutoNetwork) ddpAutoNetwork.checked = ddpState.autoNetwork;
+
     var hasMatches = ddpState.matches && ddpState.matches.length > 0;
     if (ddpMatches) ddpMatches.style.display = '';
     if (ddpMatchesList) {
@@ -568,15 +570,12 @@ function ddpUpdateUI() {
       }
     }
     if (ddpMatchesArrow) ddpMatchesArrow.className = 'toggle-arrow' + (ddpMatchesExpanded ? ' expanded' : '');
-
-    if (ddpPrioritySelect) ddpPrioritySelect.value = ddpState.priority;
   } catch (e) {}
 }
 
-if (ddpPrioritySelect) {
-  ddpPrioritySelect.addEventListener("change", function () {
-    ddpState.priority = ddpPrioritySelect.value;
-    iina.postMessage("dandanplay-set-priority", { priority: ddpState.priority });
+if (ddpAutoNetwork) {
+  ddpAutoNetwork.addEventListener("change", function () {
+    iina.postMessage("dandanplay-set-auto-network", { autoNetwork: ddpAutoNetwork.checked });
   });
 }
 
@@ -639,7 +638,7 @@ iina.onMessage("dandanplay-status", function (data) {
     if (data.commentCount !== undefined) ddpState.commentCount = data.commentCount;
     if (data.error !== undefined) ddpState.error = data.error;
     if (data.matches !== undefined) ddpState.matches = data.matches;
-    if (data.priority !== undefined) ddpState.priority = data.priority;
+    if (data.autoNetwork !== undefined) ddpState.autoNetwork = data.autoNetwork;
     if (data.matchType !== undefined) ddpState.matchType = data.matchType;
     ddpUpdateUI();
   } catch (e) {}

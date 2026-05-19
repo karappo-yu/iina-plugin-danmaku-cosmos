@@ -26,7 +26,7 @@ var DDP_APP_ID = preferences.get("dandanplayAppId") || 't43832ky57';
 var DDP_APP_SECRET = preferences.get("dandanplayAppSecret") || 'IDnPEdEKDIziKeYVxm6VcaJE4Bv2fnzT';
 var DDP_API_BASE = 'https://api.dandanplay.net';
 
-var dandanplayPriority = preferences.get("dandanplayPriority") || 'local-first';
+var dandanplayAutoNetwork = preferences.get("dandanplayAutoNetwork") !== false;
 var dandanplayChConvert = preferences.get("dandanplayChConvert") !== undefined ? preferences.get("dandanplayChConvert") : 0;
 var dandanplayWithRelated = preferences.get("dandanplayWithRelated") !== undefined ? preferences.get("dandanplayWithRelated") : true;
 
@@ -539,7 +539,7 @@ function ddpSyncState() {
     commentCount: dandanplayState.commentCount,
     error: dandanplayState.error,
     matches: dandanplayState.matches ? sanitizeMatches(JSON.parse(JSON.stringify(dandanplayState.matches))) : null,
-    priority: dandanplayPriority,
+    autoNetwork: dandanplayAutoNetwork,
     matchType: dandanplayState.matchType
   });
 }
@@ -568,8 +568,6 @@ function ddpResetState() {
 }
 
 function ddpAutoMatchAndLoad(url) {
-  if (dandanplayPriority === 'local-only') return;
-
   var path = filePathFromUrl(url);
   var fileName;
   if (path) {
@@ -626,9 +624,9 @@ function ddpAutoMatchAndLoad(url) {
 
     if (data.isMatched) {
       var match = data.matches[0];
-      var forceLoad = (dandanplayPriority === 'network-first' || dandanplayPriority === 'network-only');
+      var forceLoad = dandanplayAutoNetwork;
       dandanplayState.matchType = 'hash';
-      console.log('[ddp] autoMatch: matched episodeId=' + match.episodeId + ' animeTitle=' + match.animeTitle + ' forceLoad=' + forceLoad + ' priority=' + dandanplayPriority);
+      console.log('[ddp] autoMatch: matched episodeId=' + match.episodeId + ' animeTitle=' + match.animeTitle + ' forceLoad=' + forceLoad + ' autoNetwork=' + dandanplayAutoNetwork);
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, forceLoad);
     } else {
       ddpSyncState();
@@ -668,11 +666,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
   }
 
   var shouldAutoLoad = forceLoad;
-  if (!shouldAutoLoad) {
-    if (dandanplayPriority === 'network-first' || dandanplayPriority === 'network-only') shouldAutoLoad = true;
-    if (dandanplayPriority === 'local-first' && !currentDanmakuStatus.isLoaded) shouldAutoLoad = true;
-  }
-  console.log('[ddp] addToFileList: shouldAutoLoad=' + shouldAutoLoad + ' forceLoad=' + forceLoad + ' priority=' + dandanplayPriority + ' isLoaded=' + currentDanmakuStatus.isLoaded);
+  console.log('[ddp] addToFileList: shouldAutoLoad=' + shouldAutoLoad + ' forceLoad=' + forceLoad + ' autoNetwork=' + dandanplayAutoNetwork + ' isLoaded=' + currentDanmakuStatus.isLoaded);
 
   if (shouldAutoLoad) {
     danmakuFileList.selectedPaths = [virtualPath];
@@ -760,7 +754,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad) {
 }
 
 function ddpFallbackToLocal() {
-  if (dandanplayPriority !== 'network-first' && dandanplayPriority !== 'network-only') return;
+  if (!dandanplayAutoNetwork) return;
   if (currentDanmakuStatus.isLoaded) return;
   var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles);
   for (var i = 0; i < allFiles.length; i++) {
@@ -792,7 +786,7 @@ function loadDanmakuForVideo(url) {
   ddpResetState();
   currentDanmakuStatus = { fileType: null, fileName: null, relativePath: null, isLoaded: false };
 
-  console.log('[loadDanmakuForVideo] url=' + url + ' priority=' + dandanplayPriority);
+  console.log('[loadDanmakuForVideo] url=' + url + ' autoNetwork=' + dandanplayAutoNetwork);
 
   if (core.status.isNetworkResource) {
     console.log('[loadDanmakuForVideo] isNetworkResource=true');
@@ -801,10 +795,8 @@ function loadDanmakuForVideo(url) {
     danmakuFileList = { xmlFiles: [], jsonFiles: [], unknownFiles: [], selectedPaths: [] };
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
     if (overlayReady) overlay.postMessage("clear-danmaku", {});
-    if (dandanplayPriority !== 'local-only') {
-      console.log('[loadDanmakuForVideo] network resource, calling ddpAutoMatchAndLoad');
-      ddpAutoMatchAndLoad(url);
-    }
+    console.log('[loadDanmakuForVideo] network resource, calling ddpAutoMatchAndLoad');
+    ddpAutoMatchAndLoad(url);
     return;
   }
 
@@ -831,41 +823,24 @@ function loadDanmakuForVideo(url) {
   // === Step 2: Send file list (all available sources, regardless of priority) ===
   sidebar.postMessage("danmaku-file-list", danmakuFileList);
 
-  // === Step 3: Auto-load to overlay based on priority ===
-  if (dandanplayPriority === 'network-first') {
+  // === Step 3: Auto-load to overlay based on autoNetwork setting ===
+  if (dandanplayAutoNetwork) {
+    // network-first: auto-load DDP cache, trigger background auto-match
     if (hasDDPCache) {
       ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, true);
-      // Also trigger background auto-match so sidebar gets match list and cache refreshes
       ddpAutoMatchAndLoad(url);
     } else {
       // Don't pre-load local file — wait for DDP auto-match result
-      // This prevents the "jump" when DDP loads later
       if (overlayReady) overlay.postMessage("clear-danmaku", {});
       ddpAutoMatchAndLoad(url);
     }
-  } else if (dandanplayPriority === 'network-only') {
-    if (hasDDPCache) {
-      ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, true);
-      ddpAutoMatchAndLoad(url);
-    } else {
-      danmakuNotFound();
-      if (overlayReady) overlay.postMessage("clear-danmaku", {});
-      ddpAutoMatchAndLoad(url);
-    }
-  } else if (dandanplayPriority === 'local-first') {
+  } else {
+    // local-first: prefer local files, fallback to DDP cache as last resort
     if (hasLocal) {
       loadLocalDanmaku(allLocalFiles[0]);
     } else if (hasDDPCache) {
       ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, true);
       ddpAutoMatchAndLoad(url);
-    } else {
-      danmakuNotFound();
-      // Don't auto-match — user must trigger from sidebar
-    }
-  } else {
-    // Default / local-only
-    if (hasLocal) {
-      loadLocalDanmaku(allLocalFiles[0]);
     } else {
       danmakuNotFound();
     }
@@ -1257,9 +1232,9 @@ function registerSidebarHandlers() {
     }
   });
 
-  sidebar.onMessage("dandanplay-set-priority", function (data) {
-    dandanplayPriority = data.priority;
-    preferences.set("dandanplayPriority", dandanplayPriority);
+  sidebar.onMessage("dandanplay-set-auto-network", function (data) {
+    dandanplayAutoNetwork = !!data.autoNetwork;
+    preferences.set("dandanplayAutoNetwork", dandanplayAutoNetwork);
     syncPreferencesSoon();
     ddpSyncState();
   });
