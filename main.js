@@ -1301,16 +1301,16 @@ function registerSidebarHandlers() {
     ddpGetBangumi(bangumiId).then(function(res) {
       var result = ddpParseBody(res);
       if (!result) {
-        sidebar.postMessage("dandanplay-bangumi-result", JSON.stringify({ animeTitle: animeTitle, episodes: [], error: 'Parse error' }));
+        sidebar.postMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: [], error: 'Parse error' });
         return;
       }
       var episodes = result.episodes || [];
       for (var i = 0; i < episodes.length; i++) {
         if (episodes[i].episodeTitle) episodes[i].episodeTitle = episodes[i].episodeTitle.replace(/[`\u2018\u2019]/g, "'");
       }
-      sidebar.postMessage("dandanplay-bangumi-result", JSON.stringify({ animeTitle: animeTitle, episodes: episodes }));
+      sidebar.postMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: episodes });
     }).catch(function(err) {
-      sidebar.postMessage("dandanplay-bangumi-result", JSON.stringify({ animeTitle: animeTitle, episodes: [], error: ddpErrStr(err) }));
+      sidebar.postMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: [], error: ddpErrStr(err) });
     });
   });
 
