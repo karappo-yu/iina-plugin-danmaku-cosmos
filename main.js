@@ -72,6 +72,9 @@ var danmakuFileList = {
 var danmakuCache = {};
 
 function updateDanmakuStatus(status) {
+  if (status.fileName && typeof status.fileName === 'string') {
+    status.fileName = status.fileName.replace(/[`\u2018\u2019]/g, "'");
+  }
   currentDanmakuStatus = status;
   sidebar.postMessage("danmaku-type", currentDanmakuStatus);
 }
@@ -530,14 +533,22 @@ function ddpReadVideoCache(videoPath) {
 function ddpSyncState() {
   sidebar.postMessage("dandanplay-status", {
     status: dandanplayState.status,
-    animeTitle: dandanplayState.animeTitle,
-    episodeTitle: dandanplayState.episodeTitle,
+    animeTitle: dandanplayState.animeTitle.replace(/[`\u2018\u2019]/g, "'"),
+    episodeTitle: dandanplayState.episodeTitle.replace(/[`\u2018\u2019]/g, "'"),
     episodeId: dandanplayState.episodeId,
     commentCount: dandanplayState.commentCount,
     error: dandanplayState.error,
-    matches: dandanplayState.matches ? JSON.parse(JSON.stringify(dandanplayState.matches)) : null,
+    matches: dandanplayState.matches ? sanitizeMatches(JSON.parse(JSON.stringify(dandanplayState.matches))) : null,
     priority: dandanplayPriority
   });
+}
+
+function sanitizeMatches(matches) {
+  for (var i = 0; i < matches.length; i++) {
+    if (matches[i].animeTitle) matches[i].animeTitle = matches[i].animeTitle.replace(/[`\u2018\u2019]/g, "'");
+    if (matches[i].episodeTitle) matches[i].episodeTitle = matches[i].episodeTitle.replace(/[`\u2018\u2019]/g, "'");
+  }
+  return matches;
 }
 
 function ddpResetState() {
@@ -630,7 +641,7 @@ function ddpAutoMatchAndLoad(url) {
 
 function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted, forceLoad) {
   var virtualPath = 'dandanplay://' + episodeId;
-  var displayName = '🌐 ' + (animeTitle || 'DanDanPlay') + ' - ' + (episodeTitle || '');
+  var displayName = ('🌐 ' + (animeTitle || 'DanDanPlay') + ' - ' + (episodeTitle || '')).replace(/[`\u2018\u2019]/g, "'");
   danmakuCache[virtualPath] = encodeContent(JSON.stringify(converted));
 
   console.log('[ddp] addToFileList: episodeId=' + episodeId + ' converted=' + converted.length + ' forceLoad=' + forceLoad + ' listBefore=' + danmakuFileList.jsonFiles.length + ' displayName.length=' + displayName.length);
@@ -758,7 +769,7 @@ function ddpFallbackToLocal() {
 
 function addDDPToFileList(episodeId, animeTitle, episodeTitle, comments) {
   var virtualPath = 'dandanplay://' + episodeId;
-  var displayName = '🌐 ' + (animeTitle || 'DanDanPlay') + ' - ' + (episodeTitle || '');
+  var displayName = ('🌐 ' + (animeTitle || 'DanDanPlay') + ' - ' + (episodeTitle || '')).replace(/[`\u2018\u2019]/g, "'");
   var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles);
   for (var i = 0; i < allFiles.length; i++) {
     if (allFiles[i].path === virtualPath) return;
@@ -820,6 +831,8 @@ function loadDanmakuForVideo(url) {
   if (dandanplayPriority === 'network-first') {
     if (hasDDPCache) {
       ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, true);
+      // Also trigger background auto-match so sidebar gets match list and cache refreshes
+      ddpAutoMatchAndLoad(url);
     } else {
       // Don't pre-load local file — wait for DDP auto-match result
       // This prevents the "jump" when DDP loads later
@@ -829,6 +842,7 @@ function loadDanmakuForVideo(url) {
   } else if (dandanplayPriority === 'network-only') {
     if (hasDDPCache) {
       ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, true);
+      ddpAutoMatchAndLoad(url);
     } else {
       danmakuNotFound();
       if (overlayReady) overlay.postMessage("clear-danmaku", {});
@@ -839,6 +853,7 @@ function loadDanmakuForVideo(url) {
       loadLocalDanmaku(allLocalFiles[0]);
     } else if (hasDDPCache) {
       ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, true);
+      ddpAutoMatchAndLoad(url);
     } else {
       danmakuNotFound();
       // Don't auto-match — user must trigger from sidebar
@@ -1254,7 +1269,14 @@ function registerSidebarHandlers() {
         sidebar.postMessage("dandanplay-search-result", JSON.stringify({ animes: [], error: 'No results found' }));
         return;
       }
-      sidebar.postMessage("dandanplay-search-result", JSON.stringify({ animes: result.animes }));
+        sidebar.postMessage("dandanplay-search-result", JSON.stringify({
+          animes: (function(arr) {
+            for (var i = 0; i < arr.length; i++) {
+              if (arr[i].animeTitle) arr[i].animeTitle = arr[i].animeTitle.replace(/[`\u2018\u2019]/g, "'");
+            }
+            return arr;
+          })(result.animes),
+          error: null }));
     }).catch(function(err) {
       sidebar.postMessage("dandanplay-search-result", JSON.stringify({ animes: [], error: ddpErrStr(err) }));
     });
@@ -1273,7 +1295,11 @@ function registerSidebarHandlers() {
         sidebar.postMessage("dandanplay-bangumi-result", JSON.stringify({ animeTitle: animeTitle, episodes: [], error: 'Parse error' }));
         return;
       }
-      sidebar.postMessage("dandanplay-bangumi-result", JSON.stringify({ animeTitle: animeTitle, episodes: result.episodes || [] }));
+      var episodes = result.episodes || [];
+      for (var i = 0; i < episodes.length; i++) {
+        if (episodes[i].episodeTitle) episodes[i].episodeTitle = episodes[i].episodeTitle.replace(/[`\u2018\u2019]/g, "'");
+      }
+      sidebar.postMessage("dandanplay-bangumi-result", JSON.stringify({ animeTitle: animeTitle, episodes: episodes }));
     }).catch(function(err) {
       sidebar.postMessage("dandanplay-bangumi-result", JSON.stringify({ animeTitle: animeTitle, episodes: [], error: ddpErrStr(err) }));
     });
