@@ -1266,10 +1266,6 @@ function registerSidebarHandlers() {
     });
   });
 
-  sidebar.onMessage("dandanplay-select-episode", function (data) {
-    ddpLoadComments(data.episodeId, data.animeTitle, data.episodeTitle, true);
-  });
-
   sidebar.onMessage("dandanplay-get-bangumi", function (data) {
     var bangumiId = data.bangumiId;
     var animeTitle = data.animeTitle;
