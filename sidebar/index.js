@@ -550,6 +550,9 @@ function ddpUpdateUI() {
               var typeLabel = document.createElement('span');
               typeLabel.className = 'dandanplay-match-type-label';
               typeLabel.textContent = ddpState.matchType === 'hash' ? '（hash）' : '（文件名关联）';
+              if (ddpState.matchType === 'filename') {
+                typeLabel.title = 'hash 未匹配到网络弹幕，显示文件名关联列表';
+              }
               title.appendChild(typeLabel);
             }
             item.appendChild(title);
