@@ -851,6 +851,12 @@ function loadDanmakuForVideo(url) {
       danmakuNotFound();
     }
   }
+
+  // Re-send file list after a tick to catch up sidebar WebView that might
+  // have been suspended during video switch (IINA drops messages otherwise)
+  setTimeout(function() {
+    sidebar.postMessage("danmaku-file-list", danmakuFileList);
+  }, 0);
 }
 
 function loadLocalDanmaku(fileInfo) {
@@ -1055,6 +1061,21 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("request-state", function () {
+    // Rebuild file list from scratch — sidebar WebView might have been
+    // suspended/resumed while video changed, leaving danmakuFileList stale
+    if (currentVideoUrl && !core.status.isNetworkResource) {
+      var discovered = findDanmakuByEpisode(currentVideoUrl);
+      danmakuFileList = {
+        xmlFiles: discovered.xmlFiles,
+        jsonFiles: discovered.jsonFiles,
+        unknownFiles: discovered.unknownFiles,
+        selectedPaths: danmakuFileList.selectedPaths || []
+      };
+      var cached = ddpReadVideoCache(currentVideoUrl);
+      if (cached && cached.comments && cached.comments.length > 0) {
+        addDDPToFileList(cached.episodeId, cached.animeTitle, cached.episodeTitle, cached.comments);
+      }
+    }
     sidebar.postMessage("danmaku-state", {
       enabled: danmakuEnabled,
       canvasMode: currentCanvasMode,
