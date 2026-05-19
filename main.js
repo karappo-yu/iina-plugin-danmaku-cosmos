@@ -539,7 +539,8 @@ function ddpSyncState() {
     commentCount: dandanplayState.commentCount,
     error: dandanplayState.error,
     matches: dandanplayState.matches ? sanitizeMatches(JSON.parse(JSON.stringify(dandanplayState.matches))) : null,
-    priority: dandanplayPriority
+    priority: dandanplayPriority,
+    matchType: dandanplayState.matchType
   });
 }
 
@@ -560,7 +561,8 @@ function ddpResetState() {
     commentCount: 0,
     error: '',
     comments: null,
-    matches: null
+    matches: null,
+    matchType: ''
   };
   ddpSyncState();
 }
@@ -585,7 +587,8 @@ function ddpAutoMatchAndLoad(url) {
     commentCount: 0,
     error: '',
     comments: null,
-    matches: null
+    matches: null,
+    matchType: ''
   };
   ddpSyncState();
 
@@ -624,6 +627,7 @@ function ddpAutoMatchAndLoad(url) {
     if (data.isMatched) {
       var match = data.matches[0];
       var forceLoad = (dandanplayPriority === 'network-first' || dandanplayPriority === 'network-only');
+      dandanplayState.matchType = 'hash';
       console.log('[ddp] autoMatch: matched episodeId=' + match.episodeId + ' animeTitle=' + match.animeTitle + ' forceLoad=' + forceLoad + ' priority=' + dandanplayPriority);
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, forceLoad);
     } else {
@@ -1308,8 +1312,14 @@ function registerSidebarHandlers() {
   sidebar.onMessage("dandanplay-select-match", function (data) {
     var match = data.match;
     if (match && match.episodeId) {
+      dandanplayState.matchType = 'filename';
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, true);
     }
+  });
+
+  sidebar.onMessage("dandanplay-select-episode", function (data) {
+    dandanplayState.matchType = 'filename';
+    ddpLoadComments(data.episodeId, data.animeTitle, data.episodeTitle, true);
   });
 
   sidebar.onMessage("dandanplay-trigger-match", function () {

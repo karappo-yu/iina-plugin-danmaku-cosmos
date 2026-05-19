@@ -39,9 +39,10 @@ var ddpState = {
   episodeTitle: '',
   episodeId: null,
   commentCount: 0,
-  error: '',
+  error: null,
   matches: null,
-  priority: 'local-first'
+  priority: 'local-first',
+  matchType: ''
 };
 
 var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closest('.section'), strokeOpacitySlider.closest('.section')];
@@ -545,6 +546,12 @@ function ddpUpdateUI() {
             var title = document.createElement('div');
             title.className = 'dandanplay-match-title';
             title.textContent = match.animeTitle + ' - ' + match.episodeTitle;
+            if (isSelected && ddpState.matchType) {
+              var typeLabel = document.createElement('span');
+              typeLabel.className = 'dandanplay-match-type-label';
+              typeLabel.textContent = ddpState.matchType === 'hash' ? '（hash）' : '（文件名关联）';
+              title.appendChild(typeLabel);
+            }
             item.appendChild(title);
             item.addEventListener('click', function() {
               iina.postMessage("dandanplay-select-match", { match: match });
@@ -628,6 +635,7 @@ iina.onMessage("dandanplay-status", function (data) {
     if (data.error !== undefined) ddpState.error = data.error;
     if (data.matches !== undefined) ddpState.matches = data.matches;
     if (data.priority !== undefined) ddpState.priority = data.priority;
+    if (data.matchType !== undefined) ddpState.matchType = data.matchType;
     ddpUpdateUI();
   } catch (e) {}
 });

@@ -622,6 +622,12 @@ select:focus {
   margin-bottom: 2px;
 }
 
+.dandanplay-match-type-label {
+  opacity: 0.5;
+  font-size: 10px;
+  margin-left: 4px;
+}
+
 .dandanplay-search-result-episodes,
 .dandanplay-match-sub {
   opacity: 0.5;
