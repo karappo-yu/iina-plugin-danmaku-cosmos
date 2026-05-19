@@ -31,8 +31,8 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 插件集成了弹弹play（dandanplay）开放平台 API，可自动为视频匹配并加载网络弹幕。
 
-- **自动匹配**：根据视频文件名自动识别番剧，匹配结果精确时自动加载
-- **手动搜索**：匹配失败时可手动搜索番剧名称，从搜索结果中选择
+- **自动匹配**：优先根据文件 hash 精确匹配（自动加载），失败后根据视频文件名匹配（显示候选列表供选择）
+- **手动搜索**：上述匹配均失败时，可手动搜索番剧名称，从搜索结果中选择
 - **弹幕缓存**：网络弹幕缓存到本地，24 小时内重复播放无需重新下载
 - **自动加载开关**：开启后自动匹配并加载网络弹幕；关闭时优先使用本地弹幕，网络弹幕仅在手动选择时加载
 - **弹幕冲突处理**：网络弹幕和本地弹幕同时存在时，根据优先级自动选择
@@ -100,8 +100,8 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 弹弹play（dandanplay）プラットフォームの API を統合し、動画にネットワークコメントを自動マッチングして読み込みます。
 
-- **自動マッチング**：動画ファイル名から番組を自動認識、正確にマッチした場合は自動読み込み
-- **手動検索**：マッチング失敗時に番組名を手動検索可能
+- **自動マッチング**：ファイルハッシュによる完全一致（自動読み込み）→ ファイル名による曖昧一致（候補一覧表示）の順で試行
+- **手動検索**：上記が全て失敗した場合、番組名を手動検索可能
 - **キャッシュ**：ネットワークコメントはローカルにキャッシュされ、24時間以内の再再生では再ダウンロード不要
 - **自動読み込みトグル**：ON で自動マッチング＋自動読み込み、OFF では優先的にローカルコメントを使用
 - **競合処理**：ネットワークコメントとローカルコメントが共存する場合、優先設定に従って自動選択
@@ -152,8 +152,8 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 The plugin integrates the dandanplay open platform API for automatic network danmaku matching and loading.
 
-- **Auto-match**: Automatically identifies anime by video filename and loads matched danmaku
-- **Manual search**: Search by anime name when auto-match fails
+- **Auto-match**: First tries file hash (auto-load on exact match), then falls back to filename matching (shows candidate list)
+- **Manual search**: Search by anime name when both matching methods fail
 - **Cache**: Network danmaku is cached locally; replay within 24 hours skips re-download
 - **Auto-load toggle**: ON for automatic network matching + loading; OFF prefers local files
 - **Conflict resolution**: When both local and network danmaku exist, priority setting determines which to use
