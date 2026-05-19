@@ -373,7 +373,6 @@ function updateUI() {
   strokeWidthValue.textContent = String(state.strokeWidth) + 'px';
   strokeColorInput.value = state.strokeColor;
   strokeInversionInput.value = state.strokeInversionColor;
-  if (commentLimitEnable) commentLimitEnable.checked = state.commentLimit > 0;
   if (commentLimitRow) commentLimitRow.style.display = state.commentLimit > 0 ? '' : 'none';
   commentLimitSlider.value = state.commentLimit;
   commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : 'Off';
