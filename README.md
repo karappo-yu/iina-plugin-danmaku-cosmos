@@ -2,9 +2,7 @@
 
 [日本語](#日本語) / [中文](#中文) / [English](#english)
 
-IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconicomments)（已 fork 增强）。这是一款完全 niconico 风格的弹幕插件，专注于 Niconico 格式（XML / V1 JSON）的渲染，同时提供 Bilibili XML 的基础支持。CSS 和 Canvas 双渲染模式。
-
-> **注意**：本插件以 niconico 弹幕风格为核心设计，对 Bilibili 等中文弹幕格式的支持有限。中文弹幕将以 niconico 风格渲染，不支持 Bilibili 特有的高级弹幕（mode 7）、代码弹幕（mode 8）、BAS 弹幕（mode 9）等功能。
+IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconicomments)（已 fork 增强）。支持 Niconico 格式（XML / V1 JSON）、Bilibili XML、以及**弹弹play 网络弹幕**。CSS 和 Canvas 双渲染模式。
 
 ---
 
@@ -21,23 +19,32 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 - **Niconico 格式完整支持**：Niconico XML、Niconico V1 JSON
 - **Bilibili XML 基础支持**：普通滚动弹幕、顶部/底部固定弹幕（以 niconico 风格渲染）
+- **弹弹play 网络弹幕**：自动匹配视频文件，从弹弹play API 获取网络弹幕，支持缓存和手动搜索
 - **双渲染模式**：
-  - **CSS 模式**：利用 WebKit GPU 合成加速（`transform` + `will-change`），在 IINA 的 WKWebView 环境下流畅度远超 Canvas
-  - **Canvas 模式**：基于魔改 niconicomments（已 fork 增加 CSS 渲染器），支持 Auto / HTML5 / Flash 三种模式
+  - **CSS 模式**（默认）：利用 WebKit GPU 合成加速（`transform` + `will-change`），在 IINA 的 WKWebView 环境下流畅度远超 Canvas
+  - **Canvas 模式**：基于魔改 niconicomments，用于需要完整 Canvas 渲染的场合
 - **自动加载弹幕**：按优先级自动查找同目录下的弹幕文件
 - **手动加载弹幕**：通过菜单或侧边栏手动选择弹幕文件
-- **侧边栏控制面板**：实时调整透明度、字体缩放、渲染模式
+- **侧边栏控制面板**：实时调整弹幕开关、渲染模式、透明度、字体缩放等
 
-### 渲染模式说明
+### 网络弹幕
+
+插件集成了弹弹play（dandanplay）开放平台 API，可自动为视频匹配并加载网络弹幕。
+
+- **自动匹配**：根据视频文件名自动识别番剧，匹配结果精确时自动加载
+- **手动搜索**：匹配失败时可手动搜索番剧名称，从搜索结果中选择
+- **弹幕缓存**：网络弹幕缓存到本地，24 小时内重复播放无需重新下载
+- **自动加载开关**：开启后自动匹配并加载网络弹幕；关闭时优先使用本地弹幕，网络弹幕仅在手动选择时加载
+- **弹幕冲突处理**：网络弹幕和本地弹幕同时存在时，根据优先级自动选择
+
+### 渲染模式
 
 | 模式 | 说明 | 推荐场景 |
 |------|------|----------|
-| **CSS** | DOM 元素 + CSS 动画，WebKit GPU 加速 | IINA 播放（推荐） |
-| **Auto** | 自动判断 HTML5 / Flash 弹幕 | 通用 |
-| **HTML5** | 所有弹幕按 HTML5 模式渲染 | — |
-| **Flash** | 所有弹幕按 Flash 模式渲染 | — |
+| **CSS**（默认） | DOM 元素 + CSS 动画，WebKit GPU 加速 | IINA 播放（推荐） |
+| **Canvas** | Canvas 2D 渲染，niconicomments 引擎 | CSS 模式效果不理想时 |
 
-Auto、HTML5、Flash 均为 Canvas 渲染，使用 niconicomments 库的渲染方式。CSS 模式在侧边栏的「渲染模式」下拉框中选择。
+在侧边栏「高级设置」中切换渲染模式。
 
 ### 弹幕文件加载
 
@@ -81,23 +88,23 @@ Auto、HTML5、Flash 均为 Canvas 渲染，使用 niconicomments 库的渲染�
 
 - **Niconico フォーマット完全対応**：Niconico XML、Niconico V1 JSON
 - **Bilibili XML 基本対応**：通常スクロールコメント、上部/下部固定コメント（niconico スタイルで描画）
+- **弹弹play ネットワークコメント**：動画ファイルを自動認識し、弹弹play API からネットワークコメントを取得。キャッシュ対応、手動検索可能
 - **デュアル描画モード**：
-  - **CSS モード**：WebKit GPU 合成加速（`transform` + `will-change`）により、IINA の WKWebView で Canvas より滑らかに描画
-  - **Canvas モード**：改造 niconicomments（CSS レンダラー追加版 fork）、Auto / HTML5 / Flash モード対応
+  - **CSS モード**（デフォルト）：WebKit GPU 合成加速（`transform` + `will-change`）により、IINA の WKWebView で Canvas より滑らかに描画
+  - **Canvas モード**：改造 niconicomments、Canvas 描画が必要な場合に使用
 - **自動読み込み**：同じフォルダから優先順位に従って自動検索
 - **手動読み込み**：メニューやサイドバーからコメントファイルを選択
-- **サイドバーコントロール**：透明度・フォント倍率・描画モードをリアルタイム調整
+- **サイドバーコントロール**：コメント表示、描画モード、透明度、フォント倍率などをリアルタイム調整
 
-### 描画モード
+### ネットワークコメント
 
-| モード | 説明 | 推奨用途 |
-|--------|------|----------|
-| **CSS** | DOM 要素 + CSS アニメーション、WebKit GPU 加速 | IINA 再生（推奨） |
-| **Auto** | HTML5 / Flash を自動判定 | 汎用 |
-| **HTML5** | 全コメントを HTML5 モードで描画 | — |
-| **Flash** | 全コメントを Flash モードで描画 | — |
+弹弹play（dandanplay）プラットフォームの API を統合し、動画にネットワークコメントを自動マッチングして読み込みます。
 
-Auto・HTML5・Flash はいずれも Canvas 描画で、niconicomments ライブラリの描画方式です。CSS モードはサイドバーの「描画モード」ドロップダウンから選択できます。
+- **自動マッチング**：動画ファイル名から番組を自動認識、正確にマッチした場合は自動読み込み
+- **手動検索**：マッチング失敗時に番組名を手動検索可能
+- **キャッシュ**：ネットワークコメントはローカルにキャッシュされ、24時間以内の再再生では再ダウンロード不要
+- **自動読み込みトグル**：ON で自動マッチング＋自動読み込み、OFF では優先的にローカルコメントを使用
+- **競合処理**：ネットワークコメントとローカルコメントが共存する場合、優先設定に従って自動選択
 
 ### コメントファイルの読み込み
 
@@ -133,23 +140,32 @@ Auto・HTML5・Flash はいずれも Canvas 描画で、niconicomments ライブ
 
 - **Full Niconico format support**: Niconico XML, Niconico V1 JSON
 - **Basic Bilibili XML support**: Normal scrolling, top/bottom fixed comments (rendered in niconico style)
+- **Dandanplay network danmaku**: Auto-match videos via dandanplay API, with caching and manual search
 - **Dual rendering modes**:
-  - **CSS mode**: Leverages WebKit GPU compositing (`transform` + `will-change`) for significantly smoother rendering in IINA's WKWebView
-  - **Canvas mode**: Based on a forked [niconicomments](https://github.com/karappo-yu/niconicomments) (with CSS renderer added), with Auto / HTML5 / Flash modes
+  - **CSS mode** (default): DOM elements + CSS animations with WebKit GPU acceleration for smooth rendering in IINA's WKWebView
+  - **Canvas mode**: Based on a forked niconicomments library, for when Canvas rendering is needed
 - **Auto-load**: Automatically searches for danmaku files in the same directory by priority
 - **Manual load**: Select danmaku files via menu or sidebar
-- **Sidebar control panel**: Real-time adjustment of opacity, font scale, and render mode
+- **Sidebar control panel**: Real-time adjustment of danmaku visibility, render mode, opacity, font scale, and more
+
+### Network Danmaku
+
+The plugin integrates the dandanplay open platform API for automatic network danmaku matching and loading.
+
+- **Auto-match**: Automatically identifies anime by video filename and loads matched danmaku
+- **Manual search**: Search by anime name when auto-match fails
+- **Cache**: Network danmaku is cached locally; replay within 24 hours skips re-download
+- **Auto-load toggle**: ON for automatic network matching + loading; OFF prefers local files
+- **Conflict resolution**: When both local and network danmaku exist, priority setting determines which to use
 
 ### Render Modes
 
 | Mode | Description | Recommended For |
 |------|-------------|-----------------|
-| **CSS** | DOM elements + CSS animations with WebKit GPU acceleration | IINA playback (recommended) |
-| **Auto** | Auto-detect HTML5 / Flash per comment | General use |
-| **HTML5** | All comments rendered as HTML5 | — |
-| **Flash** | All comments rendered as Flash | — |
+| **CSS** (default) | DOM elements + CSS animations with WebKit GPU acceleration | IINA playback (recommended) |
+| **Canvas** | Canvas 2D rendering via niconicomments engine | When CSS mode doesn't suit |
 
-Auto, HTML5, and Flash are all Canvas rendering modes from the niconicomments library. CSS mode is selected from the "Render Mode" dropdown in the sidebar.
+Toggle between modes in the sidebar's Advanced settings.
 
 ### Loading Comment Files
 
