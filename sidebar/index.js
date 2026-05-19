@@ -606,6 +606,7 @@ var ddpSearchPending = false;
 
 function ddpDoSearch() {
   var keyword = ddpSearchInput ? ddpSearchInput.value.trim() : '';
+  iina.postMessage("sidebar-log", { msg: 'ddpDoSearch called, keyword="' + keyword + '"' });
   if (!keyword) return;
   if (ddpSearchTimer) clearTimeout(ddpSearchTimer);
   if (!ddpSearchPending && ddpSearchResults) {
@@ -613,6 +614,7 @@ function ddpDoSearch() {
   }
   ddpSearchPending = true;
   ddpSearchTimer = setTimeout(function() {
+    iina.postMessage("sidebar-log", { msg: 'sending dandanplay-search, keyword="' + keyword + '"' });
     iina.postMessage("dandanplay-search", { keyword: keyword });
     ddpSearchTimer = null;
   }, 500);
@@ -644,15 +646,20 @@ iina.onMessage("dandanplay-status", function (data) {
 });
 
 iina.onMessage("dandanplay-search-result", function (data) {
+  var logMsg = 'received dandanplay-search-result, rawType=' + typeof data + ' raw=' + (typeof data === 'string' ? data.substring(0, 200) : JSON.stringify(data).substring(0, 200));
   var parsed = (typeof data === 'string') ? JSON.parse(data) : data;
   ddpSearchPending = false;
+  logMsg += ' | parsed: error="' + (parsed.error || '') + '" animes=' + (parsed.animes ? parsed.animes.length : 0) + ' ddpSearchResults=' + (ddpSearchResults ? 'exists' : 'null');
+  iina.postMessage("sidebar-log", { msg: logMsg });
   try {
     if (!ddpSearchResults) {
+      iina.postMessage("sidebar-log", { msg: 'ddpSearchResults is null, returning' });
       return;
     }
     ddpSearchResults.innerHTML = '';
 
     if (parsed.error) {
+      iina.postMessage("sidebar-log", { msg: 'error in result: ' + parsed.error });
       var errEl = document.createElement('div');
       errEl.className = 'dandanplay-error';
       errEl.textContent = parsed.error;
@@ -661,6 +668,7 @@ iina.onMessage("dandanplay-search-result", function (data) {
     }
 
     var animes = parsed.animes || [];
+    iina.postMessage("sidebar-log", { msg: 'rendering ' + animes.length + ' animes' });
     if (animes.length === 0) {
       var emptyEl = document.createElement('div');
       emptyEl.style.cssText = 'font-size:11px;opacity:0.5;padding:4px';
@@ -704,6 +712,7 @@ iina.onMessage("dandanplay-search-result", function (data) {
       })(animes[i]);
     }
   } catch (e) {
+    iina.postMessage("sidebar-log", { msg: 'catch: ' + (e.message || e) + ' stack=' + (e.stack || 'none') });
     ddpSearchResults.innerHTML = '';
     var errEl = document.createElement('div');
     errEl.className = 'dandanplay-error';

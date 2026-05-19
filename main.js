@@ -1266,10 +1266,15 @@ function registerSidebarHandlers() {
 
   sidebar.onMessage("dandanplay-search", function (data) {
     var keyword = data.keyword;
-    if (!keyword) return;
+    console.log('[search] received dandanplay-search, keyword="' + keyword + '"');
+    if (!keyword) { console.log('[search] empty keyword, returning'); return; }
     ddpSearchAnime(keyword).then(function(res) {
+      console.log('[search] API response received, statusCode=' + (res ? res.statusCode : 'null') + ' text.length=' + (res && res.text ? res.text.length : 0) + ' data=' + (res && res.data ? (typeof res.data === 'object' ? 'object' : typeof res.data) : 'null'));
+      if (res && res.text) console.log('[search] API response text="' + res.text.substring(0, 500) + '"');
       var result = ddpParseBody(res);
+      console.log('[search] ddpParseBody result=' + (result ? (result.animes ? 'animes count=' + result.animes.length : 'no animes field') : 'null'));
       if (!result || !result.animes || result.animes.length === 0) {
+        console.log('[search] no results found, sending error to sidebar');
         sidebar.postMessage("dandanplay-search-result", JSON.stringify({ animes: [], error: 'No results found' }));
         return;
       }
@@ -1282,6 +1287,7 @@ function registerSidebarHandlers() {
           })(result.animes),
           error: null }));
     }).catch(function(err) {
+      console.log('[search] API catch: err=' + (err && err.message ? err.message : err) + ' stack=' + (err && err.stack ? err.stack : 'none'));
       sidebar.postMessage("dandanplay-search-result", JSON.stringify({ animes: [], error: ddpErrStr(err) }));
     });
   });
