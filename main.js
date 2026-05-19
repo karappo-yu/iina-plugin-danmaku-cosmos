@@ -1275,20 +1275,19 @@ function registerSidebarHandlers() {
       console.log('[search] ddpParseBody result=' + (result ? (result.animes ? 'animes count=' + result.animes.length : 'no animes field') : 'null'));
       if (!result || !result.animes || result.animes.length === 0) {
         console.log('[search] no results found, sending error to sidebar');
-        sidebar.postMessage("dandanplay-search-result", JSON.stringify({ animes: [], error: 'No results found' }));
+        sidebar.postMessage("dandanplay-search-result", { animes: [], error: 'No results found' });
+        console.log('[search] error msg sent');
         return;
       }
-        sidebar.postMessage("dandanplay-search-result", JSON.stringify({
-          animes: (function(arr) {
-            for (var i = 0; i < arr.length; i++) {
-              if (arr[i].animeTitle) arr[i].animeTitle = arr[i].animeTitle.replace(/[`\u2018\u2019]/g, "'");
-            }
-            return arr;
-          })(result.animes),
-          error: null }));
+      console.log('[search] about to send result to sidebar, animes count=' + result.animes.length + ' first title="' + (result.animes[0] ? result.animes[0].animeTitle : 'null') + '"');
+      for (var i = 0; i < result.animes.length; i++) {
+        if (result.animes[i].animeTitle) result.animes[i].animeTitle = result.animes[i].animeTitle.replace(/[`\u2018\u2019]/g, "'");
+      }
+      sidebar.postMessage("dandanplay-search-result", { animes: result.animes, error: null });
+      console.log('[search] result sent to sidebar');
     }).catch(function(err) {
       console.log('[search] API catch: err=' + (err && err.message ? err.message : err) + ' stack=' + (err && err.stack ? err.stack : 'none'));
-      sidebar.postMessage("dandanplay-search-result", JSON.stringify({ animes: [], error: ddpErrStr(err) }));
+      sidebar.postMessage("dandanplay-search-result", { animes: [], error: ddpErrStr(err) });
     });
   });
 

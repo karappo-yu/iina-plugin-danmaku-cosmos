@@ -646,11 +646,8 @@ iina.onMessage("dandanplay-status", function (data) {
 });
 
 iina.onMessage("dandanplay-search-result", function (data) {
-  var logMsg = 'received dandanplay-search-result, rawType=' + typeof data + ' raw=' + (typeof data === 'string' ? data.substring(0, 200) : JSON.stringify(data).substring(0, 200));
-  var parsed = (typeof data === 'string') ? JSON.parse(data) : data;
+  iina.postMessage("sidebar-log", { msg: 'received dandanplay-search-result, typeof=' + typeof data + ' hasAnimes=' + (data && data.animes ? data.animes.length : 0) + ' error=' + (data && data.error ? data.error : 'null') + ' ddpSearchResults=' + (ddpSearchResults ? 'exists' : 'null') });
   ddpSearchPending = false;
-  logMsg += ' | parsed: error="' + (parsed.error || '') + '" animes=' + (parsed.animes ? parsed.animes.length : 0) + ' ddpSearchResults=' + (ddpSearchResults ? 'exists' : 'null');
-  iina.postMessage("sidebar-log", { msg: logMsg });
   try {
     if (!ddpSearchResults) {
       iina.postMessage("sidebar-log", { msg: 'ddpSearchResults is null, returning' });
@@ -658,16 +655,16 @@ iina.onMessage("dandanplay-search-result", function (data) {
     }
     ddpSearchResults.innerHTML = '';
 
-    if (parsed.error) {
-      iina.postMessage("sidebar-log", { msg: 'error in result: ' + parsed.error });
+    if (data && data.error) {
+      iina.postMessage("sidebar-log", { msg: 'error in result: ' + data.error });
       var errEl = document.createElement('div');
       errEl.className = 'dandanplay-error';
-      errEl.textContent = parsed.error;
+      errEl.textContent = data.error;
       ddpSearchResults.appendChild(errEl);
       return;
     }
 
-    var animes = parsed.animes || [];
+    var animes = (data && data.animes) || [];
     iina.postMessage("sidebar-log", { msg: 'rendering ' + animes.length + ' animes' });
     if (animes.length === 0) {
       var emptyEl = document.createElement('div');
