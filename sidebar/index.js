@@ -694,6 +694,7 @@ iina.onMessage("dandanplay-search-result", function (data) {
         var epList = null;
         var epLoading = false;
         item.addEventListener('click', function () {
+          iina.postMessage("sidebar-log", { msg: 'search item click: animeTitle="' + anime.animeTitle + '" epList=' + (epList ? 'exists' : 'null') + ' epLoading=' + epLoading });
           if (epList) {
             var visible = epList.style.display !== 'none';
             epList.style.display = visible ? 'none' : '';
@@ -720,17 +721,22 @@ iina.onMessage("dandanplay-search-result", function (data) {
 });
 
 iina.onMessage("dandanplay-bangumi-result", function (data) {
-  var parsed = (typeof data === 'string') ? JSON.parse(data) : data;
+  iina.postMessage("sidebar-log", { msg: 'received bangumi-result, typeof=' + typeof data + ' animeTitle="' + (data.animeTitle || '') + '" episodes=' + (data.episodes ? data.episodes.length : 0) + ' error=' + (data.error || 'null') });
   try {
-    if (!ddpSearchResults || parsed.error) return;
-    var animeTitle = parsed.animeTitle;
-    var episodes = parsed.episodes || [];
+    if (!ddpSearchResults || data.error) {
+      iina.postMessage("sidebar-log", { msg: 'bangumi-result: skip, ddpSearchResults=' + (ddpSearchResults ? 'exists' : 'null') + ' error=' + (data.error || 'null') });
+      return;
+    }
+    var animeTitle = data.animeTitle;
+    var episodes = data.episodes || [];
 
     var items = ddpSearchResults.querySelectorAll('.dandanplay-search-result-item');
+    iina.postMessage("sidebar-log", { msg: 'bangumi-result: found ' + items.length + ' items, looking for animeTitle="' + animeTitle + '"' });
     for (var i = 0; i < items.length; i++) {
       (function(item) {
         var titleEl = item.querySelector('.dandanplay-search-result-title');
         if (!titleEl || titleEl.textContent !== animeTitle) return;
+        iina.postMessage("sidebar-log", { msg: 'bangumi-result: matched item, episodes=' + episodes.length });
 
         var subEl = item.querySelector('.dandanplay-search-result-episodes');
         if (subEl) subEl.textContent = episodes.length + ' episodes';

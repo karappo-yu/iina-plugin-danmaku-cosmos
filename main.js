@@ -1298,8 +1298,11 @@ function registerSidebarHandlers() {
   sidebar.onMessage("dandanplay-get-bangumi", function (data) {
     var bangumiId = data.bangumiId;
     var animeTitle = data.animeTitle;
+    console.log('[bangumi] received dandanplay-get-bangumi: bangumiId=' + bangumiId + ' animeTitle="' + animeTitle + '"');
     ddpGetBangumi(bangumiId).then(function(res) {
+      console.log('[bangumi] API response: statusCode=' + (res ? res.statusCode : 'null') + ' text.length=' + (res && res.text ? res.text.length : 0));
       var result = ddpParseBody(res);
+      console.log('[bangumi] parsed: error=' + (result && result.error ? result.error : 'null') + ' episodes=' + (result && result.episodes ? result.episodes.length : 0));
       if (!result) {
         sidebar.postMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: [], error: 'Parse error' });
         return;
@@ -1310,6 +1313,7 @@ function registerSidebarHandlers() {
       }
       sidebar.postMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: episodes });
     }).catch(function(err) {
+      console.log('[bangumi] catch: err=' + (err && err.message ? err.message : err));
       sidebar.postMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: [], error: ddpErrStr(err) });
     });
   });
