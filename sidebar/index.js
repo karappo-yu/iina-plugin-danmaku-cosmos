@@ -1,5 +1,5 @@
 var toggleDanmaku = document.getElementById("toggle-danmaku");
-var canvasModeSelect = document.getElementById("canvas-mode-select");
+var canvasRendererToggle = document.getElementById("canvas-renderer-toggle");
 var opacitySlider = document.getElementById("opacity-slider");
 var opacityValue = document.getElementById("opacity-value");
 var fontsizeSlider = document.getElementById("fontsize-slider");
@@ -49,7 +49,7 @@ var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closes
 
 var state = {
   enabled: true,
-  canvasMode: 'default',
+  useCanvasRenderer: true,
   danmakuType: 'none',
   danmakuFileName: null,
   danmakuRelativePath: null,
@@ -233,11 +233,7 @@ var i18n = {
     danmaku_visible: "Danmaku On",
     opacity: "Danmaku Opacity",
     font_scale: "Font Scale",
-    canvas_mode_label: "Render Mode",
-    canvas_mode_css: "CSS Auto",
-    canvas_mode_default: "Canvas Auto",
-    canvas_mode_html5: "Canvas HTML5",
-    canvas_mode_flash: "Canvas Flash",
+
     advanced: "Advanced",
     comment_limit: "Comment Limit",
     stroke_color: "Stroke Color",
@@ -273,11 +269,7 @@ var i18n = {
     danmaku_visible: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a",
     opacity: "\u30b3\u30e1\u30f3\u30c8\u900f\u660e\u5ea6",
     font_scale: "\u30d5\u30a9\u30f3\u30c8\u500d\u7387",
-    canvas_mode_label: "\u30e2\u30fc\u30c9",
-    canvas_mode_css: "CSS Auto",
-    canvas_mode_default: "\u30ad\u30e3\u30f3\u30d0\u30b9 Auto",
-    canvas_mode_html5: "\u30ad\u30e3\u30f3\u30d0\u30b9 HTML5",
-    canvas_mode_flash: "\u30ad\u30e3\u30f3\u30d0\u30b9 Flash",
+
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
     comment_limit: "\u30b3\u30e1\u30f3\u30c8\u5236\u9650",
     stroke_color: "\u7e01\u53d6\u308a\u306e\u8272",
@@ -313,11 +305,7 @@ var i18n = {
     danmaku_visible: "\u5f39\u5e55\u663e\u793a",
     opacity: "\u5f39\u5e55\u900f\u660e\u5ea6",
     font_scale: "\u5b57\u4f53\u7f29\u653e",
-    canvas_mode_label: "\u6e32\u67d3\u6a21\u5f0f",
-    canvas_mode_css: "CSS Auto",
-    canvas_mode_default: "Canvas Auto",
-    canvas_mode_html5: "Canvas HTML5",
-    canvas_mode_flash: "Canvas Flash",
+
     advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
     comment_limit: "\u5f39\u5e55\u4e0a\u9650",
     stroke_color: "\u63cf\u8fb9\u989c\u8272",
@@ -388,7 +376,7 @@ function updateUI() {
   commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : 'Off';
   speedSlider.value = Math.round(state.scrollSpeed * 100);
   speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
-  if (canvasModeSelect) canvasModeSelect.value = state.canvasMode || 'default';
+  if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
 }
 
 toggleDanmaku.addEventListener("change", function () {
@@ -410,11 +398,13 @@ if (fileAddBtn) {
   });
 }
 
-canvasModeSelect.addEventListener("change", function () {
-  var mode = canvasModeSelect.value;
-  state.canvasMode = mode;
-  iina.postMessage("set-canvas-mode", { mode: mode });
-});
+if (canvasRendererToggle) {
+  canvasRendererToggle.addEventListener("change", function () {
+    var useCanvas = canvasRendererToggle.checked;
+    state.useCanvasRenderer = useCanvas;
+    iina.postMessage("set-canvas-mode", { mode: useCanvas ? 'default' : 'css' });
+  });
+}
 
 opacitySlider.addEventListener("input", function () {
   var val = parseFloat(opacitySlider.value);
@@ -470,7 +460,7 @@ speedSlider.addEventListener("input", function () {
 
 iina.onMessage("danmaku-state", function (data) {
   if (data.enabled !== undefined) state.enabled = data.enabled;
-  if (data.canvasMode !== undefined) state.canvasMode = data.canvasMode;
+  if (data.canvasMode !== undefined) state.useCanvasRenderer = data.canvasMode === 'default';
   if (data.canvasOpacity !== undefined) state.canvasOpacity = data.canvasOpacity;
   if (data.canvasFontScale !== undefined) state.canvasFontScale = data.canvasFontScale;
   if (data.strokeOpacity !== undefined) state.strokeOpacity = data.strokeOpacity;
@@ -485,7 +475,6 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.danmakuLoaded !== undefined) state.danmakuLoaded = data.danmakuLoaded;
   updateUI();
   updateEnabledUI();
-  if (canvasModeSelect) canvasModeSelect.value = state.canvasMode || 'default';
 });
 
 iina.onMessage("danmaku-type", function (data) {

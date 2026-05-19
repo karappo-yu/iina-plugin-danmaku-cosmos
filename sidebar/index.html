@@ -78,14 +78,12 @@
         <span id="advanced-arrow" style="font-size:10px;opacity:0.5">▶</span>
       </div>
       <div id="advanced-content" style="display:none">
-        <div class="control-row" style="margin-top:10px">
-          <span class="toggle-label" data-i18n="canvas_mode_label">Render Mode</span>
-          <select id="canvas-mode-select" data-clickable style="margin-left:auto">
-            <option value="default" data-i18n="canvas_mode_default">Canvas Auto</option>
-            <option value="css" data-i18n="canvas_mode_css">CSS Auto</option>
-            <option value="html5" data-i18n="canvas_mode_html5">Canvas HTML5</option>
-            <option value="flash" data-i18n="canvas_mode_flash">Canvas Flash</option>
-          </select>
+        <div class="toggle-row" style="margin-top:10px">
+          <span class="toggle-label">使用 canvas 渲染</span>
+          <label class="switch" data-clickable>
+            <input type="checkbox" id="canvas-renderer-toggle" />
+            <span class="switch-slider"></span>
+          </label>
         </div>
         <h3 class="section-title" data-i18n="comment_limit" style="margin-top:10px">Comment Limit</h3>
         <div class="control-row">
