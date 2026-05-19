@@ -433,7 +433,7 @@ function ddpConvertComments(ddpComments) {
       _isOwner: false,
       _commands: commands,
       _userId: parseInt(parts[3]) || 0,
-      _dateSec: 0
+      _dateSec: 1767196800
     });
   }
   return list;
