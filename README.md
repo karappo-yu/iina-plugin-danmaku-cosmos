@@ -37,6 +37,8 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **自动加载开关**：开启后自动匹配并加载网络弹幕；关闭时优先使用本地弹幕，网络弹幕仅在手动选择时加载
 - **弹幕冲突处理**：网络弹幕和本地弹幕同时存在时，根据优先级自动选择
 
+> **注意**：弹弹play 的网络弹幕几乎全部来源于 Bilibili，因此弹幕内容以简体中文和繁体中文为主，不包含日文弹幕。
+
 ### 渲染模式
 
 | 模式 | 说明 | 推荐场景 |
@@ -106,6 +108,8 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **自動読み込みトグル**：ON で自動マッチング＋自動読み込み、OFF では優先的にローカルコメントを使用
 - **競合処理**：ネットワークコメントとローカルコメントが共存する場合、優先設定に従って自動選択
 
+> **注意**：弹弹play のネットワークコメントはほぼ全て Bilibili 由来のため、コメント内容は簡体字中国語・繁体字中国語が主体で、日本語コメントは含まれません。
+
 ### コメントファイルの読み込み
 
 #### 自動読み込み
@@ -157,6 +161,8 @@ The plugin integrates the dandanplay open platform API for automatic network dan
 - **Cache**: Network danmaku is cached locally; replay within 24 hours skips re-download
 - **Auto-load toggle**: ON for automatic network matching + loading; OFF prefers local files
 - **Conflict resolution**: When both local and network danmaku exist, priority setting determines which to use
+
+> **Note**: Dandanplay network danmaku is sourced almost entirely from Bilibili, so comments are predominantly Simplified Chinese and Traditional Chinese — Japanese comments are not available.
 
 ### Render Modes
 
