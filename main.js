@@ -843,6 +843,7 @@ function loadDanmakuForVideo(url) {
       ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, true);
       ddpAutoMatchAndLoad(url);
     } else {
+      if (overlayReady) overlay.postMessage("clear-danmaku", {});
       danmakuNotFound();
     }
   }
