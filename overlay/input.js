@@ -16,6 +16,16 @@ function parseNicoXml(chats) {
   return list;
 }
 
+function decodeXmlText(text) {
+  if (text.indexOf('&') === -1) return text;
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
 function parseBilibiliXml(xmlStr) {
   const list = [];
   const regex = /<d p="([^"]+)">([\s\S]*?)<\/d>/g;
@@ -23,6 +33,7 @@ function parseBilibiliXml(xmlStr) {
   while ((match = regex.exec(xmlStr)) !== null) {
     let p = match[1].split(",");
     const mode = parseInt(p[1]);
+    if (mode < 1 || mode > 6) continue;
     const size = parseInt(p[2]) || 25;
     let colorVal = parseInt(p[3]);
     if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
@@ -35,9 +46,10 @@ function parseBilibiliXml(xmlStr) {
     commands.push('#' + colorVal.toString(16).padStart(6, '0'));
     list.push({
       t: Math.round(parseFloat(p[0]) * 100),
-      text: match[2].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/<\/d/, ''),
+      text: decodeXmlText(match[2]),
       _isOwner: false,
       _commands: commands,
+      _reverse: mode === 6,
       _userId: 0,
       _dateSec: 2000000000
     });
@@ -46,6 +58,9 @@ function parseBilibiliXml(xmlStr) {
 }
 
 function parseXmlDanmaku(xmlStr) {
+  if (xmlStr.indexOf('<chat') === -1 && xmlStr.indexOf('<packet') === -1) {
+    return parseBilibiliXml(xmlStr);
+  }
   const parser = new DOMParser();
   const xmlDoc = parser.parseFromString(xmlStr, "text/xml");
   const chats = xmlDoc.getElementsByTagName('chat');
@@ -53,6 +68,6 @@ function parseXmlDanmaku(xmlStr) {
   return parseBilibiliXml(xmlStr);
 }
 
-window.parseDanmaku = function (encodedStr) {
-  return parseXmlDanmaku(decodeURIComponent(encodedStr));
+window.parseDanmaku = function (input, alreadyDecoded) {
+  return parseXmlDanmaku(alreadyDecoded ? input : decodeURIComponent(input));
 };

@@ -21,6 +21,10 @@ var scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get
 var currentPlaybackSpeed = 1.0;
 var overlayReady = false;
 var preferencesSyncTimer = null;
+var ddpCacheDirPath = null;
+var ddpCacheDirChecked = false;
+var ddpHashScriptPath = null;
+var ddpHashScriptReady = false;
 
 var DDP_APP_ID = preferences.get("dandanplayAppId") || 't43832ky57';
 var DDP_APP_SECRET = preferences.get("dandanplayAppSecret") || 'IDnPEdEKDIziKeYVxm6VcaJE4Bv2fnzT';
@@ -71,9 +75,24 @@ var danmakuFileList = {
 
 var danmakuCache = {};
 
+function sanitizeIPCString(value) {
+  return String(value || '').replace(/[`\u2018\u2019]/g, "'");
+}
+
+function findDanmakuFileByPath(path) {
+  var groups = [danmakuFileList.xmlFiles, danmakuFileList.jsonFiles, danmakuFileList.unknownFiles];
+  for (var g = 0; g < groups.length; g++) {
+    var files = groups[g] || [];
+    for (var i = 0; i < files.length; i++) {
+      if (files[i].path === path) return files[i];
+    }
+  }
+  return null;
+}
+
 function updateDanmakuStatus(status) {
   if (status.fileName && typeof status.fileName === 'string') {
-    status.fileName = status.fileName.replace(/[`\u2018\u2019]/g, "'");
+    status.fileName = sanitizeIPCString(status.fileName);
   }
   currentDanmakuStatus = status;
   sidebar.postMessage("danmaku-type", currentDanmakuStatus);
@@ -320,7 +339,7 @@ function ddpParseBody(res) {
     try { return JSON.parse(text); } catch (e) {}
   }
   if (res.data !== undefined && res.data !== null && typeof res.data === 'object') {
-    try { return JSON.parse(JSON.stringify(res.data)); } catch (e) {}
+    return res.data;
   }
   if (typeof res.data === 'string' && res.data.length > 0) {
     try { return JSON.parse(res.data); } catch (e) {}
@@ -331,20 +350,22 @@ function ddpParseBody(res) {
 function ddpCalcFileHash(filePath) {
   if (!filePath) return Promise.resolve(null);
   try {
-    var scriptPath = iina.utils.resolvePath('@data/ddp_hash.py');
-    var script = 'import hashlib,sys,os\n'
-      + 'try:\n'
-      + '  p=sys.argv[1];f=open(p,"rb");h=hashlib.md5(f.read(16*1024*1024)).hexdigest();f.close()\n'
-      + '  print(h+" "+str(os.path.getsize(p)))\n'
-      + 'except Exception as e:\n'
-      + '  print("ERROR "+str(e))';
-    try { file.write(scriptPath, script); } catch(e) { console.log('[ddp] hash write: ' + e); }
+    if (!ddpHashScriptPath) ddpHashScriptPath = iina.utils.resolvePath('@data/ddp_hash.py');
+    if (!ddpHashScriptPath) return Promise.resolve(null);
+    if (!ddpHashScriptReady || !file.exists(ddpHashScriptPath)) {
+      var script = 'import hashlib,sys,os\n'
+        + 'try:\n'
+        + '  p=sys.argv[1]\n'
+        + '  with open(p,"rb") as f:\n'
+        + '    h=hashlib.md5(f.read(16*1024*1024)).hexdigest()\n'
+        + '  print(h+" "+str(os.path.getsize(p)))\n'
+        + 'except Exception as e:\n'
+        + '  print("ERROR "+str(e))';
+      file.write(ddpHashScriptPath, script);
+      ddpHashScriptReady = true;
+    }
 
-    var escapedPath = filePath.replace(/'/g, "'\\''");
-    var cmd = 'python3 ' + "'" + scriptPath + "' " + "'" + escapedPath + "'";
-    console.log('[ddp] hash cmd: ' + cmd);
-    return iina.utils.exec('/bin/sh', ['-c', cmd]).then(function(result) {
-      console.log('[ddp] hash: status=' + (result ? result.status : 'null') + ' stdout=' + (result && result.stdout ? result.stdout.trim() : 'null'));
+    return iina.utils.exec('/usr/bin/env', ['python3', ddpHashScriptPath, filePath]).then(function(result) {
       if (!result || result.status !== 0 || !result.stdout) return null;
       var parts = result.stdout.trim().split(' ');
       if (parts.length >= 2 && parts[0].length === 32 && parts[0] !== 'ERROR') {
@@ -352,11 +373,9 @@ function ddpCalcFileHash(filePath) {
       }
       return null;
     }).catch(function(err) {
-      console.log('[ddp] hash catch: ' + err);
       return null;
     });
   } catch(e) {
-    console.log('[ddp] hash: ' + e);
     return Promise.resolve(null);
   }
 }
@@ -410,7 +429,8 @@ function ddpErrStr(err) {
 }
 
 function ddpConvertComments(ddpComments) {
-  var list = [];
+  var list = new Array(ddpComments.length);
+  var write = 0;
   for (var i = 0; i < ddpComments.length; i++) {
     var c = ddpComments[i];
     if (!c.p || !c.m) continue;
@@ -420,6 +440,7 @@ function ddpConvertComments(ddpComments) {
     var mode = parseInt(parts[1]);
     var colorDec = parseInt(parts[2]);
     if (isNaN(timeSec) || isNaN(mode) || isNaN(colorDec)) continue;
+    if (mode < 1 || mode > 6) continue;
     if (colorDec < 0) colorDec = (colorDec >>> 0) & 0xFFFFFF;
     var colorHex = '#' + colorDec.toString(16).padStart(6, '0');
     var commands = [];
@@ -427,24 +448,26 @@ function ddpConvertComments(ddpComments) {
     else if (mode === 5) commands.push('ue');
     else commands.push('naka');
     commands.push(colorHex);
-    list.push({
+    list[write++] = {
       t: Math.round(timeSec * 100),
       text: c.m,
       _isOwner: false,
       _commands: commands,
+      _reverse: mode === 6,
       _userId: parseInt(parts[3]) || 0,
       _dateSec: 1767196800
-    });
+    };
   }
+  list.length = write;
   return list;
 }
 
 function ensureCacheDir() {
   try {
+    if (ddpCacheDirChecked && ddpCacheDirPath) return ddpCacheDirPath;
     var cacheDir = iina.utils.resolvePath('@data/danmaku-cache/');
-    if (!cacheDir) { console.log('[ddp] ensureCacheDir: resolvePath returned null'); return null; }
+    if (!cacheDir) return null;
     if (!file.exists(cacheDir)) {
-      console.log('[ddp] ensureCacheDir: creating ' + cacheDir);
       try {
         if (typeof file.mkdir === 'function') {
           file.mkdir(cacheDir);
@@ -454,24 +477,20 @@ function ensureCacheDir() {
           iina.utils.exec('/bin/sh', ['-c', 'mkdir -p ' + "'" + escaped + "'"]);
         }
       } catch (e2) {
-        console.log('[ddp] ensureCacheDir: mkdir failed, trying exec: ' + e2);
         var escaped = cacheDir.replace(/'/g, "'\\''");
         iina.utils.exec('/bin/sh', ['-c', 'mkdir -p ' + "'" + escaped + "'"]);
       }
     }
-    if (!file.exists(cacheDir)) {
-      console.log('[ddp] ensureCacheDir: still missing after creation attempt');
-      return null;
-    }
+    if (!file.exists(cacheDir)) return null;
     // Clean up old video-map.json from previous implementation
     var oldMap = cacheDir + '/video-map.json';
     if (file.exists(oldMap)) {
-      try { file.delete(oldMap); console.log('[ddp] cleanup: removed old video-map.json'); } catch(e) {}
+      try { file.delete(oldMap); } catch(e) {}
     }
-    console.log('[ddp] ensureCacheDir: ok ' + cacheDir);
+    ddpCacheDirPath = cacheDir;
+    ddpCacheDirChecked = true;
     return cacheDir;
   } catch (e) {
-    console.log('[ddp] ensureCacheDir error: ' + e);
     return null;
   }
 }
@@ -533,23 +552,33 @@ function ddpReadVideoCache(videoPath) {
 function ddpSyncState() {
   sidebar.postMessage("dandanplay-status", {
     status: dandanplayState.status,
-    animeTitle: dandanplayState.animeTitle.replace(/[`\u2018\u2019]/g, "'"),
-    episodeTitle: dandanplayState.episodeTitle.replace(/[`\u2018\u2019]/g, "'"),
+    animeTitle: sanitizeIPCString(dandanplayState.animeTitle),
+    episodeTitle: sanitizeIPCString(dandanplayState.episodeTitle),
     episodeId: dandanplayState.episodeId,
     commentCount: dandanplayState.commentCount,
-    error: dandanplayState.error,
-    matches: dandanplayState.matches ? sanitizeMatches(JSON.parse(JSON.stringify(dandanplayState.matches))) : null,
+    error: sanitizeIPCString(dandanplayState.error),
+    matches: sanitizeMatches(dandanplayState.matches),
     autoNetwork: dandanplayAutoNetwork,
     matchType: dandanplayState.matchType
   });
 }
 
 function sanitizeMatches(matches) {
+  if (!matches) return null;
+  var result = new Array(matches.length);
   for (var i = 0; i < matches.length; i++) {
-    if (matches[i].animeTitle) matches[i].animeTitle = matches[i].animeTitle.replace(/[`\u2018\u2019]/g, "'");
-    if (matches[i].episodeTitle) matches[i].episodeTitle = matches[i].episodeTitle.replace(/[`\u2018\u2019]/g, "'");
+    var match = matches[i] || {};
+    result[i] = {
+      animeId: match.animeId,
+      animeTitle: sanitizeIPCString(match.animeTitle),
+      episodeId: match.episodeId,
+      episodeTitle: sanitizeIPCString(match.episodeTitle),
+      type: match.type,
+      typeDescription: match.typeDescription,
+      shift: match.shift
+    };
   }
-  return matches;
+  return result;
 }
 
 function ddpResetState() {
@@ -643,16 +672,12 @@ function ddpAutoMatchAndLoad(url) {
 
 function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted, forceLoad) {
   var virtualPath = 'dandanplay://' + episodeId;
-  var displayName = ('🌐 ' + (animeTitle || 'DanDanPlay') + ' - ' + (episodeTitle || '')).replace(/[`\u2018\u2019]/g, "'");
+  var displayName = sanitizeIPCString('🌐 ' + (animeTitle || 'DanDanPlay') + ' - ' + (episodeTitle || ''));
   danmakuCache[virtualPath] = encodeContent(JSON.stringify(converted));
 
   console.log('[ddp] addToFileList: episodeId=' + episodeId + ' converted=' + converted.length + ' forceLoad=' + forceLoad + ' listBefore=' + danmakuFileList.jsonFiles.length + ' displayName.length=' + displayName.length);
 
-  var alreadyExists = false;
-  var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles);
-  for (var i = 0; i < allFiles.length; i++) {
-    if (allFiles[i].path === virtualPath) { alreadyExists = true; console.log('[ddp] addToFileList: alreadyExists, path=' + allFiles[i].path + ' type=' + allFiles[i].type); break; }
-  }
+  var alreadyExists = !!findDanmakuFileByPath(virtualPath);
   if (!alreadyExists) {
     console.log('[ddp] addToFileList: pushing new entry virtualPath=' + virtualPath + ' displayName="' + displayName + '"');
     danmakuFileList.jsonFiles.push({
@@ -739,7 +764,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad) {
 
     dandanplayState.status = 'loaded';
     dandanplayState.commentCount = converted.length;
-    dandanplayState.comments = converted;
+    dandanplayState.comments = null;
     ddpSyncState();
     console.log('[ddp] loadComments: about to call addToFileListAndLoad');
     ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted, forceLoad);
@@ -756,22 +781,22 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad) {
 function ddpFallbackToLocal() {
   if (!dandanplayAutoNetwork) return;
   if (currentDanmakuStatus.isLoaded) return;
-  var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles);
-  for (var i = 0; i < allFiles.length; i++) {
-    if (allFiles[i].type !== 'DDP') {
-      loadLocalDanmaku(allFiles[i]);
-      return;
+  var groups = [danmakuFileList.xmlFiles, danmakuFileList.jsonFiles];
+  for (var g = 0; g < groups.length; g++) {
+    var files = groups[g] || [];
+    for (var i = 0; i < files.length; i++) {
+      if (files[i].type !== 'DDP') {
+        loadLocalDanmaku(files[i]);
+        return;
+      }
     }
   }
 }
 
 function addDDPToFileList(episodeId, animeTitle, episodeTitle, comments) {
   var virtualPath = 'dandanplay://' + episodeId;
-  var displayName = ('🌐 ' + (animeTitle || 'DanDanPlay') + ' - ' + (episodeTitle || '')).replace(/[`\u2018\u2019]/g, "'");
-  var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles);
-  for (var i = 0; i < allFiles.length; i++) {
-    if (allFiles[i].path === virtualPath) return;
-  }
+  var displayName = sanitizeIPCString('🌐 ' + (animeTitle || 'DanDanPlay') + ' - ' + (episodeTitle || ''));
+  if (findDanmakuFileByPath(virtualPath)) return;
   danmakuCache[virtualPath] = encodeContent(JSON.stringify(comments));
   danmakuFileList.jsonFiles.push({
     path: virtualPath,
@@ -1155,11 +1180,7 @@ function registerSidebarHandlers() {
     danmakuFileList.selectedPaths = [filePath];
 
     var fileName = filePath.indexOf('dandanplay://') === 0 ? filePath : filePath.split("/").pop();
-    var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles).concat(danmakuFileList.unknownFiles);
-    var fileInfo = null;
-    for (var fi = 0; fi < allFiles.length; fi++) {
-      if (allFiles[fi].path === filePath) { fileInfo = allFiles[fi]; break; }
-    }
+    var fileInfo = findDanmakuFileByPath(filePath);
     var relPath = fileInfo ? fileInfo.relativePath : fileName;
     var fileType = filePath.indexOf('dandanplay://') === 0 ? 'dandanplay' : detectDanmakuType(decodeURIComponent(encodedContent));
     updateDanmakuStatus({ fileType: fileType, fileName: fileInfo ? fileInfo.filename : fileName, relativePath: relPath, isLoaded: true });
@@ -1187,10 +1208,7 @@ function registerSidebarHandlers() {
     iina.utils.chooseFile("选择弹幕文件", { allowedFileTypes: ["json", "xml"] }).then(function(path) {
       if (!path) return;
 
-      var allFiles = danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles).concat(danmakuFileList.unknownFiles);
-      for (var i = 0; i < allFiles.length; i++) {
-        if (allFiles[i].path === path) { core.osd("文件已在列表中"); return; }
-      }
+      if (findDanmakuFileByPath(path)) { core.osd("文件已在列表中"); return; }
 
       var fname = path.split("/").pop();
       var ext = fname.lastIndexOf('.') >= 0 ? fname.substring(fname.lastIndexOf('.') + 1).toLowerCase() : '';

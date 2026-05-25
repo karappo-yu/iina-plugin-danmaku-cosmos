@@ -76,6 +76,11 @@ var fileListState = {
   errorPaths: {}
 };
 
+var DEBUG_LOG = false;
+
+function debugLog(message) {
+  if (DEBUG_LOG) iina.postMessage("sidebar-log", { msg: message });
+}
 
 function createFileItem(fileInfo, isChecked, isDisabled) {
   var item = document.createElement('div');
@@ -490,10 +495,10 @@ iina.onMessage("danmaku-type", function (data) {
 
 iina.onMessage("danmaku-file-list", function (data) {
   var count = (data.jsonFiles ? data.jsonFiles.length : 0);
-  iina.postMessage("sidebar-log", { msg: 'danmaku-file-list received, jsonFiles=' + count + ' selected=' + (data.selectedPaths ? data.selectedPaths.length : 0) });
+  debugLog('danmaku-file-list received, jsonFiles=' + count + ' selected=' + (data.selectedPaths ? data.selectedPaths.length : 0));
   if (data.jsonFiles) {
     for (var i = 0; i < data.jsonFiles.length; i++) {
-      iina.postMessage("sidebar-log", { msg: '  [' + i + '] filename="' + data.jsonFiles[i].filename + '" len=' + data.jsonFiles[i].filename.length + ' type=' + data.jsonFiles[i].type });
+      debugLog('  [' + i + '] filename="' + data.jsonFiles[i].filename + '" len=' + data.jsonFiles[i].filename.length + ' type=' + data.jsonFiles[i].type);
     }
   }
   fileListState.xmlFiles = data.xmlFiles || [];
@@ -604,7 +609,7 @@ var ddpSearchPending = false;
 
 function ddpDoSearch() {
   var keyword = ddpSearchInput ? ddpSearchInput.value.trim() : '';
-  iina.postMessage("sidebar-log", { msg: 'ddpDoSearch called, keyword="' + keyword + '"' });
+  debugLog('ddpDoSearch called, keyword="' + keyword + '"');
   if (!keyword) return;
   if (ddpSearchTimer) clearTimeout(ddpSearchTimer);
   if (ddpSearchResults) {
@@ -619,7 +624,7 @@ function ddpDoSearch() {
   if (ddpSearchResultsArrow) ddpSearchResultsArrow.textContent = '\u25B6';
   ddpSearchPending = true;
   ddpSearchTimer = setTimeout(function() {
-    iina.postMessage("sidebar-log", { msg: 'sending dandanplay-search, keyword="' + keyword + '"' });
+    debugLog('sending dandanplay-search, keyword="' + keyword + '"');
     iina.postMessage("dandanplay-search", { keyword: keyword });
     ddpSearchTimer = null;
   }, 500);
@@ -651,18 +656,18 @@ iina.onMessage("dandanplay-status", function (data) {
 });
 
 iina.onMessage("dandanplay-search-result", function (data) {
-  iina.postMessage("sidebar-log", { msg: 'received dandanplay-search-result, typeof=' + typeof data + ' hasAnimes=' + (data && data.animes ? data.animes.length : 0) + ' error=' + (data && data.error ? data.error : 'null') + ' ddpSearchResults=' + (ddpSearchResults ? 'exists' : 'null') });
+  debugLog('received dandanplay-search-result, typeof=' + typeof data + ' hasAnimes=' + (data && data.animes ? data.animes.length : 0) + ' error=' + (data && data.error ? data.error : 'null') + ' ddpSearchResults=' + (ddpSearchResults ? 'exists' : 'null'));
   ddpSearchPending = false;
   try {
     if (!ddpSearchResults) {
-      iina.postMessage("sidebar-log", { msg: 'ddpSearchResults is null, returning' });
+      debugLog('ddpSearchResults is null, returning');
       return;
     }
     ddpSearchResults.innerHTML = '';
     if (ddpSearchResultsWrapper) ddpSearchResultsWrapper.style.display = '';
 
     if (data && data.error) {
-      iina.postMessage("sidebar-log", { msg: 'error in result: ' + data.error });
+      debugLog('error in result: ' + data.error);
       if (ddpSearchResultsToggle) ddpSearchResultsToggle.style.display = 'none';
       var errEl = document.createElement('div');
       errEl.className = 'dandanplay-error';
@@ -672,7 +677,7 @@ iina.onMessage("dandanplay-search-result", function (data) {
     }
 
     var animes = (data && data.animes) || [];
-    iina.postMessage("sidebar-log", { msg: 'rendering ' + animes.length + ' animes, childCount before=' + ddpSearchResults.childElementCount + ' html="' + ddpSearchResults.innerHTML.substring(0, 100) + '"' });
+    debugLog('rendering ' + animes.length + ' animes, childCount before=' + ddpSearchResults.childElementCount + ' html="' + ddpSearchResults.innerHTML.substring(0, 100) + '"');
     if (animes.length === 0) {
       if (ddpSearchResultsToggle) ddpSearchResultsToggle.style.display = 'none';
       var emptyEl = document.createElement('div');
@@ -719,9 +724,9 @@ iina.onMessage("dandanplay-search-result", function (data) {
         ddpSearchResults.appendChild(item);
       })(animes[i]);
     }
-    iina.postMessage("sidebar-log", { msg: 'after render childCount=' + ddpSearchResults.childElementCount + ' html="' + ddpSearchResults.innerHTML.substring(0, 100) + '" ddpSearchPanel.display=' + (ddpSearchPanel ? ddpSearchPanel.style.display : 'null') });
+    debugLog('after render childCount=' + ddpSearchResults.childElementCount + ' html="' + ddpSearchResults.innerHTML.substring(0, 100) + '" ddpSearchPanel.display=' + (ddpSearchPanel ? ddpSearchPanel.style.display : 'null'));
   } catch (e) {
-    iina.postMessage("sidebar-log", { msg: 'catch: ' + (e.message || e) + ' stack=' + (e.stack || 'none') });
+    debugLog('catch: ' + (e.message || e) + ' stack=' + (e.stack || 'none'));
     ddpSearchResults.innerHTML = '';
     var errEl = document.createElement('div');
     errEl.className = 'dandanplay-error';
@@ -731,22 +736,22 @@ iina.onMessage("dandanplay-search-result", function (data) {
 });
 
 iina.onMessage("dandanplay-bangumi-result", function (data) {
-  iina.postMessage("sidebar-log", { msg: 'received bangumi-result, typeof=' + typeof data + ' animeTitle="' + (data.animeTitle || '') + '" episodes=' + (data.episodes ? data.episodes.length : 0) + ' error=' + (data.error || 'null') });
+  debugLog('received bangumi-result, typeof=' + typeof data + ' animeTitle="' + (data.animeTitle || '') + '" episodes=' + (data.episodes ? data.episodes.length : 0) + ' error=' + (data.error || 'null'));
   try {
     if (!ddpSearchResults || data.error) {
-      iina.postMessage("sidebar-log", { msg: 'bangumi-result: skip, ddpSearchResults=' + (ddpSearchResults ? 'exists' : 'null') + ' error=' + (data.error || 'null') });
+      debugLog('bangumi-result: skip, ddpSearchResults=' + (ddpSearchResults ? 'exists' : 'null') + ' error=' + (data.error || 'null'));
       return;
     }
     var animeTitle = data.animeTitle;
     var episodes = data.episodes || [];
 
     var items = ddpSearchResults.querySelectorAll('.dandanplay-search-result-item');
-    iina.postMessage("sidebar-log", { msg: 'bangumi-result: found ' + items.length + ' items, looking for animeTitle="' + animeTitle + '"' });
+    debugLog('bangumi-result: found ' + items.length + ' items, looking for animeTitle="' + animeTitle + '"');
     for (var i = 0; i < items.length; i++) {
       (function(item) {
         var titleEl = item.querySelector('.dandanplay-search-result-title');
         if (!titleEl || titleEl.textContent !== animeTitle) return;
-        iina.postMessage("sidebar-log", { msg: 'bangumi-result: matched item, episodes=' + episodes.length });
+        debugLog('bangumi-result: matched item, episodes=' + episodes.length);
 
         var subEl = item.querySelector('.dandanplay-search-result-episodes');
         if (subEl) subEl.textContent = episodes.length + ' episodes';
