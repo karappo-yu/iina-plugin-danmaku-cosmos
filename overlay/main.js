@@ -156,6 +156,7 @@ function initCanvasRenderer(data) {
   });
   nicoRawData = data;
   bindCanvasEvents(niconiComments);
+  drawCanvasAtVpos(canvasGetCurrentTime() * 100, true);
   if (isPaused && useCssMode) {
     niconiComments.pauseCSS();
   }
