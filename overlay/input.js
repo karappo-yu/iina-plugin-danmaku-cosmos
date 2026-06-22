@@ -40,10 +40,10 @@ function parseBilibiliXml(xmlStr) {
           var pAttr = el.getAttribute('p');
           if (!pAttr) continue;
           var parts = pAttr.split(",");
-          var mode = parseInt(parts[1]);
-          if (mode < 1 || mode > 6) continue;
-          var size = parseInt(parts[2]) || 25;
-          var colorVal = parseInt(parts[3]);
+          var mode = parseInt(parts[1], 10);
+      if (mode < 1 || mode > 6) continue;
+      var size = parseInt(parts[2], 10) || 25;
+      var colorVal = parseInt(parts[3], 10);
           if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
           var commands = parts[5] ? parts[5].toLowerCase().split(/\s+/) : [];
           if (mode === 4) commands.push('shita');
@@ -59,7 +59,7 @@ function parseBilibiliXml(xmlStr) {
             _commands: commands,
             _reverse: mode === 6,
             _userId: 0,
-            _dateSec: 2000000000
+            _dateSec: 1767196800
           });
         }
         return list;
@@ -75,10 +75,10 @@ function parseBilibiliXml(xmlStr) {
   var match;
   while ((match = regex.exec(xmlStr)) !== null) {
     var p = match[1].split(",");
-    var mode = parseInt(p[1]);
+    var mode = parseInt(p[1], 10);
     if (mode < 1 || mode > 6) continue;
-    var size = parseInt(p[2]) || 25;
-    var colorVal = parseInt(p[3]);
+    var size = parseInt(p[2], 10) || 25;
+    var colorVal = parseInt(p[3], 10);
     if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
     var commands = p[5] ? p[5].toLowerCase().split(/\s+/) : [];
     if (mode === 4) commands.push('shita');
@@ -94,7 +94,7 @@ function parseBilibiliXml(xmlStr) {
       _commands: commands,
       _reverse: mode === 6,
       _userId: 0,
-      _dateSec: 2000000000
+      _dateSec: 1767196800
     });
   }
   return list;

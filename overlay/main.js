@@ -72,7 +72,7 @@ function buildFormattedCanvasData(list, sourceType) {
       date: d._dateSec || 0,
       date_usec: 0,
       owner: sourceType !== 'bilibili-xml' && !!d._isOwner,
-      premium: true,
+      premium: false,
       mail: Array.isArray(d._commands) ? d._commands : [],
       user_id: toNumericUserId(d._userId, userMap),
       layer: d._layer === undefined ? -1 : d._layer,
@@ -229,7 +229,11 @@ iina.onMessage("load-danmaku", (data) => {
   }
 
   const encodedStr = data.xmlContent;
-  const rawStr = decodeURIComponent(encodedStr);
+  let rawStr;
+  try { rawStr = decodeURIComponent(encodedStr); } catch (e) {
+    console.log('[overlay] decodeURIComponent failed: ' + e);
+    return;
+  }
 
   var danmakuType = data.danmakuType || detectRawDanmakuType(rawStr);
   currentDanmakuType = danmakuType;
@@ -361,6 +365,8 @@ iina.onMessage("set-scroll-speed", (data) => {
 
 iina.onMessage("clear-danmaku", () => {
   destroyCanvasRenderer();
+  const cssContainer = document.querySelector('[data-dm-css-container]');
+  if (cssContainer) cssContainer.remove();
   allDanmaku = [];
   nicoRawData = null;
   nicoRawFormat = 'legacy';

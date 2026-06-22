@@ -158,8 +158,6 @@ function renderFileList() {
   if (!container) return;
   container.innerHTML = '';
 
-  var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0 || fileListState.unknownFiles.length > 0;
-
   var lang = getBrowserLang();
   var xmlTitle = lang === 'zh' ? 'XML 弹幕' : lang === 'ja' ? 'XML\u30b3\u30e1\u30f3\u30c8' : 'XML Danmaku';
   var jsonTitle = lang === 'zh' ? 'JSON 弹幕' : lang === 'ja' ? 'JSON\u30b3\u30e1\u30f3\u30c8' : 'JSON Danmaku';
@@ -212,8 +210,7 @@ function updateFileCount() {
 
 function updateDanmakuInfoUI() {
   var fileListSection = document.getElementById('danmaku-file-list-section');
-  var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0 || fileListState.unknownFiles.length > 0;
-  var hasDanmaku = state.danmakuLoaded || hasFiles;
+  var hasDanmaku = state.danmakuLoaded || fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0 || fileListState.unknownFiles.length > 0;
   if (fileListSection) fileListSection.style.display = '';
   toggleDanmaku.disabled = !hasDanmaku;
   if (!hasDanmaku) toggleDanmaku.checked = false;
@@ -597,7 +594,6 @@ if (ddpSearchResultsToggle) {
 }
 
 var ddpSearchTimer = null;
-var ddpSearchPending = false;
 
 function ddpDoSearch() {
   var keyword = ddpSearchInput ? ddpSearchInput.value.trim() : '';
@@ -614,7 +610,6 @@ function ddpDoSearch() {
     ddpSearchResults.appendChild(loadingEl);
   }
   if (ddpSearchResultsArrow) ddpSearchResultsArrow.textContent = '\u25B6';
-  ddpSearchPending = true;
   ddpSearchTimer = setTimeout(function() {
     debugLog('sending dandanplay-search, keyword="' + keyword + '"');
     iina.postMessage("dandanplay-search", { keyword: keyword });
@@ -649,7 +644,6 @@ iina.onMessage("dandanplay-status", function (data) {
 
 iina.onMessage("dandanplay-search-result", function (data) {
   debugLog('received dandanplay-search-result, typeof=' + typeof data + ' hasAnimes=' + (data && data.animes ? data.animes.length : 0) + ' error=' + (data && data.error ? data.error : 'null') + ' ddpSearchResults=' + (ddpSearchResults ? 'exists' : 'null'));
-  ddpSearchPending = false;
   try {
     if (!ddpSearchResults) {
       debugLog('ddpSearchResults is null, returning');

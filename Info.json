@@ -1,5 +1,5 @@
 {
-  "name": "Danmaku Cosmos (niconicocomments only)",
+  "name": "Danmaku Cosmos",
   "identifier": "com.danmaku-cosmos.iina-plugin",
   "version": "3.0.0",
   "description": "IINA弹幕插件 (niconicocomments-only渲染)",
