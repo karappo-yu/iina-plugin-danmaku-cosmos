@@ -2,7 +2,7 @@
 
 ## Overview
 
-An IINA danmaku plugin supporting Niconico (XML / V1 JSON), Bilibili (XML), and **Dandanplay network danmaku** with dual CSS and Canvas rendering modes.
+An IINA danmaku plugin supporting Niconico (XML / V1 JSON), Bilibili (XML), and **Dandanplay network danmaku** with dual CSS and Canvas rendering modes. This is a niconico-style danmaku plugin — Bilibili and other Chinese formats have limited support and are rendered in niconico style.
 
 ## Reference Links
 
@@ -15,7 +15,7 @@ An IINA danmaku plugin supporting Niconico (XML / V1 JSON), Bilibili (XML), and 
 - **Rendering engine**: IINA uses Safari (WebKit) internally
 - **Language**: Plain vanilla JavaScript (ES5/ES6 mixed), no TypeScript
 - **Modularity**: Overlay files are loaded via `<script>` tags in order, sharing global functions and variables through the `window` object. `main.js` (plugin entry) and `sidebar/` run in separate contexts.
-- **Network access**: Requires `permissions: ["network-request"]` and `allowedDomains` in `Info.json`. Use `iina.http` module.
+- **Network access**: Requires `permissions: ["network-request"]` and `allowedDomains` in `Info.json`. Use `iina.http` module (not browser `fetch`).
 
 ## Project Structure
 
@@ -24,28 +24,19 @@ Danmaku Cosmos/
 ├── Info.json                 # Plugin metadata & preference defaults
 ├── main.js                   # Plugin entry: IINA API, file loading, message relay, DDP integration
 ├── global.js                 # Global entry (logging only)
-├── preferences.html          # IINA preference page (CSS font family/weight/stroke)
 ├── overlay/                  # Danmaku render layer (WebView container)
 │   ├── index.html            # Entry point
-│   ├── index.css             # Render styles & animation definitions
+│   ├── index.css             # Render styles
+│   ├── input.js              # Danmaku data parser (Niconico XML, Bilibili XML)
 │   ├── main.js               # Engine entry: message handling, render mode, state mgmt
-│   ├── renderer.js           # CSS mode (plugin's own): DOM creation, object pool, danmaku layout
-│   ├── lane.js               # Lane allocation & management (multi-level offset collision)
-│   ├── config.js             # Global constants (colors, fonts, size maps)
-│   ├── command.js            # mail/commands parser
-│   ├── flash.js              # Flash danmaku text preprocessing (ruby super/sub)
-│   ├── nicoscript.js         # Nicoscript parser (@reverse/@speed/@default/@ban/@jump/@replace)
-│   ├── input.js              # Three-format danmaku data parser
-│   ├── ca-score.js           # Comment Art scoring & layer separation
 │   └── lib/                  # Third-party libs (read-only, do not modify)
-│       ├── niconicomments.min.js  # Forked niconicomments with CSSRenderer
-│       ├── niconicomments-plugin-niwango.min.js
-│       └── niwango.min.js
+│       └── niconicomments.min.js  # Forked niconicomments with CSSRenderer
 ├── sidebar/                  # IINA sidebar control panel
 │   ├── index.html
 │   ├── index.css
 │   └── index.js
-└── .github/workflows/       # Release packaging
+└── .github/workflows/        # Release packaging
+    └── release.yml
 ```
 
 ## Dual Rendering Architecture
@@ -62,16 +53,11 @@ When `mode: "css"` is passed to NiconiComments, a `CSSRenderer` is created inste
 - Stroke: `-webkit-text-stroke` + `paint-order: stroke fill`
 - Object pool (max 512 elements) for DOM reuse
 - Pause/resume via Web Animations API `pause()`/`play()`
-- Supports both HTML5 and Flash danmaku (auto-detection like default mode)
 - Tracks reverse state per danmaku, reanimates when `@reverse` activates/deactivates
 
 ### Canvas Mode (niconicomments original)
 
-Based on the original niconicomments library. Supports Auto / HTML5 / Flash modes. Not recommended to modify Canvas mode internals.
-
-### CSS Mode (plugin's own renderer.js)
-
-The plugin also has its own CSS rendering system (`renderer.js`, `lane.js`, etc.) for non-Niconico V1 JSON formats (Niconico XML, Bilibili XML, DDP converted format). This is separate from the niconicomments CSSRenderer.
+Based on the original niconicomments library. Supports Auto mode only (HTML5 and Flash modes have been removed). Not recommended to modify Canvas mode internals.
 
 ## Dandanplay Network Danmaku
 
@@ -110,7 +96,7 @@ DDP `p` format: `time,mode,color,userId` → converted to nico-like internal for
 
 ### API Credentials
 
-Hardcoded in `main.js:25-26` as fallback defaults. No user configuration needed.
+Hardcoded in `main.js:29-30` as fallback defaults. No user configuration needed.
 
 ## Architecture Key Conventions
 
@@ -140,25 +126,22 @@ All communication uses `postMessage` / `onMessage` across three channels:
 ### Overlay Script Load Order (Immutable)
 
 ```
-niconicomments.min.js → niconicomments-plugin-niwango.min.js → niwango.min.js
-→ config.js → command.js → flash.js → nicoscript.js → lane.js → renderer.js → input.js → ca-score.js → main.js
+niconicomments.min.js → input.js → main.js
 ```
 
-Later scripts depend on functions mounted on `window` by earlier scripts (e.g., `parseMailCommands`, `window.setRendererConfig`, `window.getFreeScrollLane`). Do not reorder the `<script>` tags.
+Later scripts depend on functions mounted on `window` by earlier scripts (e.g., `window.parseDanmaku` from `input.js`). Do not reorder the `<script>` tags.
 
 ### Data Format
 
-- **Danmaku data object** field conventions (created in `input.js`):
+- **Danmaku data object** field conventions (created in `input.js` and `main.js:ddpConvertComments`):
   - `t` — vpos time (1/100 sec)
-  - `m` — mode (1-7)
-  - `c` — color hex
   - `text` — display text
-  - `size` — font size
   - `_isOwner` — whether posted by the video owner
-  - `_isFlash` — whether it's a Flash danmaku
-  - `_layer` — CA layer ID (-1 = default layer)
-  - `_lane` / `_offsetLevel` / `_forced` — lane allocation results (assigned at runtime)
-  - `font` / `invisible` / `live` / `full` / `ender` / `patissier` / `durationSec` etc.
+  - `_commands` — array of mail commands (e.g., `['naka', '#ffffff', 'big']`)
+  - `_userId` — user ID (number or string)
+  - `_dateSec` — Unix timestamp in seconds
+  - `_reverse` — whether reverse danmaku (mode 6)
+  - `_layer` — CA layer ID (-1 = default layer, assigned at runtime by niconicomments)
 
 - **Communication encoding**: Danmaku XML/JSON content is encoded with `encodeURIComponent()` (via the `encodeContent` function) in `main.js` before sending to overlay, then decoded with `decodeURIComponent()` on the overlay side. Do not change this encoding protocol unless replacing it entirely (both ends must stay in sync).
 
@@ -170,47 +153,45 @@ Later scripts depend on functions mounted on `window` by earlier scripts (e.g., 
 4. CSS animations drive movement; Web Animations API handles pause/resume
 5. When video pauses, `pauseCSS()` pauses all active animations; `resumeCSS()` resumes them
 
-### CSS Mode (plugin's own) Render Flow
-
-1. `time-update` fires on each time change → `main.js` scans `allDanmaku` for entries ≤ current time
-2. `createDanmaku()` gets a DOM element from the object pool (`danmakuPool`), applies styles
-3. Lane allocation (`lane.js`): tries Level 0 first, then Level 1/2, falls back to forced
-4. CSS animations drive movement; `animationend` event triggers element return to the pool
-
 ### Canvas Mode
 
-Based on the `niconicomments` third-party library. Only available for Niconico V1 JSON format and DDP nico-converted format. Not recommended to modify Canvas mode internals.
+Based on the `niconicomments` third-party library. All formats (Niconico XML, Bilibili XML, DDP converted) are normalized via `buildFormattedCanvasData()` in `overlay/main.js` before being passed to NiconiComments. Not recommended to modify Canvas mode internals.
 
 ## Coding Conventions
 
 - **Variable declarations**: `var` (main.js/sidebar) and `let` (overlay) are both used. Prefer `let` in new code.
-- **Naming**: camelCase. Private/run-time fields prefix with `_` (e.g., `_layer`, `_lane`)
-- **DOM operations**: Danmaku DOM elements **must** be obtained from the object pool (`getDanmakuElement()`) and returned via `recycleDanmakuElement()`. Do NOT use `createElement` / `removeChild` directly.
+- **Naming**: camelCase. Private/run-time fields prefix with `_` (e.g., `_layer`, `_commands`)
 - **Communication**: `iina.postMessage(key, value)` / `iina.onMessage(key, callback)` is the standard pattern. Keep naming consistent.
 - **Danmaku toggle**: Use the shared `toggleDanmaku()` or `ensureDanmakuEnabled()` functions. Do not manually repeat `preferences.set` + `overlay.postMessage` logic.
 - **Network requests**: Use `iina.http` module. DDP API uses `X-AppId`/`X-AppSecret` header auth.
 - **Backtick sanitization**: Always sanitize strings with U+0060 backtick before `sidebar.postMessage`.
+- **Preferences sync**: Use `syncPreferencesSoon()` (debounced) instead of calling `preferences.sync()` directly.
+
+### Logging Conventions
+
+- **No verbose debug logging in production code.** Only log errors and one-time initialization messages.
+- **Never** use `console.log` in high-frequency callbacks (especially `time-update` / `canvasRenderLoop`).
+- Error logs in `catch` blocks are acceptable (e.g., `console.log('[ddp] saveVideoCache error: ' + e)`).
+- The sidebar relays its debug output via `iina.postMessage("sidebar-log", ...)` to `main.js`, gated by a `DEBUG_LOG` flag (default `false`).
+- When debugging is needed, temporarily add logs and remove them before committing — do not leave trace-level logging in shipped code.
 
 ## Known Limitations
 
 - `canvas.width = 1920; canvas.height = 1080` is hardcoded and does not adapt to window aspect ratio
 - Filenames containing `[` or `]` may cause auto-load to fail (regex matching in `extractEpisodeNumber`)
-- Restoring from window minimize triggers a full `handleSeek` re-render
 - Canvas mode does not support CSS-mode-specific settings (font scale, scroll duration, blocking, lane limits)
 - CSS mode (niconicomments) Comment Art vertical positioning may differ slightly from Canvas mode
-- `preferences.sync()` is called on every change with no debounce
 - DDP cache only stores the last loaded episode per video (hash overwrite)
 - Backtick U+0060 in any sidebar message field causes IINA IPC to silently drop the entire message
 
 ## Avoid
 
-- ❌ Do not introduce any build tools or npm packaging
-- ❌ Do not modify files under `overlay/lib/` (third-party libraries)
-- ❌ Do not create a direct communication channel between overlay and sidebar
-- ❌ Do not change the `<script>` loading order in the overlay HTML
-- ❌ Do not use `console.log` for high-frequency output in production code (especially in `time-update` callbacks)
-- ❌ Do not create or remove danmaku DOM elements directly — always use the object pool
-- ❌ Do not send `JSON.stringify` payloads to `sidebar.postMessage` — always send plain objects
+- Do not introduce any build tools or npm packaging
+- Do not modify files under `overlay/lib/` (third-party libraries)
+- Do not create a direct communication channel between overlay and sidebar
+- Do not change the `<script>` loading order in the overlay HTML
+- Do not use `console.log` for high-frequency output in production code (especially in `time-update` callbacks)
+- Do not send `JSON.stringify` payloads to `sidebar.postMessage` — always send plain objects
 
 ## Related Repository
 

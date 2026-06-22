@@ -210,14 +210,6 @@ function updateFileCount() {
   else countEl.textContent = selected + ' / ' + total + ' selected';
 }
 
-function debouncedFileCheck(path, checked) {
-  if (checkDebounceTimer) clearTimeout(checkDebounceTimer);
-  checkDebounceTimer = setTimeout(function () {
-    iina.postMessage("danmaku-file-check", { path: path, checked: checked });
-    checkDebounceTimer = null;
-  }, 300);
-}
-
 function updateDanmakuInfoUI() {
   var fileListSection = document.getElementById('danmaku-file-list-section');
   var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0 || fileListState.unknownFiles.length > 0;

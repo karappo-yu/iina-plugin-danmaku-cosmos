@@ -27,17 +27,60 @@ function decodeXmlText(text) {
 }
 
 function parseBilibiliXml(xmlStr) {
-  const list = [];
-  const regex = /<d p="([^"]+)">([\s\S]*?)<\/d>/g;
-  let match;
+  // Primary: DOMParser (correctly handles CDATA, self-closing, entities)
+  try {
+    var parser = new DOMParser();
+    var xmlDoc = parser.parseFromString(xmlStr, "text/xml");
+    if (xmlDoc.getElementsByTagName('parsererror').length === 0) {
+      var dElements = xmlDoc.getElementsByTagName('d');
+      if (dElements.length > 0) {
+        var list = [];
+        for (var i = 0; i < dElements.length; i++) {
+          var el = dElements[i];
+          var pAttr = el.getAttribute('p');
+          if (!pAttr) continue;
+          var parts = pAttr.split(",");
+          var mode = parseInt(parts[1]);
+          if (mode < 1 || mode > 6) continue;
+          var size = parseInt(parts[2]) || 25;
+          var colorVal = parseInt(parts[3]);
+          if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
+          var commands = parts[5] ? parts[5].toLowerCase().split(/\s+/) : [];
+          if (mode === 4) commands.push('shita');
+          else if (mode === 5) commands.push('ue');
+          else commands.push('naka');
+          if (size >= 36) commands.push('big');
+          else if (size <= 15) commands.push('small');
+          commands.push('#' + colorVal.toString(16).padStart(6, '0'));
+          list.push({
+            t: Math.round(parseFloat(parts[0]) * 100),
+            text: el.textContent || '',
+            _isOwner: false,
+            _commands: commands,
+            _reverse: mode === 6,
+            _userId: 0,
+            _dateSec: 2000000000
+          });
+        }
+        return list;
+      }
+    }
+  } catch (e) {
+    // fall through to regex
+  }
+
+  // Fallback: regex (for malformed XML that DOMParser can't handle)
+  var list = [];
+  var regex = /<d p="([^"]+)">([\s\S]*?)<\/d>/g;
+  var match;
   while ((match = regex.exec(xmlStr)) !== null) {
-    let p = match[1].split(",");
-    const mode = parseInt(p[1]);
+    var p = match[1].split(",");
+    var mode = parseInt(p[1]);
     if (mode < 1 || mode > 6) continue;
-    const size = parseInt(p[2]) || 25;
-    let colorVal = parseInt(p[3]);
+    var size = parseInt(p[2]) || 25;
+    var colorVal = parseInt(p[3]);
     if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
-    const commands = p[5] ? p[5].toLowerCase().split(/\s+/) : [];
+    var commands = p[5] ? p[5].toLowerCase().split(/\s+/) : [];
     if (mode === 4) commands.push('shita');
     else if (mode === 5) commands.push('ue');
     else commands.push('naka');

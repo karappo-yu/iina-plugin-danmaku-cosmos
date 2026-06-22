@@ -22,24 +22,17 @@ jobs:
             Info.json \
             main.js \
             global.js \
-            preferences.html \
             overlay \
             sidebar \
             -x "*.DS_Store" \
             -x "*__MACOSX*" \
             -x "*.git*" \
             -x ".github/*" \
-            -x ".workbuddy/*" \
             -x ".trae/*" \
-            -x "index.d.ts" \
-            -x "IINA插件开发指南.md" \
-            -x "弹幕解析渲染对比报告.md" \
-            -x "CLAUDE.md" \
             -x "AGENTS.md" \
             -x "README.md" \
             -x "package.json" \
-            -x "package-lock.json" \
-            -x "sh/*"
+            -x "package-lock.json"
           echo "Package created:"
           ls -lh dist/
 
