@@ -76,8 +76,7 @@ function buildFormattedCanvasData(list, sourceType) {
       mail: Array.isArray(d._commands) ? d._commands : [],
       user_id: toNumericUserId(d._userId, userMap),
       layer: d._layer === undefined ? -1 : d._layer,
-      is_my_post: false,
-      reverse: !!d._reverse
+      is_my_post: false
     });
   }
   return result;

@@ -57,7 +57,6 @@ function parseBilibiliXml(xmlStr) {
             text: el.textContent || '',
             _isOwner: false,
             _commands: commands,
-            _reverse: mode === 6,
             _userId: 0,
             _dateSec: 1767196800
           });
@@ -92,7 +91,6 @@ function parseBilibiliXml(xmlStr) {
       text: decodeXmlText(match[2]),
       _isOwner: false,
       _commands: commands,
-      _reverse: mode === 6,
       _userId: 0,
       _dateSec: 1767196800
     });

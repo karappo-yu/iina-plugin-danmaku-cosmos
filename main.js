@@ -376,7 +376,6 @@ function ddpConvertComments(ddpComments) {
       text: c.m,
       _isOwner: false,
       _commands: commands,
-      _reverse: mode === 6,
       _userId: parseInt(parts[3]) || 0,
       _dateSec: 1767196800
     };
