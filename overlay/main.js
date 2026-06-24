@@ -257,7 +257,9 @@ iina.onMessage("load-danmaku", (data) => {
 
   if (nicoRawData) {
     canvasIsPlaying = !isPaused;
-    canvasSyncAnchor(0);
+    if (!data.preservePosition) {
+      canvasSyncAnchor(0);
+    }
     initCanvasRenderer(nicoRawData);
     startCanvasLoop();
   }

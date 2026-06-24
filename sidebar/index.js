@@ -14,6 +14,9 @@ var commentLimitSlider = document.getElementById("comment-limit-slider");
 var commentLimitValue = document.getElementById("comment-limit-value");
 var speedSlider = document.getElementById("speed-slider");
 var speedValue = document.getElementById("speed-value");
+var filterSlider = document.getElementById("danmaku-filter-slider");
+var filterValue = document.getElementById("danmaku-filter-value");
+var filterSection = document.getElementById("danmaku-filter-section");
 var advancedToggle = document.getElementById("advanced-toggle");
 var advancedContent = document.getElementById("advanced-content");
 var advancedArrow = document.getElementById("advanced-arrow");
@@ -65,6 +68,8 @@ var state = {
   strokeInversionColor: '#ffffff',
   commentLimit: 0,
   scrollSpeed: 0.95,
+  nicoJsonTotalCount: 0,
+  danmakuFilterLimit: 0,
 };
 
 var fileListState = {
@@ -223,6 +228,7 @@ function updateEnabledUI() {
     if (sec) sec.style.display = show ? '' : 'none';
   });
   updateDanmakuInfoUI();
+  updateFilterUI();
 }
 
 var i18n = {
@@ -230,6 +236,7 @@ var i18n = {
     danmaku_visible: "Danmaku On",
     opacity: "Danmaku Opacity",
     font_scale: "Font Scale",
+    danmaku_filter: "Danmaku Count",
 
     advanced: "Advanced",
     comment_limit: "Comment Limit",
@@ -266,6 +273,7 @@ var i18n = {
     danmaku_visible: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a",
     opacity: "\u30b3\u30e1\u30f3\u30c8\u900f\u660e\u5ea6",
     font_scale: "\u30d5\u30a9\u30f3\u30c8\u500d\u7387",
+    danmaku_filter: "\u30b3\u30e1\u30f3\u30c8\u6570",
 
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
     comment_limit: "\u30b3\u30e1\u30f3\u30c8\u5236\u9650",
@@ -302,6 +310,7 @@ var i18n = {
     danmaku_visible: "\u5f39\u5e55\u663e\u793a",
     opacity: "\u5f39\u5e55\u900f\u660e\u5ea6",
     font_scale: "\u5b57\u4f53\u7f29\u653e",
+    danmaku_filter: "\u5f39\u5e55\u6570\u91cf",
 
     advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
     comment_limit: "\u5f39\u5e55\u4e0a\u9650",
@@ -373,6 +382,20 @@ function updateUI() {
   speedSlider.value = Math.round(state.scrollSpeed * 100);
   speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
   if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
+  updateFilterUI();
+}
+
+function updateFilterUI() {
+  var show = state.enabled && state.danmakuLoaded && state.danmakuType === 'nico-json' && state.nicoJsonTotalCount > 100;
+  if (filterSection) filterSection.style.display = show ? '' : 'none';
+  if (show && filterSlider) {
+    filterSlider.min = 100;
+    filterSlider.max = Math.ceil(state.nicoJsonTotalCount / 100) * 100;
+    filterSlider.step = 100;
+    var currentVal = state.danmakuFilterLimit > 0 ? state.danmakuFilterLimit : state.nicoJsonTotalCount;
+    filterSlider.value = Math.ceil(currentVal / 100) * 100;
+    if (filterValue) filterValue.textContent = currentVal + '/' + state.nicoJsonTotalCount;
+  }
 }
 
 toggleDanmaku.addEventListener("change", function () {
@@ -452,6 +475,28 @@ speedSlider.addEventListener("input", function () {
   state.scrollSpeed = val;
   speedValue.textContent = Math.round(val * 100) + '%';
   iina.postMessage("set-scroll-speed", { speed: val });
+});
+
+var filterTimer = null;
+if (filterSlider) {
+  filterSlider.addEventListener("input", function () {
+    var val = parseInt(filterSlider.value, 10);
+    var actualLimit = Math.min(val, state.nicoJsonTotalCount);
+    if (filterValue) filterValue.textContent = actualLimit + '/' + state.nicoJsonTotalCount;
+    if (filterTimer) clearTimeout(filterTimer);
+    filterTimer = setTimeout(function () {
+      state.danmakuFilterLimit = actualLimit;
+      iina.postMessage("set-danmaku-filter", { limit: actualLimit });
+      filterTimer = null;
+    }, 300);
+  });
+}
+
+iina.onMessage("danmaku-filter-info", function (data) {
+  if (data.fileType !== undefined) state.danmakuType = data.fileType;
+  state.nicoJsonTotalCount = data.totalCount || 0;
+  state.danmakuFilterLimit = data.filterLimit || 0;
+  updateFilterUI();
 });
 
 iina.onMessage("danmaku-state", function (data) {
