@@ -26,3 +26,8 @@ html, body {
   will-change: transform, opacity;
   backface-visibility: hidden;
 }
+
+[data-dm-comment] {
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
