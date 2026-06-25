@@ -206,7 +206,8 @@ iina.onMessage("time-update", (data) => {
   canvasSyncAnchor(data.time);
   lastTime = t;
   if (isSeek && niconiComments) {
-    drawCanvasAtVpos(t, false);
+    niconiComments.clear();
+    drawCanvasAtVpos(t, true);
   }
   startCanvasLoop();
 });
