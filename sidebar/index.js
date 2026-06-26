@@ -415,7 +415,9 @@ function updateRangeSelector() {
   }
   if (filterValue) {
     var endIdx = offset + limit;
-    filterValue.textContent = offset + '-' + endIdx + ' / ' + total;
+    var displayStart = total - offset - displayLimit;
+    var displayEnd = total - offset;
+    filterValue.textContent = displayStart + '-' + displayEnd + ' / ' + total;
   }
 }
 
@@ -575,7 +577,9 @@ function updateRangeSelectorState(offset, limit, total) {
   }
   if (filterValue) {
     var endIdx = offset + displayLimit;
-    filterValue.textContent = offset + '-' + endIdx + ' / ' + total;
+    var displayStart = total - offset - displayLimit;
+    var displayEnd = total - offset;
+    filterValue.textContent = displayStart + '-' + displayEnd + ' / ' + total;
   }
 }
 
