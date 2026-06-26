@@ -76,6 +76,7 @@ var danmakuFileList = {
 var danmakuCache = {};
 
 var nicoJsonTotalCount = 0;
+var danmakuFilterOffset = 0;
 var danmakuFilterLimit = 0;
 
 function sanitizeIPCString(value) {
@@ -148,12 +149,14 @@ function sendDanmakuFilterInfo() {
   sidebar.postMessage("danmaku-filter-info", {
     fileType: currentDanmakuStatus.fileType,
     totalCount: nicoJsonTotalCount,
+    filterOffset: danmakuFilterOffset,
     filterLimit: danmakuFilterLimit
   });
 }
 
-function applyDanmakuFilter(limit) {
+function applyDanmakuFilter(offset, limit) {
   if (currentDanmakuStatus.fileType !== 'nico-json') return;
+  danmakuFilterOffset = offset;
   danmakuFilterLimit = limit;
   if (!overlayReady) return;
   var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
@@ -178,11 +181,14 @@ function applyDanmakuFilter(limit) {
     if (thread.fork === 'owner') {
       filteredData.push(thread);
     } else if (limit > 0 && limit < thread.comments.length) {
+      var start = Math.min(offset, thread.comments.length - limit);
+      if (start < 0) start = 0;
+      var end = start + limit;
       var newObj = {};
       for (var k in thread) {
         if (thread.hasOwnProperty(k)) newObj[k] = thread[k];
       }
-      newObj.comments = thread.comments.slice(0, limit);
+      newObj.comments = thread.comments.slice(start, end);
       newObj.commentCount = limit;
       filteredData.push(newObj);
       hasFilter = true;
@@ -689,6 +695,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
     danmakuFileList.selectedPaths = [virtualPath];
     updateDanmakuStatus({ fileType: 'dandanplay', fileName: displayName, relativePath: 'DanDanPlay #' + episodeId, isLoaded: true });
     nicoJsonTotalCount = 0;
+    danmakuFilterOffset = 0;
     danmakuFilterLimit = 0;
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
@@ -801,6 +808,7 @@ function loadDanmakuForVideo(url) {
   ddpResetState();
   currentDanmakuStatus = { fileType: null, fileName: null, relativePath: null, isLoaded: false };
   nicoJsonTotalCount = 0;
+  danmakuFilterOffset = 0;
   danmakuFilterLimit = 0;
 
   if (core.status.isNetworkResource) {
@@ -897,6 +905,7 @@ function loadLocalDanmaku(fileInfo) {
   } else {
     nicoJsonTotalCount = 0;
   }
+  danmakuFilterOffset = 0;
   danmakuFilterLimit = 0;
 
   updateDanmakuStatus({ fileType: fileType, fileName: fileInfo.filename, relativePath: fileInfo.relativePath, isLoaded: true });
@@ -1023,6 +1032,7 @@ function loadManualDanmakuFile(path) {
   } else {
     nicoJsonTotalCount = 0;
   }
+  danmakuFilterOffset = 0;
   danmakuFilterLimit = 0;
   sendDanmakuFilterInfo();
 
@@ -1110,7 +1120,7 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("set-danmaku-filter", function (data) {
-    applyDanmakuFilter(data.limit);
+    applyDanmakuFilter(data.offset || 0, data.limit);
   });
 
   sidebar.onMessage("request-state", function () {
@@ -1207,6 +1217,7 @@ function registerSidebarHandlers() {
     } else {
       nicoJsonTotalCount = 0;
     }
+    danmakuFilterOffset = 0;
     danmakuFilterLimit = 0;
 
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
@@ -1276,6 +1287,7 @@ function registerSidebarHandlers() {
     if (danmakuFileList.selectedPaths.length === 0) {
       updateDanmakuStatus({ fileType: null, fileName: null, relativePath: null, isLoaded: false });
       nicoJsonTotalCount = 0;
+      danmakuFilterOffset = 0;
       danmakuFilterLimit = 0;
       sendDanmakuFilterInfo();
     }

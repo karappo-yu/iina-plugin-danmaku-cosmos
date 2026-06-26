@@ -57,10 +57,18 @@
 
     <div class="section" id="danmaku-filter-section" style="display:none">
       <h3 class="section-title" data-i18n="danmaku_filter">Danmaku Count</h3>
-      <div class="control-row">
-        <input type="range" id="danmaku-filter-slider" data-clickable min="100" max="10000" step="100" value="10000" class="slider" />
-        <span id="danmaku-filter-value" class="value-text">10000/10000</span>
+      <div class="range-selector" id="danmaku-range-selector">
+        <div class="range-track"></div>
+        <div class="range-coverage" id="filter-coverage">
+          <div class="range-handle range-handle-left" id="filter-handle-left"></div>
+          <div class="range-handle range-handle-right" id="filter-handle-right"></div>
+        </div>
       </div>
+      <div class="range-labels">
+        <span class="range-label-left">0</span>
+        <span class="range-label-right" id="range-total-label">0</span>
+      </div>
+      <span id="danmaku-filter-value" class="value-text">0-0 / 0</span>
     </div>
 
     <div class="section">

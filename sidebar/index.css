@@ -198,6 +198,81 @@ small,
   }
 }
 
+.range-selector {
+  position: relative;
+  width: 100%;
+  height: 28px;
+  margin: 6px 0 2px 0;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.range-track {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 2px;
+}
+
+.range-coverage {
+  position: absolute;
+  top: 8px;
+  height: 12px;
+  background: rgba(0, 122, 255, 0.25);
+  border: 1px solid rgba(0, 122, 255, 0.6);
+  border-radius: 2px;
+  cursor: move;
+  box-sizing: border-box;
+}
+
+.range-handle {
+  position: absolute;
+  top: -3px;
+  width: 10px;
+  height: 18px;
+  background: #007aff;
+  border-radius: 2px;
+  cursor: ew-resize;
+  z-index: 2;
+}
+
+.range-handle-left {
+  left: -5px;
+}
+
+.range-handle-right {
+  right: -5px;
+}
+
+.range-handle:hover {
+  background: #4da3ff;
+}
+
+.range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--secondary-label);
+  margin-bottom: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .range-coverage {
+    background: rgba(77, 163, 255, 0.2);
+    border-color: rgba(77, 163, 255, 0.5);
+  }
+  .range-handle {
+    background: #4da3ff;
+  }
+  .range-handle:hover {
+    background: #7ab8ff;
+  }
+}
+
 .checkbox-group {
   display: flex;
   flex-direction: column;

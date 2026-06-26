@@ -14,9 +14,13 @@ var commentLimitSlider = document.getElementById("comment-limit-slider");
 var commentLimitValue = document.getElementById("comment-limit-value");
 var speedSlider = document.getElementById("speed-slider");
 var speedValue = document.getElementById("speed-value");
-var filterSlider = document.getElementById("danmaku-filter-slider");
-var filterValue = document.getElementById("danmaku-filter-value");
 var filterSection = document.getElementById("danmaku-filter-section");
+var filterValue = document.getElementById("danmaku-filter-value");
+var rangeSelector = document.getElementById("danmaku-range-selector");
+var filterCoverage = document.getElementById("filter-coverage");
+var filterHandleLeft = document.getElementById("filter-handle-left");
+var filterHandleRight = document.getElementById("filter-handle-right");
+var rangeTotalLabel = document.getElementById("range-total-label");
 var advancedToggle = document.getElementById("advanced-toggle");
 var advancedContent = document.getElementById("advanced-content");
 var advancedArrow = document.getElementById("advanced-arrow");
@@ -69,6 +73,7 @@ var state = {
   commentLimit: 0,
   scrollSpeed: 0.95,
   nicoJsonTotalCount: 0,
+  danmakuFilterOffset: 0,
   danmakuFilterLimit: 0,
 };
 
@@ -388,13 +393,29 @@ function updateUI() {
 function updateFilterUI() {
   var show = state.enabled && state.danmakuLoaded && state.danmakuType === 'nico-json' && state.nicoJsonTotalCount > 100;
   if (filterSection) filterSection.style.display = show ? '' : 'none';
-  if (show && filterSlider) {
-    filterSlider.min = 100;
-    filterSlider.max = Math.ceil(state.nicoJsonTotalCount / 100) * 100;
-    filterSlider.step = 100;
-    var currentVal = state.danmakuFilterLimit > 0 ? state.danmakuFilterLimit : state.nicoJsonTotalCount;
-    filterSlider.value = Math.ceil(currentVal / 100) * 100;
-    if (filterValue) filterValue.textContent = currentVal + '/' + state.nicoJsonTotalCount;
+  if (show) {
+    updateRangeSelector();
+  }
+}
+
+function updateRangeSelector() {
+  var total = state.nicoJsonTotalCount;
+  if (total <= 0) return;
+  var offset = state.danmakuFilterOffset || 0;
+  var limit = state.danmakuFilterLimit > 0 ? state.danmakuFilterLimit : total;
+  if (offset + limit > total) {
+    offset = Math.max(0, total - limit);
+  }
+  if (rangeTotalLabel) rangeTotalLabel.textContent = total;
+  if (filterCoverage) {
+    var leftPct = (offset / total) * 100;
+    var widthPct = (limit / total) * 100;
+    filterCoverage.style.left = leftPct + '%';
+    filterCoverage.style.width = widthPct + '%';
+  }
+  if (filterValue) {
+    var endIdx = offset + limit;
+    filterValue.textContent = offset + '-' + endIdx + ' / ' + total;
   }
 }
 
@@ -477,24 +498,134 @@ speedSlider.addEventListener("input", function () {
   iina.postMessage("set-scroll-speed", { speed: val });
 });
 
+var MIN_FILTER_LIMIT = 100;
+var filterDragMode = null;
+var filterDragStartX = 0;
+var filterDragStartOffset = 0;
+var filterDragStartLimit = 0;
 var filterTimer = null;
-if (filterSlider) {
-  filterSlider.addEventListener("input", function () {
-    var val = parseInt(filterSlider.value, 10);
-    var actualLimit = Math.min(val, state.nicoJsonTotalCount);
-    if (filterValue) filterValue.textContent = actualLimit + '/' + state.nicoJsonTotalCount;
-    if (filterTimer) clearTimeout(filterTimer);
-    filterTimer = setTimeout(function () {
-      state.danmakuFilterLimit = actualLimit;
-      iina.postMessage("set-danmaku-filter", { limit: actualLimit });
-      filterTimer = null;
-    }, 300);
+
+function sendFilterChange(offset, limit) {
+  state.danmakuFilterOffset = offset;
+  state.danmakuFilterLimit = limit;
+  if (filterTimer) clearTimeout(filterTimer);
+  filterTimer = setTimeout(function () {
+    iina.postMessage("set-danmaku-filter", { offset: offset, limit: limit });
+    filterTimer = null;
+  }, 300);
+}
+
+function applyFilterDrag(clientX) {
+  var total = state.nicoJsonTotalCount;
+  if (total <= 0) return;
+  var trackRect = rangeSelector.getBoundingClientRect();
+  var trackWidth = trackRect.width;
+  if (trackWidth <= 0) return;
+  var dx = clientX - filterDragStartX;
+  var dxCount = Math.round((dx / trackWidth) * total);
+
+  if (filterDragMode === 'move') {
+    var newOffset = filterDragStartOffset + dxCount;
+    var limit = filterDragStartLimit;
+    if (newOffset < 0) newOffset = 0;
+    if (newOffset + limit > total) newOffset = total - limit;
+    if (newOffset < 0) newOffset = 0;
+    var finalLimit = limit < total ? limit : 0;
+    updateRangeSelectorState(newOffset, finalLimit, total);
+    sendFilterChange(newOffset, finalLimit);
+  } else if (filterDragMode === 'resize-left') {
+    var newLimit = filterDragStartLimit - dxCount;
+    var newOffset2 = filterDragStartOffset + dxCount;
+    if (newLimit < MIN_FILTER_LIMIT) {
+      newLimit = MIN_FILTER_LIMIT;
+      newOffset2 = filterDragStartOffset + (filterDragStartLimit - MIN_FILTER_LIMIT);
+    }
+    if (newOffset2 < 0) {
+      newLimit = newLimit + newOffset2;
+      newOffset2 = 0;
+      if (newLimit < MIN_FILTER_LIMIT) newLimit = MIN_FILTER_LIMIT;
+    }
+    if (newOffset2 + newLimit > total) {
+      newLimit = total - newOffset2;
+    }
+    var finalLimit2 = newLimit < total ? newLimit : 0;
+    updateRangeSelectorState(newOffset2, finalLimit2, total);
+    sendFilterChange(newOffset2, finalLimit2);
+  } else if (filterDragMode === 'resize-right') {
+    var newLimit3 = filterDragStartLimit + dxCount;
+    if (newLimit3 < MIN_FILTER_LIMIT) newLimit3 = MIN_FILTER_LIMIT;
+    if (filterDragStartOffset + newLimit3 > total) {
+      newLimit3 = total - filterDragStartOffset;
+    }
+    var finalLimit3 = newLimit3 < total ? newLimit3 : 0;
+    updateRangeSelectorState(filterDragStartOffset, finalLimit3, total);
+    sendFilterChange(filterDragStartOffset, finalLimit3);
+  }
+}
+
+function updateRangeSelectorState(offset, limit, total) {
+  var displayLimit = limit > 0 ? limit : total;
+  state.danmakuFilterOffset = offset;
+  state.danmakuFilterLimit = limit;
+  if (filterCoverage) {
+    var leftPct = (offset / total) * 100;
+    var widthPct = (displayLimit / total) * 100;
+    filterCoverage.style.left = leftPct + '%';
+    filterCoverage.style.width = widthPct + '%';
+  }
+  if (filterValue) {
+    var endIdx = offset + displayLimit;
+    filterValue.textContent = offset + '-' + endIdx + ' / ' + total;
+  }
+}
+
+if (filterCoverage) {
+  filterCoverage.addEventListener("mousedown", function (e) {
+    if (e.target.classList.contains('range-handle')) return;
+    filterDragMode = 'move';
+    filterDragStartX = e.clientX;
+    filterDragStartOffset = state.danmakuFilterOffset || 0;
+    filterDragStartLimit = state.danmakuFilterLimit > 0 ? state.danmakuFilterLimit : state.nicoJsonTotalCount;
+    e.preventDefault();
   });
 }
+
+if (filterHandleLeft) {
+  filterHandleLeft.addEventListener("mousedown", function (e) {
+    filterDragMode = 'resize-left';
+    filterDragStartX = e.clientX;
+    filterDragStartOffset = state.danmakuFilterOffset || 0;
+    filterDragStartLimit = state.danmakuFilterLimit > 0 ? state.danmakuFilterLimit : state.nicoJsonTotalCount;
+    e.preventDefault();
+    e.stopPropagation();
+  });
+}
+
+if (filterHandleRight) {
+  filterHandleRight.addEventListener("mousedown", function (e) {
+    filterDragMode = 'resize-right';
+    filterDragStartX = e.clientX;
+    filterDragStartOffset = state.danmakuFilterOffset || 0;
+    filterDragStartLimit = state.danmakuFilterLimit > 0 ? state.danmakuFilterLimit : state.nicoJsonTotalCount;
+    e.preventDefault();
+    e.stopPropagation();
+  });
+}
+
+document.addEventListener("mousemove", function (e) {
+  if (filterDragMode) {
+    applyFilterDrag(e.clientX);
+  }
+});
+
+document.addEventListener("mouseup", function () {
+  filterDragMode = null;
+});
 
 iina.onMessage("danmaku-filter-info", function (data) {
   if (data.fileType !== undefined) state.danmakuType = data.fileType;
   state.nicoJsonTotalCount = data.totalCount || 0;
+  state.danmakuFilterOffset = data.filterOffset || 0;
   state.danmakuFilterLimit = data.filterLimit || 0;
   updateFilterUI();
 });
