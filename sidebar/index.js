@@ -414,7 +414,6 @@ function updateRangeSelector() {
     filterCoverage.style.width = widthPct + '%';
   }
   if (filterValue) {
-    var endIdx = offset + limit;
     var displayStart = total - offset - displayLimit;
     var displayEnd = total - offset;
     filterValue.textContent = displayStart + '-' + displayEnd + ' / ' + total;
@@ -576,7 +575,6 @@ function updateRangeSelectorState(offset, limit, total) {
     filterCoverage.style.width = widthPct + '%';
   }
   if (filterValue) {
-    var endIdx = offset + displayLimit;
     var displayStart = total - offset - displayLimit;
     var displayEnd = total - offset;
     filterValue.textContent = displayStart + '-' + displayEnd + ' / ' + total;
