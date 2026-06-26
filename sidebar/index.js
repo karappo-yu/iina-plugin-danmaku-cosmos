@@ -21,6 +21,7 @@ var filterCoverage = document.getElementById("filter-coverage");
 var filterHandleLeft = document.getElementById("filter-handle-left");
 var filterHandleRight = document.getElementById("filter-handle-right");
 var rangeTotalLabel = document.getElementById("range-total-label");
+var rangeLeftLabel = document.getElementById("range-left-label");
 var advancedToggle = document.getElementById("advanced-toggle");
 var advancedContent = document.getElementById("advanced-content");
 var advancedArrow = document.getElementById("advanced-arrow");
@@ -406,7 +407,8 @@ function updateRangeSelector() {
   if (offset + limit > total) {
     offset = Math.max(0, total - limit);
   }
-  if (rangeTotalLabel) rangeTotalLabel.textContent = total;
+  if (rangeLeftLabel) rangeLeftLabel.textContent = total;
+  if (rangeTotalLabel) rangeTotalLabel.textContent = 0;
   if (filterCoverage) {
     var leftPct = (offset / total) * 100;
     var widthPct = (limit / total) * 100;
