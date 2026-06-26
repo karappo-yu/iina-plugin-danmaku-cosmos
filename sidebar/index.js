@@ -401,7 +401,14 @@ function updateFilterUI() {
 
 function updateRangeSelector() {
   var total = state.nicoJsonTotalCount;
-  if (total <= 0) return;
+  if (total <= 0) {
+    if (filterValue) filterValue.textContent = '0-0 / 0';
+    if (filterCoverage) {
+      filterCoverage.style.left = '0%';
+      filterCoverage.style.width = '100%';
+    }
+    return;
+  }
   var offset = state.danmakuFilterOffset || 0;
   var limit = state.danmakuFilterLimit > 0 ? state.danmakuFilterLimit : total;
   if (offset + limit > total) {
@@ -416,7 +423,7 @@ function updateRangeSelector() {
     filterCoverage.style.width = widthPct + '%';
   }
   if (filterValue) {
-    var displayStart = total - offset - displayLimit;
+    var displayStart = total - offset - limit;
     var displayEnd = total - offset;
     filterValue.textContent = displayStart + '-' + displayEnd + ' / ' + total;
   }
