@@ -15,15 +15,13 @@ var commentLimitValue = document.getElementById("comment-limit-value");
 var speedSlider = document.getElementById("speed-slider");
 var speedValue = document.getElementById("speed-value");
 var filterSection = document.getElementById("danmaku-filter-section");
-var filterValue = document.getElementById("danmaku-filter-value");
+var filterDateNew = document.getElementById("danmaku-filter-date-new");
+var filterDateOld = document.getElementById("danmaku-filter-date-old");
+var filterCount = document.getElementById("filter-count");
 var rangeSelector = document.getElementById("danmaku-range-selector");
 var filterCoverage = document.getElementById("filter-coverage");
 var filterHandleLeft = document.getElementById("filter-handle-left");
 var filterHandleRight = document.getElementById("filter-handle-right");
-var rangeTotalLabel = document.getElementById("range-total-label");
-var rangeLeftLabel = document.getElementById("range-left-label");
-var filterDateNew = document.getElementById("danmaku-filter-date-new");
-var filterDateOld = document.getElementById("danmaku-filter-date-old");
 var advancedToggle = document.getElementById("advanced-toggle");
 var advancedContent = document.getElementById("advanced-content");
 var advancedArrow = document.getElementById("advanced-arrow");
@@ -406,7 +404,7 @@ function updateFilterUI() {
 function updateRangeSelector() {
   var total = state.nicoJsonTotalCount;
   if (total <= 0) {
-    if (filterValue) filterValue.textContent = '0-0 / 0';
+    if (filterCount) filterCount.textContent = '0';
     if (filterDateNew) filterDateNew.textContent = '';
     if (filterDateOld) filterDateOld.textContent = '';
     if (filterCoverage) {
@@ -420,18 +418,14 @@ function updateRangeSelector() {
   if (offset + limit > total) {
     offset = Math.max(0, total - limit);
   }
-  if (rangeLeftLabel) rangeLeftLabel.textContent = total;
-  if (rangeTotalLabel) rangeTotalLabel.textContent = 0;
   if (filterCoverage) {
     var leftPct = (offset / total) * 100;
     var widthPct = (limit / total) * 100;
     filterCoverage.style.left = leftPct + '%';
     filterCoverage.style.width = widthPct + '%';
   }
-  if (filterValue) {
-    var displayStart = total - offset - limit;
-    var displayEnd = total - offset;
-    filterValue.textContent = displayStart + '-' + displayEnd + ' / ' + total;
+  if (filterCount) {
+    filterCount.textContent = limit;
   }
   if (filterDateNew && filterDateOld) {
     if (state.rangeStartDate && state.rangeEndDate) {
@@ -598,10 +592,8 @@ function updateRangeSelectorState(offset, limit, total) {
     filterCoverage.style.left = leftPct + '%';
     filterCoverage.style.width = widthPct + '%';
   }
-  if (filterValue) {
-    var displayStart = total - offset - displayLimit;
-    var displayEnd = total - offset;
-    filterValue.textContent = displayStart + '-' + displayEnd + ' / ' + total;
+  if (filterCount) {
+    filterCount.textContent = displayLimit;
   }
 }
 

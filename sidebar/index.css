@@ -248,6 +248,25 @@ small,
   right: -5px;
 }
 
+.range-count {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  font-weight: 600;
+  color: #007aff;
+  pointer-events: none;
+  z-index: 1;
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  .range-count {
+    color: #4da3ff;
+  }
+}
+
 .range-handle:hover {
   background: #4da3ff;
 }
