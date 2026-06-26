@@ -146,11 +146,51 @@ function computeNicoJsonCount(encodedContent) {
 }
 
 function sendDanmakuFilterInfo() {
+  var rangeStartDate = null;
+  var rangeEndDate = null;
+
+  // Compute boundary dates from cached danmaku data
+  var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+  if (selectedPath && currentDanmakuStatus.fileType === 'nico-json') {
+    var encodedContent = danmakuCache[selectedPath];
+    if (encodedContent) {
+      try {
+        var rawStr = decodeURIComponent(encodedContent);
+        var data = JSON.parse(rawStr);
+        if (Array.isArray(data)) {
+          // Find the main thread (non-owner, has comments)
+          for (var i = 0; i < data.length; i++) {
+            var thread = data[i];
+            if (thread && thread.fork !== 'owner' && Array.isArray(thread.comments) && thread.comments.length > 0) {
+              var comments = thread.comments;
+              var offset = danmakuFilterOffset || 0;
+              var limit = danmakuFilterLimit > 0 ? danmakuFilterLimit : comments.length;
+              if (offset + limit > comments.length) {
+                offset = Math.max(0, comments.length - limit);
+              }
+              var startIdx = offset;
+              var endIdx = Math.min(offset + limit - 1, comments.length - 1);
+              if (comments[startIdx] && comments[startIdx].postedAt) {
+                rangeStartDate = comments[startIdx].postedAt;
+              }
+              if (comments[endIdx] && comments[endIdx].postedAt) {
+                rangeEndDate = comments[endIdx].postedAt;
+              }
+              break;
+            }
+          }
+        }
+      } catch (e) {}
+    }
+  }
+
   sidebar.postMessage("danmaku-filter-info", {
     fileType: currentDanmakuStatus.fileType,
     totalCount: nicoJsonTotalCount,
     filterOffset: danmakuFilterOffset,
-    filterLimit: danmakuFilterLimit
+    filterLimit: danmakuFilterLimit,
+    rangeStartDate: rangeStartDate,
+    rangeEndDate: rangeEndDate
   });
 }
 
@@ -213,6 +253,7 @@ function applyDanmakuFilter(offset, limit) {
     scrollSpeed: scrollSpeed,
     preservePosition: true,
   });
+  sendDanmakuFilterInfo();
 }
 
 function extractNumberFromName(name) {

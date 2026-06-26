@@ -22,6 +22,7 @@ var filterHandleLeft = document.getElementById("filter-handle-left");
 var filterHandleRight = document.getElementById("filter-handle-right");
 var rangeTotalLabel = document.getElementById("range-total-label");
 var rangeLeftLabel = document.getElementById("range-left-label");
+var filterDates = document.getElementById("danmaku-filter-dates");
 var advancedToggle = document.getElementById("advanced-toggle");
 var advancedContent = document.getElementById("advanced-content");
 var advancedArrow = document.getElementById("advanced-arrow");
@@ -76,6 +77,8 @@ var state = {
   nicoJsonTotalCount: 0,
   danmakuFilterOffset: 0,
   danmakuFilterLimit: 0,
+  rangeStartDate: null,
+  rangeEndDate: null,
 };
 
 var fileListState = {
@@ -403,6 +406,7 @@ function updateRangeSelector() {
   var total = state.nicoJsonTotalCount;
   if (total <= 0) {
     if (filterValue) filterValue.textContent = '0-0 / 0';
+    if (filterDates) filterDates.textContent = '';
     if (filterCoverage) {
       filterCoverage.style.left = '0%';
       filterCoverage.style.width = '100%';
@@ -426,6 +430,13 @@ function updateRangeSelector() {
     var displayStart = total - offset - limit;
     var displayEnd = total - offset;
     filterValue.textContent = displayStart + '-' + displayEnd + ' / ' + total;
+  }
+  if (filterDates) {
+    if (state.rangeStartDate && state.rangeEndDate) {
+      filterDates.textContent = state.rangeEndDate + ' ~ ' + state.rangeStartDate;
+    } else {
+      filterDates.textContent = '';
+    }
   }
 }
 
@@ -638,6 +649,8 @@ iina.onMessage("danmaku-filter-info", function (data) {
   state.nicoJsonTotalCount = data.totalCount || 0;
   state.danmakuFilterOffset = data.filterOffset || 0;
   state.danmakuFilterLimit = data.filterLimit || 0;
+  state.rangeStartDate = data.rangeStartDate || null;
+  state.rangeEndDate = data.rangeEndDate || null;
   updateFilterUI();
 });
 
