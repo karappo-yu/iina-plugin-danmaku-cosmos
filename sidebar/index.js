@@ -22,7 +22,8 @@ var filterHandleLeft = document.getElementById("filter-handle-left");
 var filterHandleRight = document.getElementById("filter-handle-right");
 var rangeTotalLabel = document.getElementById("range-total-label");
 var rangeLeftLabel = document.getElementById("range-left-label");
-var filterDates = document.getElementById("danmaku-filter-dates");
+var filterDateNew = document.getElementById("danmaku-filter-date-new");
+var filterDateOld = document.getElementById("danmaku-filter-date-old");
 var advancedToggle = document.getElementById("advanced-toggle");
 var advancedContent = document.getElementById("advanced-content");
 var advancedArrow = document.getElementById("advanced-arrow");
@@ -406,7 +407,8 @@ function updateRangeSelector() {
   var total = state.nicoJsonTotalCount;
   if (total <= 0) {
     if (filterValue) filterValue.textContent = '0-0 / 0';
-    if (filterDates) filterDates.textContent = '';
+    if (filterDateNew) filterDateNew.textContent = '';
+    if (filterDateOld) filterDateOld.textContent = '';
     if (filterCoverage) {
       filterCoverage.style.left = '0%';
       filterCoverage.style.width = '100%';
@@ -431,11 +433,13 @@ function updateRangeSelector() {
     var displayEnd = total - offset;
     filterValue.textContent = displayStart + '-' + displayEnd + ' / ' + total;
   }
-  if (filterDates) {
+  if (filterDateNew && filterDateOld) {
     if (state.rangeStartDate && state.rangeEndDate) {
-      filterDates.textContent = state.rangeEndDate + ' ~ ' + state.rangeStartDate;
+      filterDateNew.textContent = state.rangeStartDate;
+      filterDateOld.textContent = state.rangeEndDate;
     } else {
-      filterDates.textContent = '';
+      filterDateNew.textContent = '';
+      filterDateOld.textContent = '';
     }
   }
 }
