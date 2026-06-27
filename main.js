@@ -321,6 +321,7 @@ function findDanmakuByEpisode(videoUrl) {
       var item = items[j];
       if (item.isDir) continue;
       var fname = item.filename;
+      if (fname.charAt(0) === '.') continue;
       var ext = fname.lastIndexOf('.') >= 0 ? fname.substring(fname.lastIndexOf('.') + 1).toLowerCase() : '';
       if (ext !== 'json' && ext !== 'xml') continue;
 
