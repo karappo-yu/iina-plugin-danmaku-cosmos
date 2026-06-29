@@ -136,7 +136,7 @@ function computeNicoJsonCount(encodedContent) {
     if (!Array.isArray(data)) return 0;
     var count = 0;
     for (var i = 0; i < data.length; i++) {
-      if (data[i] && data[i].fork !== 'owner' && Array.isArray(data[i].comments)) {
+      if (data[i] && data[i].fork !== 'owner' && data[i].fork !== 'easy' && Array.isArray(data[i].comments)) {
         count += data[i].comments.length;
       }
     }
@@ -161,7 +161,7 @@ function sendDanmakuFilterInfo() {
           // Find the main thread (non-owner, has comments)
           for (var i = 0; i < data.length; i++) {
             var thread = data[i];
-            if (thread && thread.fork !== 'owner' && Array.isArray(thread.comments) && thread.comments.length > 0) {
+            if (thread && thread.fork !== 'owner' && thread.fork !== 'easy' && Array.isArray(thread.comments) && thread.comments.length > 0) {
               var comments = thread.comments;
               var offset = danmakuFilterOffset || 0;
               var limit = danmakuFilterLimit > 0 ? danmakuFilterLimit : comments.length;
@@ -218,7 +218,7 @@ function applyDanmakuFilter(offset, limit) {
       filteredData.push(thread);
       continue;
     }
-    if (thread.fork === 'owner') {
+    if (thread.fork === 'owner' || thread.fork === 'easy') {
       filteredData.push(thread);
     } else if (limit > 0 && limit < thread.comments.length) {
       var start = Math.min(offset, thread.comments.length - limit);
