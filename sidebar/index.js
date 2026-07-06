@@ -250,7 +250,7 @@ var i18n = {
     danmaku_visible: "Danmaku On",
     opacity: "Danmaku Opacity",
     font_scale: "Font Scale",
-    danmaku_filter: "Danmaku Count",
+    danmaku_filter: "Date Slice",
     density_filter: "Count (/min)",
 
     advanced: "Advanced",
@@ -288,7 +288,7 @@ var i18n = {
     danmaku_visible: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a",
     opacity: "\u30b3\u30e1\u30f3\u30c8\u900f\u660e\u5ea6",
     font_scale: "\u30d5\u30a9\u30f3\u30c8\u500d\u7387",
-    danmaku_filter: "\u30b3\u30e1\u30f3\u30c8\u6570",
+    danmaku_filter: "\u65e5\u4ed8\u30b9\u30e9\u30a4\u30b9",
     density_filter: "\u6570\u91cf",
 
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
@@ -326,7 +326,7 @@ var i18n = {
     danmaku_visible: "\u5f39\u5e55\u663e\u793a",
     opacity: "\u5f39\u5e55\u900f\u660e\u5ea6",
     font_scale: "\u5b57\u4f53\u7f29\u653e",
-    danmaku_filter: "\u5f39\u5e55\u6570\u91cf",
+    danmaku_filter: "\u65e5\u671f\u5207\u7247",
     density_filter: "\u6570\u91cf",
 
     advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
