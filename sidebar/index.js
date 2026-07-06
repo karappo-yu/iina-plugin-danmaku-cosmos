@@ -289,7 +289,7 @@ var i18n = {
     opacity: "\u30b3\u30e1\u30f3\u30c8\u900f\u660e\u5ea6",
     font_scale: "\u30d5\u30a9\u30f3\u30c8\u500d\u7387",
     danmaku_filter: "\u30b3\u30e1\u30f3\u30c8\u6570",
-    density_filter: "\u6570\u91cf\uff08/min\uff09",
+    density_filter: "\u6570\u91cf",
 
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
     comment_limit: "\u30b3\u30e1\u30f3\u30c8\u5236\u9650",
@@ -327,7 +327,7 @@ var i18n = {
     opacity: "\u5f39\u5e55\u900f\u660e\u5ea6",
     font_scale: "\u5b57\u4f53\u7f29\u653e",
     danmaku_filter: "\u5f39\u5e55\u6570\u91cf",
-    density_filter: "\u6570\u91cf\uff08/min\uff09",
+    density_filter: "\u6570\u91cf",
 
     advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
     comment_limit: "\u5f39\u5e55\u4e0a\u9650",
@@ -409,7 +409,7 @@ function updateFilterUI() {
     updateRangeSelector();
   }
 
-  var showDensity = state.enabled && state.danmakuLoaded && (state.danmakuType === 'nico-json' || state.danmakuType === 'nico-xml' || state.danmakuType === 'bilibili-xml');
+  var showDensity = state.enabled && state.danmakuLoaded && state.danmakuType === 'nico-json';
   if (densitySection) densitySection.style.display = showDensity ? '' : 'none';
   if (showDensity) {
     updateDensitySlider();
@@ -421,13 +421,13 @@ function updateDensitySlider() {
   var density = state.danmakuFilterDensity || 0;
   if (density > 0) {
     densitySlider.value = density;
-    densityValue.textContent = String(density);
+    densityValue.textContent = density + ' /min';
   } else {
     densitySlider.value = 600;
     densityValue.textContent = 'Off';
   }
   if (densityCount) {
-    densityCount.textContent = state.filteredCount > 0 ? '(' + state.filteredCount + ')' : '';
+    densityCount.textContent = state.filteredCount > 0 ? '\uff08' + state.filteredCount + '\uff09' : '';
   }
 }
 
@@ -676,7 +676,7 @@ if (densitySlider) {
     if (val >= 600) {
       densityValue.textContent = 'Off';
     } else {
-      densityValue.textContent = String(val);
+      densityValue.textContent = val + ' /min';
     }
   });
   densitySlider.addEventListener("change", function () {

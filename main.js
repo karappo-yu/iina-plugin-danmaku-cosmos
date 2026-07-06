@@ -79,7 +79,6 @@ var nicoJsonTotalCount = 0;
 var danmakuFilterOffset = 0;
 var danmakuFilterLimit = 0;
 var danmakuFilterDensity = 0;
-var lastFilteredCount = 0;
 
 function sanitizeIPCString(value) {
   return String(value || '').replace(/[`\u2018\u2019]/g, "'");
@@ -194,8 +193,6 @@ function sendDanmakuFilterInfo() {
         }
       } catch (e) {}
     }
-  } else if (ft === 'nico-xml' || ft === 'bilibili-xml') {
-    filteredCount = lastFilteredCount;
   }
 
   sidebar.postMessage("danmaku-filter-info", {
@@ -309,55 +306,35 @@ function applyDanmakuFilter(offset, limit) {
   if (!overlayReady) return;
 
   var ft = currentDanmakuStatus.fileType;
-  if (ft !== 'nico-json' && ft !== 'nico-xml' && ft !== 'bilibili-xml') return;
+  if (ft !== 'nico-json') return;
 
   var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
   if (!selectedPath) return;
   var encodedContent = danmakuCache[selectedPath];
   if (!encodedContent) return;
 
-  if (ft === 'nico-json') {
-    var filteredEncoded = applyNicoJsonFilters(encodedContent);
-    overlay.postMessage("load-danmaku", {
-      xmlContent: filteredEncoded,
-      path: selectedPath,
-      danmakuType: 'nico-json',
-      opacity: canvasOpacity,
-      canvasFontScale: canvasFontScale,
-      strokeColor: strokeColor,
-      strokeInversionColor: strokeInversionColor,
-      strokeOpacity: strokeOpacity,
-      strokeWidth: strokeWidth,
-      commentLimit: commentLimit,
-      scrollSpeed: scrollSpeed,
-      preservePosition: true,
-    });
-  } else {
-    overlay.postMessage("load-danmaku", {
-      xmlContent: encodedContent,
-      path: selectedPath,
-      danmakuType: ft,
-      opacity: canvasOpacity,
-      canvasFontScale: canvasFontScale,
-      strokeColor: strokeColor,
-      strokeInversionColor: strokeInversionColor,
-      strokeOpacity: strokeOpacity,
-      strokeWidth: strokeWidth,
-      commentLimit: commentLimit,
-      scrollSpeed: scrollSpeed,
-      filterOffset: danmakuFilterOffset,
-      filterLimit: danmakuFilterLimit,
-      filterDensity: danmakuFilterDensity,
-      preservePosition: true,
-    });
-  }
+  var filteredEncoded = applyNicoJsonFilters(encodedContent);
+  overlay.postMessage("load-danmaku", {
+    xmlContent: filteredEncoded,
+    path: selectedPath,
+    danmakuType: 'nico-json',
+    opacity: canvasOpacity,
+    canvasFontScale: canvasFontScale,
+    strokeColor: strokeColor,
+    strokeInversionColor: strokeInversionColor,
+    strokeOpacity: strokeOpacity,
+    strokeWidth: strokeWidth,
+    commentLimit: commentLimit,
+    scrollSpeed: scrollSpeed,
+    preservePosition: true,
+  });
   sendDanmakuFilterInfo();
 }
 
 function applyDanmakuFilterDensity(density) {
   danmakuFilterDensity = density;
   var ft = currentDanmakuStatus.fileType;
-  if (ft === 'nico-json' || ft === 'nico-xml' || ft === 'bilibili-xml') {
+  if (ft === 'nico-json') {
     applyDanmakuFilter(danmakuFilterOffset, danmakuFilterLimit);
   }
 }
@@ -1080,10 +1057,6 @@ function loadLocalDanmaku(fileInfo) {
 
   if (fileType === 'nico-json') {
     payload.xmlContent = applyNicoJsonFilters(encodedContent);
-  } else if (fileType === 'nico-xml' || fileType === 'bilibili-xml') {
-    payload.filterOffset = danmakuFilterOffset;
-    payload.filterLimit = danmakuFilterLimit;
-    payload.filterDensity = danmakuFilterDensity;
   }
 
   if (overlayReady) {
@@ -1212,10 +1185,6 @@ function loadManualDanmakuFile(path) {
 
   if (manualFileType === 'nico-json') {
     manualPayload.xmlContent = applyNicoJsonFilters(encodedContent);
-  } else if (manualFileType === 'nico-xml' || manualFileType === 'bilibili-xml') {
-    manualPayload.filterOffset = danmakuFilterOffset;
-    manualPayload.filterLimit = danmakuFilterLimit;
-    manualPayload.filterDensity = danmakuFilterDensity;
   }
 
   overlay.postMessage("load-danmaku", manualPayload);
@@ -1415,10 +1384,6 @@ function registerSidebarHandlers() {
 
     if (fileType === 'nico-json') {
       selectPayload.xmlContent = applyNicoJsonFilters(encodedContent);
-    } else if (fileType === 'nico-xml' || fileType === 'bilibili-xml') {
-      selectPayload.filterOffset = danmakuFilterOffset;
-      selectPayload.filterLimit = danmakuFilterLimit;
-      selectPayload.filterDensity = danmakuFilterDensity;
     }
 
     overlay.postMessage("load-danmaku", selectPayload);
@@ -1572,11 +1537,6 @@ event.on("mpv.pause.changed", function () {
 overlay.onMessage("danmaku-type", function (data) {
   currentDanmakuStatus.fileType = data.type;
   sidebar.postMessage("danmaku-type", currentDanmakuStatus);
-});
-
-overlay.onMessage("filtered-count", function (data) {
-  lastFilteredCount = (data && data.count) || 0;
-  sendDanmakuFilterInfo();
 });
 
 overlay.onMessage("seek-disable", function () { core.osd("弹幕：禁止跳转"); });

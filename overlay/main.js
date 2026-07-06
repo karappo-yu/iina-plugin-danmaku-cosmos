@@ -73,7 +73,7 @@ function buildFormattedCanvasData(list, sourceType) {
       date: d._dateSec || 0,
       date_usec: 0,
       owner: sourceType !== 'bilibili-xml' && !!d._isOwner,
-      premium: false,
+      premium: true,
       mail: Array.isArray(d._commands) ? d._commands : [],
       user_id: toNumericUserId(d._userId, userMap),
       layer: d._layer === undefined ? -1 : d._layer,
@@ -81,45 +81,6 @@ function buildFormattedCanvasData(list, sourceType) {
     });
   }
   return result;
-}
-
-function applyFlatListFilters(list, offset, limit, density) {
-  if (!list || list.length === 0) return list;
-  // Sort by _no ascending (niconicomments requires ascending no)
-  var sorted = list.slice().sort(function(a, b) { return (a._no || 0) - (b._no || 0); });
-
-  // offset/limit slice (after sort)
-  if (limit > 0 && limit < sorted.length) {
-    var start = Math.min(offset, sorted.length - limit);
-    if (start < 0) start = 0;
-    sorted = sorted.slice(start, start + limit);
-  }
-
-  // density filter: 60s windows (t is centiseconds, 6000 = 60s), top N by _no desc
-  // No nicoru field in nico-xml/bilibili-xml, so no nicoru protection
-  if (density > 0) {
-    var windows = {};
-    for (var i = 0; i < sorted.length; i++) {
-      var c = sorted[i];
-      var win = Math.floor((c.t || 0) / 6000);
-      if (!windows[win]) windows[win] = [];
-      windows[win].push(c);
-    }
-    var kept = [];
-    for (var win in windows) {
-      if (!windows.hasOwnProperty(win)) continue;
-      var arr = windows[win];
-      arr.sort(function(a, b) { return (b._no || 0) - (a._no || 0); });
-      var take = Math.min(density, arr.length);
-      for (var i = 0; i < take; i++) {
-        kept.push(arr[i]);
-      }
-    }
-    kept.sort(function(a, b) { return (a._no || 0) - (b._no || 0); });
-    sorted = kept;
-  }
-
-  return sorted;
 }
 
 function prepareCanvasSource(rawStr, parsedList, sourceType) {
@@ -289,11 +250,6 @@ iina.onMessage("load-danmaku", (data) => {
     allDanmaku = [];
   } else {
     allDanmaku = parseDanmaku(rawStr, true);
-    // Apply offset/limit + density filters for nico-xml/bilibili-xml (overlay-side filtering)
-    if (danmakuType === 'nico-xml' || danmakuType === 'bilibili-xml') {
-      allDanmaku = applyFlatListFilters(allDanmaku, data.filterOffset || 0, data.filterLimit || 0, data.filterDensity || 0);
-      iina.postMessage("filtered-count", { count: allDanmaku.length });
-    }
   }
 
   prepareCanvasSource(rawStr, allDanmaku, danmakuType);
