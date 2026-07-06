@@ -173,7 +173,7 @@ function sendDanmakuFilterInfo() {
           for (var i = 0; i < data.length; i++) {
             var thread = data[i];
             if (thread && thread.fork !== 'owner' && thread.fork !== 'easy' && Array.isArray(thread.comments) && thread.comments.length > 0) {
-              var comments = thread.comments;
+              var comments = thread.comments.slice().sort(function(a, b) { return (a.no || 0) - (b.no || 0); });
               var offset = danmakuFilterOffset || 0;
               var limit = danmakuFilterLimit > 0 ? danmakuFilterLimit : comments.length;
               if (offset + limit > comments.length) {
@@ -263,9 +263,10 @@ function filterNicoJsonData(data) {
       var comments = thread.comments;
       var sliced = comments;
       if (danmakuFilterLimit > 0 && danmakuFilterLimit < comments.length) {
-        var start = Math.min(danmakuFilterOffset, comments.length - danmakuFilterLimit);
+        var sorted = comments.slice().sort(function(a, b) { return (a.no || 0) - (b.no || 0); });
+        var start = Math.min(danmakuFilterOffset, sorted.length - danmakuFilterLimit);
         if (start < 0) start = 0;
-        sliced = comments.slice(start, start + danmakuFilterLimit);
+        sliced = sorted.slice(start, start + danmakuFilterLimit);
         hasFilter = true;
       }
       if (danmakuFilterDensity > 0) {
