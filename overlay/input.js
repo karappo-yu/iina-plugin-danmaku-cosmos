@@ -10,7 +10,8 @@ function parseNicoXml(chats) {
       _isOwner: false,
       _commands: (el.getAttribute('mail') || '').toLowerCase().split(/\s+/).filter(Boolean),
       _userId: el.getAttribute('user_id') || '',
-      _dateSec: parseInt(el.getAttribute('date') || "0", 10)
+      _dateSec: parseInt(el.getAttribute('date') || "0", 10),
+      _no: parseInt(el.getAttribute('no') || "0", 10)
     });
   }
   return list;
@@ -58,8 +59,14 @@ function parseBilibiliXml(xmlStr) {
             _isOwner: false,
             _commands: commands,
             _userId: 0,
-            _dateSec: 1767196800
+            _dateSec: 1767196800,
+            _sortDate: parseInt(parts[6], 10) || 0
           });
+        }
+        list.sort(function(a, b) { return a._sortDate - b._sortDate; });
+        for (var j = 0; j < list.length; j++) {
+          list[j]._no = j + 1;
+          delete list[j]._sortDate;
         }
         return list;
       }
@@ -92,8 +99,14 @@ function parseBilibiliXml(xmlStr) {
       _isOwner: false,
       _commands: commands,
       _userId: 0,
-      _dateSec: 1767196800
+      _dateSec: 1767196800,
+      _sortDate: parseInt(p[6], 10) || 0
     });
+  }
+  list.sort(function(a, b) { return a._sortDate - b._sortDate; });
+  for (var j = 0; j < list.length; j++) {
+    list[j]._no = j + 1;
+    delete list[j]._sortDate;
   }
   return list;
 }

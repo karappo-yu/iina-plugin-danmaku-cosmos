@@ -67,12 +67,13 @@ function buildFormattedCanvasData(list, sourceType) {
     const d = list[i];
     result.push({
       id: i,
+      no: d._no || 0,
       vpos: Math.round(d.t || 0),
       content: d.text || '',
       date: d._dateSec || 0,
       date_usec: 0,
       owner: sourceType !== 'bilibili-xml' && !!d._isOwner,
-      premium: false,
+      premium: true,
       mail: Array.isArray(d._commands) ? d._commands : [],
       user_id: toNumericUserId(d._userId, userMap),
       layer: d._layer === undefined ? -1 : d._layer,
