@@ -181,11 +181,11 @@ function sendDanmakuFilterInfo() {
               }
               var startIdx = offset;
               var endIdx = Math.min(offset + limit - 1, comments.length - 1);
-              if (comments[startIdx] && comments[startIdx].postedAt) {
-                rangeStartDate = comments[startIdx].postedAt;
-              }
-              if (comments[endIdx] && comments[endIdx].postedAt) {
-                rangeEndDate = comments[endIdx].postedAt;
+              for (var k = startIdx; k <= endIdx; k++) {
+                var pa = comments[k].postedAt;
+                if (!pa) continue;
+                if (rangeStartDate === null || pa < rangeStartDate) rangeStartDate = pa;
+                if (rangeEndDate === null || pa > rangeEndDate) rangeEndDate = pa;
               }
               break;
             }
@@ -752,6 +752,7 @@ function ddpAutoMatchAndLoad(url) {
   ddpSyncState();
 
   ddpMatchVideo(fileName, path).then(function(res) {
+    if (url !== currentVideoUrl) return;
     var data = ddpParseBody(res);
     if (res.statusCode === 403) {
       dandanplayState.status = 'error';
@@ -860,6 +861,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad) {
   ddpSyncState();
 
   ddpGetComments(episodeId).then(function(res) {
+    if (videoUrl !== currentVideoUrl) return;
     if (res.statusCode === 403) {
       dandanplayState.status = 'error';
       dandanplayState.error = 'Auth error (403): ' + (res.reason || 'check AppId/AppSecret');
@@ -1188,9 +1190,14 @@ function loadManualDanmakuFile(path) {
     manualPayload.xmlContent = applyNicoJsonFilters(encodedContent);
   }
 
-  overlay.postMessage("load-danmaku", manualPayload);
-  core.osd("已加载弹幕: " + manualFileName);
-  ensureDanmakuEnabled();
+  if (overlayReady) {
+    overlay.postMessage("load-danmaku", manualPayload);
+    core.osd("已加载弹幕: " + manualFileName);
+    ensureDanmakuEnabled();
+  } else {
+    pendingDanmaku = manualPayload;
+    core.osd("弹幕排队中…");
+  }
 }
 
 function registerSidebarHandlers() {
