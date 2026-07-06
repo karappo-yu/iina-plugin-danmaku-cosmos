@@ -852,6 +852,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
 }
 
 function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad) {
+  var videoUrl = currentVideoUrl;
   dandanplayState.status = 'loading';
   dandanplayState.episodeId = episodeId;
   dandanplayState.animeTitle = animeTitle || '';
@@ -885,7 +886,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad) {
 
     var converted = ddpConvertComments(data.comments);
 
-    ddpSaveVideoCache(currentVideoUrl, episodeId, animeTitle, episodeTitle, converted);
+    ddpSaveVideoCache(videoUrl, episodeId, animeTitle, episodeTitle, converted);
 
     dandanplayState.status = 'loaded';
     dandanplayState.commentCount = converted.length;

@@ -42,11 +42,11 @@ function parseBilibiliXml(xmlStr) {
           if (!pAttr) continue;
           var parts = pAttr.split(",");
           var mode = parseInt(parts[1], 10);
-      if (mode < 1 || mode > 6) continue;
-      var size = parseInt(parts[2], 10) || 25;
-      var colorVal = parseInt(parts[3], 10);
+          if (mode < 1 || mode > 6) continue;
+          var size = parseInt(parts[2], 10) || 25;
+          var colorVal = parseInt(parts[3], 10);
           if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
-          var commands = parts[5] ? parts[5].toLowerCase().split(/\s+/) : [];
+          var commands = [];
           if (mode === 4) commands.push('shita');
           else if (mode === 5) commands.push('ue');
           else commands.push('naka');
@@ -59,14 +59,11 @@ function parseBilibiliXml(xmlStr) {
             _isOwner: false,
             _commands: commands,
             _userId: 0,
-            _dateSec: 1767196800,
-            _sortDate: parseInt(parts[6], 10) || 0
+            _dateSec: 1767196800
           });
         }
-        list.sort(function(a, b) { return a._sortDate - b._sortDate; });
         for (var j = 0; j < list.length; j++) {
           list[j]._no = j + 1;
-          delete list[j]._sortDate;
         }
         return list;
       }
@@ -86,7 +83,7 @@ function parseBilibiliXml(xmlStr) {
     var size = parseInt(p[2], 10) || 25;
     var colorVal = parseInt(p[3], 10);
     if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
-    var commands = p[5] ? p[5].toLowerCase().split(/\s+/) : [];
+    var commands = [];
     if (mode === 4) commands.push('shita');
     else if (mode === 5) commands.push('ue');
     else commands.push('naka');
@@ -99,14 +96,11 @@ function parseBilibiliXml(xmlStr) {
       _isOwner: false,
       _commands: commands,
       _userId: 0,
-      _dateSec: 1767196800,
-      _sortDate: parseInt(p[6], 10) || 0
+      _dateSec: 1767196800
     });
   }
-  list.sort(function(a, b) { return a._sortDate - b._sortDate; });
   for (var j = 0; j < list.length; j++) {
     list[j]._no = j + 1;
-    delete list[j]._sortDate;
   }
   return list;
 }
