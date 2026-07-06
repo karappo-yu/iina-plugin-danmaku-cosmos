@@ -22,6 +22,10 @@ var rangeSelector = document.getElementById("danmaku-range-selector");
 var filterCoverage = document.getElementById("filter-coverage");
 var filterHandleLeft = document.getElementById("filter-handle-left");
 var filterHandleRight = document.getElementById("filter-handle-right");
+var densitySection = document.getElementById("danmaku-density-section");
+var densitySlider = document.getElementById("density-slider");
+var densityValue = document.getElementById("density-value");
+var densityCount = document.getElementById("density-count");
 var advancedToggle = document.getElementById("advanced-toggle");
 var advancedContent = document.getElementById("advanced-content");
 var advancedArrow = document.getElementById("advanced-arrow");
@@ -76,6 +80,8 @@ var state = {
   nicoJsonTotalCount: 0,
   danmakuFilterOffset: 0,
   danmakuFilterLimit: 0,
+  danmakuFilterDensity: 0,
+  filteredCount: 0,
   rangeStartDate: null,
   rangeEndDate: null,
 };
@@ -245,6 +251,7 @@ var i18n = {
     opacity: "Danmaku Opacity",
     font_scale: "Font Scale",
     danmaku_filter: "Danmaku Count",
+    density_filter: "Density Filter",
 
     advanced: "Advanced",
     comment_limit: "Comment Limit",
@@ -282,6 +289,7 @@ var i18n = {
     opacity: "\u30b3\u30e1\u30f3\u30c8\u900f\u660e\u5ea6",
     font_scale: "\u30d5\u30a9\u30f3\u30c8\u500d\u7387",
     danmaku_filter: "\u30b3\u30e1\u30f3\u30c8\u6570",
+    density_filter: "\u5bc6\u5ea6\u30d5\u30a3\u30eb\u30bf",
 
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
     comment_limit: "\u30b3\u30e1\u30f3\u30c8\u5236\u9650",
@@ -319,6 +327,7 @@ var i18n = {
     opacity: "\u5f39\u5e55\u900f\u660e\u5ea6",
     font_scale: "\u5b57\u4f53\u7f29\u653e",
     danmaku_filter: "\u5f39\u5e55\u6570\u91cf",
+    density_filter: "\u5bc6\u5ea6\u8fc7\u6ee4",
 
     advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
     comment_limit: "\u5f39\u5e55\u4e0a\u9650",
@@ -394,10 +403,31 @@ function updateUI() {
 }
 
 function updateFilterUI() {
-  var show = state.enabled && state.danmakuLoaded && state.danmakuType === 'nico-json' && state.nicoJsonTotalCount > 100;
-  if (filterSection) filterSection.style.display = show ? '' : 'none';
-  if (show) {
+  var showRange = state.enabled && state.danmakuLoaded && state.danmakuType === 'nico-json' && state.nicoJsonTotalCount > 100;
+  if (filterSection) filterSection.style.display = showRange ? '' : 'none';
+  if (showRange) {
     updateRangeSelector();
+  }
+
+  var showDensity = state.enabled && state.danmakuLoaded && (state.danmakuType === 'nico-json' || state.danmakuType === 'nico-xml' || state.danmakuType === 'bilibili-xml');
+  if (densitySection) densitySection.style.display = showDensity ? '' : 'none';
+  if (showDensity) {
+    updateDensitySlider();
+  }
+}
+
+function updateDensitySlider() {
+  if (!densitySlider || !densityValue) return;
+  var density = state.danmakuFilterDensity || 0;
+  if (density > 0) {
+    densitySlider.value = density;
+    densityValue.textContent = String(density);
+  } else {
+    densitySlider.value = 600;
+    densityValue.textContent = 'Off';
+  }
+  if (densityCount) {
+    densityCount.textContent = state.filteredCount > 0 ? '(' + state.filteredCount + ')' : '';
   }
 }
 
@@ -640,11 +670,30 @@ document.addEventListener("mouseup", function () {
   filterDragMode = null;
 });
 
+if (densitySlider) {
+  densitySlider.addEventListener("input", function () {
+    var val = parseInt(densitySlider.value, 10);
+    if (val >= 600) {
+      densityValue.textContent = 'Off';
+    } else {
+      densityValue.textContent = String(val);
+    }
+  });
+  densitySlider.addEventListener("change", function () {
+    var val = parseInt(densitySlider.value, 10);
+    var density = val >= 600 ? 0 : val;
+    state.danmakuFilterDensity = density;
+    iina.postMessage("set-danmaku-filter-density", { density: density });
+  });
+}
+
 iina.onMessage("danmaku-filter-info", function (data) {
   if (data.fileType !== undefined) state.danmakuType = data.fileType;
   state.nicoJsonTotalCount = data.totalCount || 0;
   state.danmakuFilterOffset = data.filterOffset || 0;
   state.danmakuFilterLimit = data.filterLimit || 0;
+  state.danmakuFilterDensity = data.filterDensity || 0;
+  state.filteredCount = data.filteredCount || 0;
   state.rangeStartDate = data.rangeStartDate || null;
   state.rangeEndDate = data.rangeEndDate || null;
   updateFilterUI();
@@ -665,6 +714,7 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.danmakuFileName !== undefined) state.danmakuFileName = data.danmakuFileName;
   if (data.danmakuRelativePath !== undefined) state.danmakuRelativePath = data.danmakuRelativePath;
   if (data.danmakuLoaded !== undefined) state.danmakuLoaded = data.danmakuLoaded;
+  if (data.danmakuFilterDensity !== undefined) state.danmakuFilterDensity = data.danmakuFilterDensity;
   updateUI();
   updateEnabledUI();
 });
