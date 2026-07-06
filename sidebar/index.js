@@ -251,7 +251,7 @@ var i18n = {
     opacity: "Danmaku Opacity",
     font_scale: "Font Scale",
     danmaku_filter: "Danmaku Count",
-    density_filter: "Density Filter",
+    density_filter: "Count (/min)",
 
     advanced: "Advanced",
     comment_limit: "Comment Limit",
@@ -289,7 +289,7 @@ var i18n = {
     opacity: "\u30b3\u30e1\u30f3\u30c8\u900f\u660e\u5ea6",
     font_scale: "\u30d5\u30a9\u30f3\u30c8\u500d\u7387",
     danmaku_filter: "\u30b3\u30e1\u30f3\u30c8\u6570",
-    density_filter: "\u5bc6\u5ea6\u30d5\u30a3\u30eb\u30bf",
+    density_filter: "\u6570\u91cf\uff08/min\uff09",
 
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
     comment_limit: "\u30b3\u30e1\u30f3\u30c8\u5236\u9650",
@@ -327,7 +327,7 @@ var i18n = {
     opacity: "\u5f39\u5e55\u900f\u660e\u5ea6",
     font_scale: "\u5b57\u4f53\u7f29\u653e",
     danmaku_filter: "\u5f39\u5e55\u6570\u91cf",
-    density_filter: "\u5bc6\u5ea6\u8fc7\u6ee4",
+    density_filter: "\u6570\u91cf\uff08/min\uff09",
 
     advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
     comment_limit: "\u5f39\u5e55\u4e0a\u9650",
