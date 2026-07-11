@@ -64,7 +64,7 @@ var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closes
 
 var state = {
   enabled: true,
-  useCanvasRenderer: true,
+  useCanvasRenderer: false,
   danmakuType: 'none',
   danmakuFileName: null,
   danmakuRelativePath: null,
@@ -282,7 +282,16 @@ var i18n = {
     dandanplay_status_loaded: "Loaded",
     dandanplay_status_error: "Error",
     dandanplay_status_no_match: "No match found",
-    dandanplay_status_multiple_matches: "Select a match"
+    dandanplay_status_multiple_matches: "Select a match",
+    ddp_auto_network: "Auto-load network danmaku",
+    canvas_renderer: "Use Canvas renderer",
+    search_results: "Search Results",
+    click_load_episodes: "Click to load episodes",
+    loading_episodes: "Loading episodes...",
+    episodes_count: "{n} episodes",
+    match_type_hash: "(hash)",
+    match_type_filename: "(filename match)",
+    match_type_filename_title: "Hash match failed; showing filename-related matches"
   },
   ja: {
     danmaku_visible: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a",
@@ -320,7 +329,16 @@ var i18n = {
     dandanplay_status_loaded: "\u8aad\u307f\u8fbc\u307f\u5b8c\u4e86",
     dandanplay_status_error: "\u30a8\u30e9\u30fc",
     dandanplay_status_no_match: "\u30de\u30c3\u30c1\u306a\u3057",
-    dandanplay_status_multiple_matches: "\u30de\u30c3\u30c1\u3092\u9078\u629e"
+    dandanplay_status_multiple_matches: "\u30de\u30c3\u30c1\u3092\u9078\u629e",
+    ddp_auto_network: "\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u30b3\u30e1\u30f3\u30c8\u3092\u81ea\u52d5\u8aad\u307f\u8fbc\u307f",
+    canvas_renderer: "Canvas \u63cf\u753b\u3092\u4f7f\u7528",
+    search_results: "\u691c\u7d22\u7d50\u679c",
+    click_load_episodes: "\u30af\u30ea\u30c3\u30af\u3057\u3066\u8a71\u6570\u3092\u8868\u793a",
+    loading_episodes: "\u8a71\u6570\u3092\u8aad\u307f\u8fbc\u307f\u4e2d...",
+    episodes_count: "{n}\u8a71",
+    match_type_hash: "\uff08hash\uff09",
+    match_type_filename: "\uff08\u30d5\u30a1\u30a4\u30eb\u540d\u4e00\u81f4\uff09",
+    match_type_filename_title: "hash \u30de\u30c3\u30c1\u5931\u6557\u3001\u30d5\u30a1\u30a4\u30eb\u540d\u95a2\u9023\u30ea\u30b9\u30c8\u3092\u8868\u793a"
   },
   zh: {
     danmaku_visible: "\u5f39\u5e55\u663e\u793a",
@@ -358,7 +376,16 @@ var i18n = {
     dandanplay_status_loaded: "\u5df2\u52a0\u8f7d",
     dandanplay_status_error: "\u9519\u8bef",
     dandanplay_status_no_match: "\u672a\u627e\u5230\u5339\u914d",
-    dandanplay_status_multiple_matches: "\u8bf7\u9009\u62e9\u5339\u914d"
+    dandanplay_status_multiple_matches: "\u8bf7\u9009\u62e9\u5339\u914d",
+    ddp_auto_network: "\u81ea\u52a8\u52a0\u8f7d\u7f51\u7edc\u5f39\u5e55",
+    canvas_renderer: "\u4f7f\u7528 Canvas \u6e32\u67d3",
+    search_results: "\u641c\u7d22\u7ed3\u679c",
+    click_load_episodes: "\u70b9\u51fb\u52a0\u8f7d\u96c6\u6570\u5217\u8868",
+    loading_episodes: "\u6b63\u5728\u52a0\u8f7d\u96c6\u6570...",
+    episodes_count: "{n} \u96c6",
+    match_type_hash: "\uff08hash\uff09",
+    match_type_filename: "\uff08\u6587\u4ef6\u540d\u5173\u8054\uff09",
+    match_type_filename_title: "hash \u672a\u5339\u914d\u5230\u7f51\u7edc\u5f39\u5e55\uff0c\u663e\u793a\u6587\u4ef6\u540d\u5173\u8054\u5217\u8868"
   }
 };
 
@@ -367,6 +394,11 @@ function getBrowserLang() {
   if (lang.startsWith("ja")) return "ja";
   if (lang.startsWith("zh")) return "zh";
   return "en";
+}
+
+function t(key) {
+  var dict = i18n[getBrowserLang()] || i18n.en;
+  return dict[key] || i18n.en[key] || key;
 }
 
 function applyI18n() {
@@ -782,9 +814,9 @@ function ddpUpdateUI() {
             if (isSelected && ddpState.matchType) {
               var typeLabel = document.createElement('span');
               typeLabel.className = 'dandanplay-match-type-label';
-              typeLabel.textContent = ddpState.matchType === 'hash' ? '（hash）' : '（文件名关联）';
+              typeLabel.textContent = ddpState.matchType === 'hash' ? t('match_type_hash') : t('match_type_filename');
               if (ddpState.matchType === 'filename') {
-                typeLabel.title = 'hash 未匹配到网络弹幕，显示文件名关联列表';
+                typeLabel.title = t('match_type_filename_title');
               }
               title.appendChild(typeLabel);
             }
@@ -919,7 +951,7 @@ iina.onMessage("dandanplay-search-result", function (data) {
       return;
     }
 
-    if (ddpSearchResultsHeader) ddpSearchResultsHeader.textContent = '\u641C\u7D22\u7ED3\u679C (' + animes.length + ')';
+    if (ddpSearchResultsHeader) ddpSearchResultsHeader.textContent = t('search_results') + ' (' + animes.length + ')';
     if (ddpSearchResultsArrow) ddpSearchResultsArrow.textContent = '\u25BC';
     if (ddpSearchResultsToggle) ddpSearchResultsToggle.style.display = '';
     ddpSearchResults.style.display = '';
@@ -936,7 +968,7 @@ iina.onMessage("dandanplay-search-result", function (data) {
 
         var sub = document.createElement('div');
         sub.className = 'dandanplay-search-result-episodes';
-        sub.textContent = 'Click to load episodes';
+        sub.textContent = t('click_load_episodes');
 
         item.appendChild(title);
         item.appendChild(sub);
@@ -949,7 +981,7 @@ iina.onMessage("dandanplay-search-result", function (data) {
           }
           if (epLoading) return;
           epLoading = true;
-          sub.textContent = 'Loading episodes...';
+          sub.textContent = t('loading_episodes');
           iina.postMessage("dandanplay-get-bangumi", { bangumiId: String(anime.animeId), animeTitle: anime.animeTitle });
         });
 
@@ -986,7 +1018,7 @@ iina.onMessage("dandanplay-bangumi-result", function (data) {
         debugLog('bangumi-result: matched item, episodes=' + episodes.length);
 
         var subEl = item.querySelector('.dandanplay-search-result-episodes');
-        if (subEl) subEl.textContent = episodes.length + ' episodes';
+        if (subEl) subEl.textContent = t('episodes_count').replace('{n}', episodes.length);
 
         var epList = document.createElement('div');
         epList.className = 'dandanplay-episode-list';
