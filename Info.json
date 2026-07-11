@@ -23,7 +23,7 @@
     "danmakuEnabled": true,
     "danmakuCanvasOpacity": 0.8,
     "niconicommentsFontScale": 1.0,
-    "canvasMode": "default",
+    "canvasMode": "css",
     "strokeColor": "#000000",
     "strokeInversionColor": "#ffffff",
     "strokeOpacity": 0.4,
