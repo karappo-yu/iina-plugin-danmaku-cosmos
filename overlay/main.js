@@ -22,6 +22,28 @@ let canvasSystemAnchorTime = 0;
 let canvasIsPlaying = false;
 let playbackSpeed = 1.0;
 let danmakuVisible = true;
+let danmakuForceSimplified = false;
+// 初始化OpenCC转换器
+let toSimplified = function(text) { return text; }; // 兜底函数
+function updateSimplifiedConverter(enabled) {
+  danmakuForceSimplified = !!enabled;
+  if (danmakuForceSimplified) {
+    try {
+      const converter = OpenCC.Converter({ from: 'hk', to: 'cn' });
+      toSimplified = function(text) {
+        if (!text) return "";
+        return converter(text);
+      };
+    } catch (e) {
+      console.error("[Danmaku Cosmos] OpenCC 库加载失败，请检查文件路径:", e);
+      toSimplified = function(text) { return text || ''; };
+    }
+  } else {
+    toSimplified = function(text) { return text || ''; };
+  }
+}
+
+updateSimplifiedConverter(danmakuForceSimplified);
 
 function canvasSyncAnchor(videoTimeSec) {
   canvasVideoAnchorTime = videoTimeSec;
@@ -69,7 +91,7 @@ function buildFormattedCanvasData(list, sourceType) {
       id: i,
       no: d._no || 0,
       vpos: Math.round(d.t || 0),
-      content: d.text || '',
+      content: toSimplified(d.text || ''),
       date: d._dateSec || 0,
       date_usec: 0,
       owner: sourceType !== 'bilibili-xml' && !!d._isOwner,
@@ -227,6 +249,10 @@ iina.onMessage("load-danmaku", (data) => {
     if (canvas && canvasNicoMode !== 'css') canvas.style.opacity = data.opacity;
     const cssContainer = document.querySelector('[data-dm-css-container]');
     if (cssContainer) cssContainer.style.opacity = data.opacity;
+  }
+
+  if (data.danmakuForceSimplified !== undefined) {
+    updateSimplifiedConverter(data.danmakuForceSimplified);
   }
 
   const encodedStr = data.xmlContent;
@@ -393,6 +419,9 @@ iina.onMessage("apply-settings", (data) => {
   if (data.strokeWidth !== undefined) strokeWidth = data.strokeWidth;
   if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
+  if (data.danmakuForceSimplified !== undefined) {
+    updateSimplifiedConverter(data.danmakuForceSimplified);
+  }
 });
 
 iina.postMessage("overlay-ready", {});

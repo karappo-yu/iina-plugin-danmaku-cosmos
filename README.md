@@ -20,12 +20,13 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **Niconico 格式完整支持**：Niconico XML、Niconico V1 JSON
 - **Bilibili XML 基础支持**：普通滚动弹幕、顶部/底部固定弹幕（以 niconico 风格渲染）
 - **弹弹play 网络弹幕**：自动匹配视频文件，从弹弹play API 获取网络弹幕，支持缓存和手动搜索
+- **繁简转换**：支持强制将繁体中文弹幕转换为简体中文，可在设置和 UI 中自由切换
 - **双渲染模式**：
   - **CSS 模式**（默认）：利用 WebKit GPU 合成加速（`transform` + `will-change`），在 IINA 的 WKWebView 环境下流畅度远超 Canvas
   - **Canvas 模式**：基于魔改 niconicomments，用于需要完整 Canvas 渲染的场合
 - **自动加载弹幕**：按优先级自动查找同目录下的弹幕文件
 - **手动加载弹幕**：通过菜单或侧边栏手动选择弹幕文件
-- **侧边栏控制面板**：实时调整弹幕开关、渲染模式、透明度、字体缩放等
+- **侧边栏控制面板**：实时调整弹幕开关、渲染模式、繁简转换、透明度、字体缩放等
 
 ### 网络弹幕
 
@@ -37,7 +38,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **自动加载开关**：开启后自动匹配并加载网络弹幕；关闭时优先使用本地弹幕，网络弹幕仅在手动选择时加载
 - **弹幕冲突处理**：网络弹幕和本地弹幕同时存在时，根据优先级自动选择
 
-> **注意**：弹弹play 提供的网络弹幕内容以简体中文和繁体中文为主，不包含其他语言。
+> **注意**：弹弹play 提供的网络弹幕内容以简体中文和繁体中文为主，不包含其他语言。若习惯阅读简体，可开启“强制繁转简”选项。
 
 ### 渲染模式
 
@@ -91,12 +92,13 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **Niconico フォーマット完全対応**：Niconico XML、Niconico V1 JSON
 - **Bilibili XML 基本対応**：通常スクロールコメント、上部/下部固定コメント（niconico スタイルで描画）
 - **弹弹play ネットワークコメント**：動画ファイルを自動認識し、弹弹play API からネットワークコメントを取得。キャッシュ対応、手動検索可能
+- **繁体字から簡体字への変換**：繁体字中国語のコメントを強制的に簡体字に変換する機能を追加。設定および UI から切り替え可能
 - **デュアル描画モード**：
   - **CSS モード**（デフォルト）：WebKit GPU 合成加速（`transform` + `will-change`）により、IINA の WKWebView で Canvas より滑らかに描画
   - **Canvas モード**：改造 niconicomments、Canvas 描画が必要な場合に使用
 - **自動読み込み**：同じフォルダから優先順位に従って自動検索
 - **手動読み込み**：メニューやサイドバーからコメントファイルを選択
-- **サイドバーコントロール**：コメント表示、描画モード、透明度、フォント倍率などをリアルタイム調整
+- **サイドバーコントロール**：コメント表示、描画モード、繁簡変換、透明度、フォント倍率などをリアルタイム調整
 
 ### ネットワークコメント
 
@@ -145,12 +147,13 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **Full Niconico format support**: Niconico XML, Niconico V1 JSON
 - **Basic Bilibili XML support**: Normal scrolling, top/bottom fixed comments (rendered in niconico style)
 - **Dandanplay network danmaku**: Auto-match videos via dandanplay API, with caching and manual search
+- **Traditional to Simplified Chinese Conversion**: Option to force convert Traditional Chinese danmaku to Simplified Chinese, configurable in settings and UI
 - **Dual rendering modes**:
   - **CSS mode** (default): DOM elements + CSS animations with WebKit GPU acceleration for smooth rendering in IINA's WKWebView
   - **Canvas mode**: Based on a forked niconicomments library, for when Canvas rendering is needed
 - **Auto-load**: Automatically searches for danmaku files in the same directory by priority
 - **Manual load**: Select danmaku files via menu or sidebar
-- **Sidebar control panel**: Real-time adjustment of danmaku visibility, render mode, opacity, font scale, and more
+- **Sidebar control panel**: Real-time adjustment of danmaku visibility, render mode, Chinese conversion, opacity, font scale, and more
 
 ### Network Danmaku
 
