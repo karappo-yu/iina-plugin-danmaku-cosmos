@@ -1,5 +1,6 @@
 var toggleDanmaku = document.getElementById("toggle-danmaku");
 var canvasRendererToggle = document.getElementById("canvas-renderer-toggle");
+var danmakuForceSimplifiedToggle = document.getElementById("danmaku-force-simplified-toggle"); 
 var opacitySlider = document.getElementById("opacity-slider");
 var opacityValue = document.getElementById("opacity-value");
 var fontsizeSlider = document.getElementById("fontsize-slider");
@@ -65,6 +66,7 @@ var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closes
 var state = {
   enabled: true,
   useCanvasRenderer: false,
+  danmakuForceSimplified: true,
   danmakuType: 'none',
   danmakuFileName: null,
   danmakuRelativePath: null,
@@ -285,6 +287,7 @@ var i18n = {
     dandanplay_status_multiple_matches: "Select a match",
     ddp_auto_network: "Auto-load network danmaku",
     canvas_renderer: "Use Canvas renderer",
+    danmaku_force_simplified: "Force Simplified Chinese",
     search_results: "Search Results",
     click_load_episodes: "Click to load episodes",
     loading_episodes: "Loading episodes...",
@@ -332,6 +335,7 @@ var i18n = {
     dandanplay_status_multiple_matches: "\u30de\u30c3\u30c1\u3092\u9078\u629e",
     ddp_auto_network: "\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u30b3\u30e1\u30f3\u30c8\u3092\u81ea\u52d5\u8aad\u307f\u8fbc\u307f",
     canvas_renderer: "Canvas \u63cf\u753b\u3092\u4f7f\u7528",
+    danmaku_force_simplified: "\u7c21\u4f53\u5b57\u306b\u5f37\u5236\u5909\u63db",
     search_results: "\u691c\u7d22\u7d50\u679c",
     click_load_episodes: "\u30af\u30ea\u30c3\u30af\u3057\u3066\u8a71\u6570\u3092\u8868\u793a",
     loading_episodes: "\u8a71\u6570\u3092\u8aad\u307f\u8fbc\u307f\u4e2d...",
@@ -379,6 +383,7 @@ var i18n = {
     dandanplay_status_multiple_matches: "\u8bf7\u9009\u62e9\u5339\u914d",
     ddp_auto_network: "\u81ea\u52a8\u52a0\u8f7d\u7f51\u7edc\u5f39\u5e55",
     canvas_renderer: "\u4f7f\u7528 Canvas \u6e32\u67d3",
+    danmaku_force_simplified: "\u5f3a\u5236\u8f6c\u6362\u7b80\u4f53", 
     search_results: "\u641c\u7d22\u7ed3\u679c",
     click_load_episodes: "\u70b9\u51fb\u52a0\u8f7d\u96c6\u6570\u5217\u8868",
     loading_episodes: "\u6b63\u5728\u52a0\u8f7d\u96c6\u6570...",
@@ -431,6 +436,7 @@ function updateUI() {
   speedSlider.value = Math.round(state.scrollSpeed * 100);
   speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
   if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
+  if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified; 
   updateFilterUI();
 }
 
@@ -524,6 +530,16 @@ if (canvasRendererToggle) {
     var useCanvas = canvasRendererToggle.checked;
     state.useCanvasRenderer = useCanvas;
     iina.postMessage("set-canvas-mode", { mode: useCanvas ? 'default' : 'css' });
+  });
+}
+
+if (danmakuForceSimplifiedToggle) {
+  danmakuForceSimplifiedToggle.addEventListener("change", function () {
+    var forceSimp = danmakuForceSimplifiedToggle.checked;
+    state.danmakuForceSimplified = forceSimp;
+    
+    // 向 IINA 的核心主脚本传递设置更新命令
+    iina.postMessage("set-danmaku-force-simplified", { value: forceSimp });
   });
 }
 
@@ -742,6 +758,7 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.strokeInversionColor !== undefined) state.strokeInversionColor = data.strokeInversionColor;
   if (data.commentLimit !== undefined) state.commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) state.scrollSpeed = data.scrollSpeed;
+  if (data.danmakuForceSimplified !== undefined) state.danmakuForceSimplified = !!data.danmakuForceSimplified;
   if (data.danmakuFileType !== undefined) state.danmakuType = data.danmakuFileType;
   if (data.danmakuFileName !== undefined) state.danmakuFileName = data.danmakuFileName;
   if (data.danmakuRelativePath !== undefined) state.danmakuRelativePath = data.danmakuRelativePath;

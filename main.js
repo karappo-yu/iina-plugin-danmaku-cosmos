@@ -9,6 +9,7 @@ var preferences = iina.preferences;
 var mpv = iina.mpv;
 
 var danmakuEnabled = preferences.get("danmakuEnabled");
+var danmakuForceSimplified = preferences.get("danmakuForceSimplified") !== undefined ? preferences.get("danmakuForceSimplified") : true;
 var canvasOpacity = preferences.get("danmakuCanvasOpacity") || 0.8;
 var canvasFontScale = preferences.get("niconicommentsFontScale") || 1.0;
 var currentCanvasMode = preferences.get("canvasMode") || 'css';
@@ -74,7 +75,6 @@ var danmakuFileList = {
 };
 
 var danmakuCache = {};
-var danmakuSelectGeneration = 0;
 
 var nicoJsonTotalCount = 0;
 var danmakuFilterOffset = 0;
@@ -1090,6 +1090,7 @@ function markOverlayReady() {
     strokeWidth: strokeWidth,
     commentLimit: commentLimit,
     scrollSpeed: scrollSpeed,
+    danmakuForceSimplified: danmakuForceSimplified
   });
 
   if (pendingDanmaku) {
@@ -1202,86 +1203,6 @@ function loadManualDanmakuFile(path) {
   }
 }
 
-function ddpParseEpisodeId(filePath) {
-  if (!filePath || filePath.indexOf('dandanplay://') !== 0) return null;
-  var episodeId = filePath.substring('dandanplay://'.length);
-  return episodeId || null;
-}
-
-function applySelectedDanmakuFile(filePath, encodedContent) {
-  if (!encodedContent) {
-    core.osd("弹幕内容不可用");
-    return;
-  }
-
-  danmakuFileList.selectedPaths = [filePath];
-
-  var fileName = filePath.indexOf('dandanplay://') === 0 ? filePath : filePath.split("/").pop();
-  var fileInfo = findDanmakuFileByPath(filePath);
-  var relPath = fileInfo ? fileInfo.relativePath : fileName;
-  var fileType;
-  if (filePath.indexOf('dandanplay://') === 0) {
-    fileType = 'dandanplay';
-  } else {
-    var decodedForType;
-    try { decodedForType = decodeURIComponent(encodedContent); } catch (e) { decodedForType = ''; }
-    fileType = detectDanmakuType(decodedForType);
-  }
-  updateDanmakuStatus({ fileType: fileType, fileName: fileInfo ? fileInfo.filename : fileName, relativePath: relPath, isLoaded: true });
-
-  if (fileType === 'nico-json') {
-    nicoJsonTotalCount = computeNicoJsonCount(encodedContent);
-  } else {
-    nicoJsonTotalCount = 0;
-  }
-  danmakuFilterOffset = 0;
-  danmakuFilterLimit = 0;
-  danmakuFilterDensity = 0;
-
-  sidebar.postMessage("danmaku-file-list", danmakuFileList);
-  sendDanmakuFilterInfo();
-
-  var selectPayload = {
-    xmlContent: encodedContent,
-    path: filePath,
-    danmakuType: fileType,
-    opacity: canvasOpacity,
-    canvasFontScale: canvasFontScale,
-    strokeColor: strokeColor,
-    strokeInversionColor: strokeInversionColor,
-    strokeOpacity: strokeOpacity,
-    strokeWidth: strokeWidth,
-    commentLimit: commentLimit,
-    scrollSpeed: scrollSpeed,
-  };
-
-  if (fileType === 'nico-json') {
-    selectPayload.xmlContent = applyNicoJsonFilters(encodedContent);
-  }
-
-  overlay.postMessage("load-danmaku", selectPayload);
-  core.osd("已加载弹幕: " + (fileInfo ? fileInfo.filename : fileName));
-  ensureDanmakuEnabled();
-}
-
-function fetchDDPDanmakuForSelect(filePath, episodeId, selectGeneration) {
-  ddpGetComments(episodeId).then(function(res) {
-    if (selectGeneration !== danmakuSelectGeneration) return;
-    var data = ddpParseBody(res);
-    if (!data || !data.comments || data.comments.length === 0) {
-      core.osd("弹幕内容不可用");
-      return;
-    }
-    var converted = ddpConvertComments(data.comments);
-    var encodedContent = encodeContent(JSON.stringify(converted));
-    danmakuCache[filePath] = encodedContent;
-    applySelectedDanmakuFile(filePath, encodedContent);
-  }).catch(function(err) {
-    if (selectGeneration !== danmakuSelectGeneration) return;
-    core.osd("弹弹play: 加载弹幕失败");
-  });
-}
-
 function registerSidebarHandlers() {
   sidebar.onMessage("toggle-danmaku", function () { toggleDanmaku(); });
 
@@ -1304,6 +1225,46 @@ function registerSidebarHandlers() {
     preferences.set("canvasMode", currentCanvasMode);
     syncPreferencesSoon();
     overlay.postMessage("set-canvas-mode", { mode: data.mode });
+  });
+
+  sidebar.onMessage("set-danmaku-force-simplified", function (data) {
+  // 更新 main.js 内部的全局变量
+  danmakuForceSimplified = !!data.value;
+  
+  // 将此偏好持久化同步到 IINA 系统配置中
+  preferences.set("danmakuForceSimplified", danmakuForceSimplified);
+  syncPreferencesSoon();
+  
+  // 通知 overlay.js 实时变更设置并触发重新渲染清洗
+  if (overlayReady) {
+    overlay.postMessage("apply-settings", {
+      danmakuForceSimplified: danmakuForceSimplified
+    });
+    
+    // 如果当前已经加载了弹幕文件，重新驱动加载管道，让 OpenCC 重新清洗文本
+    var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+    if (selectedPath) {
+      if (currentDanmakuStatus.fileType === 'nico-json') {
+        applyDanmakuFilter(danmakuFilterOffset, danmakuFilterLimit);
+      } else {
+        overlay.postMessage("load-danmaku", {
+          xmlContent: danmakuCache[selectedPath],
+          path: selectedPath,
+          danmakuType: currentDanmakuStatus.fileType === 'dandanplay' ? 'dandanplay' : 'bilibili-xml',
+          opacity: canvasOpacity,
+          canvasFontScale: canvasFontScale,
+          strokeColor: strokeColor,
+          strokeInversionColor: strokeInversionColor,
+          strokeOpacity: strokeOpacity,
+          strokeWidth: strokeWidth,
+          commentLimit: commentLimit,
+          scrollSpeed: scrollSpeed,
+          preservePosition: true,
+          danmakuForceSimplified: danmakuForceSimplified
+        });
+      }
+    }
+  }
   });
 
   sidebar.onMessage("set-stroke-opacity", function (data) {
@@ -1383,6 +1344,7 @@ function registerSidebarHandlers() {
       strokeInversionColor: strokeInversionColor,
       commentLimit: commentLimit,
       scrollSpeed: scrollSpeed,
+      danmakuForceSimplified: danmakuForceSimplified,
       danmakuFileType: currentDanmakuStatus.fileType,
       danmakuFileName: currentDanmakuStatus.fileName,
       danmakuRelativePath: currentDanmakuStatus.relativePath,
@@ -1406,19 +1368,14 @@ function registerSidebarHandlers() {
 
   sidebar.onMessage("select-danmaku-file", function (data) {
     var filePath = data.path;
-    var selectGeneration = ++danmakuSelectGeneration;
 
     var encodedContent = danmakuCache[filePath];
     if (!encodedContent && filePath.indexOf('dandanplay://') === 0) {
-      var episodeId = ddpParseEpisodeId(filePath);
+      // Reconstruct from disk cache for DDP virtual paths
       var cached = ddpReadVideoCache(currentVideoUrl);
-      if (cached && cached.comments && cached.comments.length > 0
-          && episodeId && String(cached.episodeId) === String(episodeId)) {
+      if (cached && cached.comments && cached.comments.length > 0) {
         encodedContent = encodeContent(JSON.stringify(cached.comments));
         danmakuCache[filePath] = encodedContent;
-      } else if (episodeId) {
-        fetchDDPDanmakuForSelect(filePath, episodeId, selectGeneration);
-        return;
       }
     }
     if (!encodedContent && filePath.indexOf('dandanplay://') !== 0) {
@@ -1431,8 +1388,59 @@ function registerSidebarHandlers() {
       danmakuCache[filePath] = encodedContent;
     }
 
-    if (selectGeneration !== danmakuSelectGeneration) return;
-    applySelectedDanmakuFile(filePath, encodedContent);
+    if (!encodedContent) {
+      core.osd("弹幕内容不可用");
+      return;
+    }
+
+    danmakuFileList.selectedPaths = [filePath];
+
+    var fileName = filePath.indexOf('dandanplay://') === 0 ? filePath : filePath.split("/").pop();
+    var fileInfo = findDanmakuFileByPath(filePath);
+    var relPath = fileInfo ? fileInfo.relativePath : fileName;
+    var fileType;
+    if (filePath.indexOf('dandanplay://') === 0) {
+      fileType = 'dandanplay';
+    } else {
+      var decodedForType;
+      try { decodedForType = decodeURIComponent(encodedContent); } catch (e) { decodedForType = ''; }
+      fileType = detectDanmakuType(decodedForType);
+    }
+    updateDanmakuStatus({ fileType: fileType, fileName: fileInfo ? fileInfo.filename : fileName, relativePath: relPath, isLoaded: true });
+
+    if (fileType === 'nico-json') {
+      nicoJsonTotalCount = computeNicoJsonCount(encodedContent);
+    } else {
+      nicoJsonTotalCount = 0;
+    }
+    danmakuFilterOffset = 0;
+    danmakuFilterLimit = 0;
+    danmakuFilterDensity = 0;
+
+    sidebar.postMessage("danmaku-file-list", danmakuFileList);
+    sendDanmakuFilterInfo();
+
+    var selectPayload = {
+      xmlContent: encodedContent,
+      path: filePath,
+      danmakuType: fileType,
+      opacity: canvasOpacity,
+      canvasFontScale: canvasFontScale,
+      strokeColor: strokeColor,
+      strokeInversionColor: strokeInversionColor,
+      strokeOpacity: strokeOpacity,
+      strokeWidth: strokeWidth,
+      commentLimit: commentLimit,
+      scrollSpeed: scrollSpeed,
+    };
+
+    if (fileType === 'nico-json') {
+      selectPayload.xmlContent = applyNicoJsonFilters(encodedContent);
+    }
+
+    overlay.postMessage("load-danmaku", selectPayload);
+    core.osd("已加载弹幕: " + (fileInfo ? fileInfo.filename : fileName));
+    ensureDanmakuEnabled();
   });
 
   sidebar.onMessage("danmaku-file-add", function () {
@@ -1486,7 +1494,6 @@ function registerSidebarHandlers() {
       danmakuFilterLimit = 0;
       danmakuFilterDensity = 0;
       sendDanmakuFilterInfo();
-      if (overlayReady) overlay.postMessage("clear-danmaku", {});
     }
   });
 
