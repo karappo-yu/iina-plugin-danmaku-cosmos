@@ -15,6 +15,8 @@ var commentLimitSlider = document.getElementById("comment-limit-slider");
 var commentLimitValue = document.getElementById("comment-limit-value");
 var speedSlider = document.getElementById("speed-slider");
 var speedValue = document.getElementById("speed-value");
+var offsetInput = document.getElementById("danmaku-offset-input");
+var offsetHint = document.getElementById("danmaku-offset-hint");
 var filterSection = document.getElementById("danmaku-filter-section");
 var filterDateNew = document.getElementById("danmaku-filter-date-new");
 var filterDateOld = document.getElementById("danmaku-filter-date-old");
@@ -79,6 +81,7 @@ var state = {
   strokeInversionColor: '#ffffff',
   commentLimit: 0,
   scrollSpeed: 0.95,
+  danmakuOffsetSeconds: 0,
   nicoJsonTotalCount: 0,
   danmakuFilterOffset: 0,
   danmakuFilterLimit: 0,
@@ -256,6 +259,8 @@ var i18n = {
     density_filter: "Count (/min)",
 
     advanced: "Advanced",
+    danmaku_offset: "Danmaku Offset (s)",
+    danmaku_offset_hint: "A: rewind • D: advance",
     comment_limit: "Comment Limit",
     stroke_color: "Stroke Color",
     stroke_inversion: "Invert Color",
@@ -304,6 +309,8 @@ var i18n = {
     density_filter: "\u6570\u91cf",
 
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
+    danmaku_offset: "\u5f3e\u5e55\u6642\u9593\u30aa\u30d5\u30bb\u30c3\u30c8 (\u79d2)",
+    danmaku_offset_hint: "A: \u5de5\u5e30\u3057\u3082\u3069\u3057 • D: \u9032\u3080",
     comment_limit: "\u30b3\u30e1\u30f3\u30c8\u5236\u9650",
     stroke_color: "\u7e01\u53d6\u308a\u306e\u8272",
     stroke_inversion: "\u9006\u7e01\u53d6\u308a\u8272",
@@ -352,6 +359,8 @@ var i18n = {
     density_filter: "\u6570\u91cf",
 
     advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
+    danmaku_offset: "\u5f39\u5e55\u65f6\u95f4\u504f\u79fb (\u79d2)",
+    danmaku_offset_hint: "A: \u5feb\u9000 • D: \u5feb\u8fdb",
     comment_limit: "\u5f39\u5e55\u4e0a\u9650",
     stroke_color: "\u63cf\u8fb9\u989c\u8272",
     stroke_inversion: "\u53cd\u8272\u63cf\u8fb9",
@@ -415,6 +424,16 @@ function applyI18n() {
   });
 }
 
+function updateOffsetUI() {
+  if (offsetInput) {
+    offsetInput.value = state.danmakuOffsetSeconds;
+  }
+  if (offsetHint) {
+    var offsetText = (state.danmakuOffsetSeconds >= 0 ? '+' : '') + Number(state.danmakuOffsetSeconds || 0).toFixed(1) + 's';
+    offsetHint.textContent = t('danmaku_offset_hint') + ' (' + offsetText + ')';
+  }
+}
+
 function updateUI() {
   var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0 || fileListState.unknownFiles.length > 0;
   var hasDanmaku = state.danmakuLoaded || hasFiles;
@@ -437,6 +456,7 @@ function updateUI() {
   speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
   if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
   if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified; 
+  updateOffsetUI();
   updateFilterUI();
 }
 
@@ -588,6 +608,16 @@ commentLimitSlider.addEventListener("input", function () {
   iina.postMessage("set-comment-limit", { limit: val });
 });
 
+if (offsetInput) {
+  offsetInput.addEventListener("input", function () {
+    var val = parseFloat(offsetInput.value);
+    if (isNaN(val)) val = 0;
+    state.danmakuOffsetSeconds = val;
+    iina.postMessage("set-danmaku-offset", { offset: state.danmakuOffsetSeconds });
+    updateOffsetUI();
+  });
+}
+
 speedSlider.addEventListener("input", function () {
   var val = parseFloat(speedSlider.value) / 100;
   state.scrollSpeed = val;
@@ -708,6 +738,25 @@ if (filterHandleRight) {
   });
 }
 
+document.addEventListener("keydown", function (e) {
+  var target = e.target || {};
+  var tagName = (target.tagName || '').toLowerCase();
+  if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return;
+  var key = e.key ? e.key.toLowerCase() : '';
+  if (key === 'a' || key === 'd') {
+    e.preventDefault();
+    var delta = Math.abs(state.danmakuOffsetSeconds || 0);
+    if (delta <= 0) delta = 1;
+    if (key === 'a') {
+      state.danmakuOffsetSeconds = (state.danmakuOffsetSeconds || 0) - delta;
+    } else {
+      state.danmakuOffsetSeconds = (state.danmakuOffsetSeconds || 0) + delta;
+    }
+    iina.postMessage("set-danmaku-offset", { offset: state.danmakuOffsetSeconds });
+    updateOffsetUI();
+  }
+});
+
 document.addEventListener("mousemove", function (e) {
   if (filterDragMode) {
     applyFilterDrag(e.clientX);
@@ -758,6 +807,7 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.strokeInversionColor !== undefined) state.strokeInversionColor = data.strokeInversionColor;
   if (data.commentLimit !== undefined) state.commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) state.scrollSpeed = data.scrollSpeed;
+  if (data.danmakuTimeOffsetSec !== undefined) state.danmakuOffsetSeconds = data.danmakuTimeOffsetSec;
   if (data.danmakuForceSimplified !== undefined) state.danmakuForceSimplified = !!data.danmakuForceSimplified;
   if (data.danmakuFileType !== undefined) state.danmakuType = data.danmakuFileType;
   if (data.danmakuFileName !== undefined) state.danmakuFileName = data.danmakuFileName;

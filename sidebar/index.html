@@ -122,6 +122,13 @@
             <span class="switch-slider"></span>
           </label>
         </div>
+        <div class="control-row" style="margin-top:10px">
+          <span class="toggle-label" data-i18n="danmaku_offset">Danmaku Offset (s)</span>
+          <input type="number" id="danmaku-offset-input" value="0" min="-30" max="30" step="0.5" style="margin-left:auto;width:72px;padding:4px;border-radius:4px;border:1px solid var(--separator);background:var(--secondary-system-fill);color:var(--label)" />
+        </div>
+        <div class="control-row" style="margin-top:6px">
+          <span id="danmaku-offset-hint" class="value-text" data-i18n="danmaku_offset_hint">A: rewind • D: advance</span>
+        </div>
         <h3 class="section-title" data-i18n="comment_limit" style="margin-top:10px">Comment Limit</h3>
         <div class="control-row">
           <input type="range" id="comment-limit-slider" data-clickable min="0" max="200" step="10" value="0" class="slider" />

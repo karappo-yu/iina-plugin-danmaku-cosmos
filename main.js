@@ -19,6 +19,7 @@ var strokeColor = preferences.get("strokeColor") || '#000000';
 var strokeInversionColor = preferences.get("strokeInversionColor") || '#ffffff';
 var commentLimit = preferences.get("commentLimit") !== undefined ? preferences.get("commentLimit") : 0;
 var scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get("scrollSpeed") : 0.95;
+var danmakuTimeOffsetSec = preferences.get("danmakuTimeOffset") !== undefined ? preferences.get("danmakuTimeOffset") : 0;
 var currentPlaybackSpeed = 1.0;
 var overlayReady = false;
 var preferencesSyncTimer = null;
@@ -83,6 +84,18 @@ var danmakuFilterDensity = 0;
 
 function sanitizeIPCString(value) {
   return String(value || '').replace(/[`\u2018\u2019]/g, "'");
+}
+
+function applyDanmakuOffset(offsetSec) {
+  var nextOffset = parseFloat(offsetSec);
+  if (isNaN(nextOffset)) nextOffset = 0;
+  danmakuTimeOffsetSec = nextOffset;
+  preferences.set("danmakuTimeOffset", danmakuTimeOffsetSec);
+  syncPreferencesSoon();
+  if (overlayReady) {
+    overlay.postMessage("set-danmaku-offset", { offset: danmakuTimeOffsetSec });
+  }
+  sidebar.postMessage("danmaku-state", { danmakuTimeOffsetSec: danmakuTimeOffsetSec });
 }
 
 function findDanmakuFileByPath(path) {
@@ -328,6 +341,7 @@ function applyDanmakuFilter(offset, limit) {
     strokeWidth: strokeWidth,
     commentLimit: commentLimit,
     scrollSpeed: scrollSpeed,
+    danmakuTimeOffsetSec: danmakuTimeOffsetSec,
     preservePosition: true,
   });
   sendDanmakuFilterInfo();
@@ -1090,6 +1104,7 @@ function markOverlayReady() {
     strokeWidth: strokeWidth,
     commentLimit: commentLimit,
     scrollSpeed: scrollSpeed,
+    danmakuTimeOffsetSec: danmakuTimeOffsetSec,
     danmakuForceSimplified: danmakuForceSimplified
   });
 
@@ -1309,6 +1324,16 @@ function registerSidebarHandlers() {
     overlay.postMessage("set-scroll-speed", { speed: data.speed });
   });
 
+  sidebar.onMessage("set-danmaku-offset", function (data) {
+    applyDanmakuOffset(data.offset);
+  });
+
+  sidebar.onMessage("adjust-danmaku-offset", function (data) {
+    var delta = parseFloat(data.delta);
+    if (isNaN(delta)) delta = 0;
+    applyDanmakuOffset((danmakuTimeOffsetSec || 0) + delta);
+  });
+
   sidebar.onMessage("set-danmaku-filter", function (data) {
     applyDanmakuFilter(data.offset || 0, data.limit);
   });
@@ -1344,6 +1369,7 @@ function registerSidebarHandlers() {
       strokeInversionColor: strokeInversionColor,
       commentLimit: commentLimit,
       scrollSpeed: scrollSpeed,
+      danmakuTimeOffsetSec: danmakuTimeOffsetSec,
       danmakuForceSimplified: danmakuForceSimplified,
       danmakuFileType: currentDanmakuStatus.fileType,
       danmakuFileName: currentDanmakuStatus.fileName,

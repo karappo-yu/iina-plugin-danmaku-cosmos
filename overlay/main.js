@@ -11,6 +11,7 @@ let strokeOpacity = 0.4;
 let strokeWidth = 2.8;
 let commentLimit = 0;
 let scrollSpeed = 0.95;
+let danmakuTimeOffsetSec = 0;
 
 let niconiComments = null;
 let nicoRawData = null;
@@ -51,8 +52,8 @@ function canvasSyncAnchor(videoTimeSec) {
 }
 
 function canvasGetCurrentTime() {
-  if (!canvasIsPlaying) return canvasVideoAnchorTime;
-  return canvasVideoAnchorTime + ((performance.now() - canvasSystemAnchorTime) / 1000) * playbackSpeed;
+  const baseTime = !canvasIsPlaying ? canvasVideoAnchorTime : canvasVideoAnchorTime + ((performance.now() - canvasSystemAnchorTime) / 1000) * playbackSpeed;
+  return baseTime + danmakuTimeOffsetSec;
 }
 
 function detectNicoFormat(data) {
@@ -243,6 +244,7 @@ iina.onMessage("load-danmaku", (data) => {
   if (data.strokeInversionColor !== undefined) strokeInversionColor = data.strokeInversionColor;
   if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
+  if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
   if (data.opacity !== undefined) {
     canvasOpacity = data.opacity;
     const canvas = document.getElementById('niconicomments-canvas');
@@ -392,6 +394,15 @@ iina.onMessage("set-scroll-speed", (data) => {
   if (nicoRawData) initCanvasRenderer(nicoRawData);
 });
 
+iina.onMessage("set-danmaku-offset", (data) => {
+  if (data.offset !== undefined) {
+    danmakuTimeOffsetSec = Number(data.offset) || 0;
+  }
+  if (nicoRawData) {
+    drawCanvasAtVpos(canvasGetCurrentTime() * 100, true);
+  }
+});
+
 iina.onMessage("clear-danmaku", () => {
   destroyCanvasRenderer();
   const cssContainer = document.querySelector('[data-dm-css-container]');
@@ -419,6 +430,7 @@ iina.onMessage("apply-settings", (data) => {
   if (data.strokeWidth !== undefined) strokeWidth = data.strokeWidth;
   if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
+  if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
   if (data.danmakuForceSimplified !== undefined) {
     updateSimplifiedConverter(data.danmakuForceSimplified);
   }

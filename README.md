@@ -27,6 +27,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **自动加载弹幕**：按优先级自动查找同目录下的弹幕文件
 - **手动加载弹幕**：通过菜单或侧边栏手动选择弹幕文件
 - **侧边栏控制面板**：实时调整弹幕开关、渲染模式、繁简转换、透明度、字体缩放等
+- **弹幕时间偏移**：在高级设置中可手动输入偏移秒数，或按 A / D 键快速回退/前进，用于调整弹幕显示时间
 
 ### 网络弹幕
 
@@ -99,6 +100,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **自動読み込み**：同じフォルダから優先順位に従って自動検索
 - **手動読み込み**：メニューやサイドバーからコメントファイルを選択
 - **サイドバーコントロール**：コメント表示、描画モード、繁簡変換、透明度、フォント倍率などをリアルタイム調整
+- **弾幕タイムオフセット**：詳細設定で秒数を入力したり、A / D キーで素早く巻き戻し／進めることができ、弾幕の表示時間を調整できます
 
 ### ネットワークコメント
 
@@ -154,6 +156,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **Auto-load**: Automatically searches for danmaku files in the same directory by priority
 - **Manual load**: Select danmaku files via menu or sidebar
 - **Sidebar control panel**: Real-time adjustment of danmaku visibility, render mode, Chinese conversion, opacity, font scale, and more
+- **Danmaku time offset**: Adjust timing in Advanced settings by entering a seconds offset, or use A / D keys to quickly rewind or advance to change the display timing of danmaku
 
 ### Network Danmaku
 
