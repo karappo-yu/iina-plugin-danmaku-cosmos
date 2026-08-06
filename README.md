@@ -31,6 +31,15 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **弹幕字体设置**：在高级设置中可选择字体预设（日文/中文字体）或自定义字体，并可调节粗细，用于调整弹幕的显示效果
 - **滚动速度控制**：在高级设置中可调节滚动弹幕的速度（50%~100%，仅调慢），固定弹幕不受影响
 
+### 风格调节
+
+弹幕外观可通过自定义选项自由组合：
+
+- **niconico 原生风格**（引擎默认）：字号大、滚动快、字重较粗
+- **中文弹幕常见风格**：字体小、滚动慢、字重较细
+
+通过「字体缩放」「滚动速度」「字体粗细」等选项即可在两种风格间自由切换。例如：字体缩放 40% + 滚动速度 50% + 粗细 300 即接近中文弹幕风格。
+
 ### 截图
 
 本地 niconico CA 弹幕：
@@ -116,6 +125,15 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **弾幕フォント設定**：詳細設定でフォント（日本語・中国語フォントのプリセットやカスタム）と太さを選択でき、弾幕の表示効果を調整できます
 - **スクロール速度調整**：詳細設定でスクロールコメントの速度を調整できます（50%〜100%、減速のみ）。固定コメントには影響しません
 
+### スタイル調整
+
+コメントの外観はカスタムオプションで自由に組み合わせられます：
+
+- **niconico ネイティブスタイル**（エンジン既定）：フォントが大きく、スクロールが速く、字が太い
+- **中国語コメントによくあるスタイル**：フォントが小さく、スクロールが遅く、字が細い
+
+「フォント倍率」「スクロール速度」「フォントの太さ」などのオプションで、2 つのスタイルを自由に切り替えられます。例：フォント倍率 40% + スクロール速度 50% + 太さ 300 で中国語コメント風の表示になります。
+
 ### ネットワークコメント
 
 弹弹play（dandanplay）プラットフォームの API を統合し、動画にネットワークコメントを自動マッチングして読み込みます。
@@ -173,6 +191,15 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **Danmaku time offset**: Adjust timing in Advanced settings by entering a seconds offset, or use A / D keys to quickly rewind or advance to change the display timing of danmaku
 - **Danmaku font settings**: Choose a font (Japanese/Chinese presets or custom) and weight in Advanced settings to adjust the danmaku appearance
 - **Scroll speed control**: Adjust the scrolling danmaku speed in Advanced settings (50%–100%, slow-down only); fixed comments are unaffected
+
+### Style Adjustment
+
+Danmaku appearance can be freely combined via the customization options:
+
+- **Native niconico style** (engine default): large font, fast scrolling, bold weight
+- **Common Chinese danmaku style**: small font, slow scrolling, thin weight
+
+Switch freely between the two styles with options like **Font Scale**, **Scroll Speed**, and **Weight**. For example: Font Scale 40% + Scroll Speed 50% + Weight 300 approximates the Chinese danmaku style.
 
 ### Network Danmaku
 
