@@ -38,7 +38,12 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **niconico 原生风格**（引擎默认）：字号大、滚动快、字重较粗
 - **中文弹幕常见风格**：字体小、滚动慢、字重较细
 
-通过「字体缩放」「滚动速度」「字体粗细」等选项即可在两种风格间自由切换。例如：字体缩放 40% + 滚动速度 50% + 粗细 300 即接近中文弹幕风格。
+普通设置顶部的「风格预设」可一键切换：
+
+- **Nico**：恢复全部默认值（字体缩放 100%、粗细 400、描边 2.8px、滚动速度 100%）
+- **Bilibili**：字体缩放 40%、粗细 100、描边 3.5px、滚动速度 50%
+
+也可通过「字体缩放」「滚动速度」「字体粗细」等选项手动微调。
 
 ### 截图
 
@@ -132,7 +137,12 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **niconico ネイティブスタイル**（エンジン既定）：フォントが大きく、スクロールが速く、字が太い
 - **中国語コメントによくあるスタイル**：フォントが小さく、スクロールが遅く、字が細い
 
-「フォント倍率」「スクロール速度」「フォントの太さ」などのオプションで、2 つのスタイルを自由に切り替えられます。例：フォント倍率 40% + スクロール速度 50% + 太さ 300 で中国語コメント風の表示になります。
+通常設定の上部にある「スタイルプリセット」でワンクリック切り替え：
+
+- **Nico**：全項目を既定値に戻す（フォント倍率 100%、太さ 400、縁取り 2.8px、スクロール速度 100%）
+- **Bilibili**：フォント倍率 40%、太さ 100、縁取り 3.5px、スクロール速度 50%
+
+「フォント倍率」「スクロール速度」「フォントの太さ」などのオプションで手動微調整も可能です。
 
 ### ネットワークコメント
 
@@ -199,7 +209,12 @@ Danmaku appearance can be freely combined via the customization options:
 - **Native niconico style** (engine default): large font, fast scrolling, bold weight
 - **Common Chinese danmaku style**: small font, slow scrolling, thin weight
 
-Switch freely between the two styles with options like **Font Scale**, **Scroll Speed**, and **Weight**. For example: Font Scale 40% + Scroll Speed 50% + Weight 300 approximates the Chinese danmaku style.
+The **Style Preset** dropdown at the top of the general settings applies presets in one click:
+
+- **Nico**: restores all defaults (Font Scale 100%, Weight 400, Stroke Width 2.8px, Scroll Speed 100%)
+- **Bilibili**: Font Scale 40%, Weight 100, Stroke Width 3.5px, Scroll Speed 50%
+
+Manual fine-tuning is also available via **Font Scale**, **Scroll Speed**, and **Weight**.
 
 ### Network Danmaku
 

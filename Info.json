@@ -1,7 +1,7 @@
 {
   "name": "Danmaku Cosmos",
   "identifier": "com.danmaku-cosmos.iina-plugin",
-  "version": "3.10",
+  "version": "3.11",
   "description": "IINA弹幕插件 (niconicocomments-only渲染)",
   "author": {
     "name": "karappo-yu"
