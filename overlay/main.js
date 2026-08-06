@@ -157,13 +157,33 @@ function disposeCanvasRenderer() {
   niconiComments = null;
 }
 
+var DEFAULT_DANMAKU_FONT_STACKS = {
+  gothic: { font: '"游ゴシック体", "游ゴシック", "Yu Gothic", YuGothic, yugothic, YuGo-Medium, "Hiragino Sans", HiraginoSans', offset: -0.04, weight: 400 },
+  mincho: { font: '"游明朝体", "游明朝", "Yu Mincho", YuMincho, yumincho, YuMin-Medium, "Hiragino Mincho ProN", HiraMinProN, "Hiragino Mincho ProN W3", HiraMinProN-W3', offset: -0.01, weight: 400 },
+  defont: { font: '"Hiragino Sans", "ヒラギノ角ゴシック", HiraginoSans', offset: -0.05, weight: 600 },
+};
+
 function buildDanmakuFontConfig() {
-  if (!danmakuFontFamily) return undefined;
   var weight = danmakuFontWeight ? parseInt(danmakuFontWeight, 10) : 400;
   if (isNaN(weight) || weight < 100 || weight > 900) weight = 400;
-  var item = { font: danmakuFontFamily, offset: 0, weight: weight };
+  var mk = function (type) {
+    var def = DEFAULT_DANMAKU_FONT_STACKS[type];
+    return {
+      font: danmakuFontFamily || def.font,
+      offset: danmakuFontFamily ? 0 : def.offset,
+      weight: weight,
+    };
+  };
   return {
-    html5: { gothic: item, mincho: item, defont: item },
+    flash: {
+      gulim: 'normal 600 [size]px gulim, ' + (danmakuFontFamily || DEFAULT_DANMAKU_FONT_STACKS.gothic.font) + ', Arial',
+      simsun: 'normal 400 [size]px simsun, batang, "PMingLiU", MingLiU-ExtB, ' + (danmakuFontFamily || DEFAULT_DANMAKU_FONT_STACKS.mincho.font) + ', Arial',
+    },
+    html5: {
+      gothic: mk('gothic'),
+      mincho: mk('mincho'),
+      defont: mk('defont'),
+    },
   };
 }
 

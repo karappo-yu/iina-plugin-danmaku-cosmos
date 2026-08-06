@@ -32,7 +32,7 @@
     "scrollSpeed": 0.95,
     "danmakuTimeOffset": 0,
     "danmakuFontFamily": "",
-    "danmakuFontWeight": "",
+    "danmakuFontWeight": "400",
     "dandanplayAppId": "",
     "dandanplayAppSecret": "",
     "dandanplayAutoNetwork": true,

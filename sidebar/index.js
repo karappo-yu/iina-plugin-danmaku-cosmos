@@ -20,7 +20,8 @@ var offsetHint = document.getElementById("danmaku-offset-hint");
 var fontSelect = document.getElementById("danmaku-font-select");
 var fontCustomRow = document.getElementById("danmaku-font-custom-row");
 var fontCustomInput = document.getElementById("danmaku-font-custom");
-var fontWeightSelect = document.getElementById("danmaku-font-weight");
+var fontWeightSlider = document.getElementById("danmaku-font-weight-slider");
+var fontWeightValue = document.getElementById("danmaku-font-weight-value");
 var filterSection = document.getElementById("danmaku-filter-section");
 var filterDateNew = document.getElementById("danmaku-filter-date-new");
 var filterDateOld = document.getElementById("danmaku-filter-date-old");
@@ -87,7 +88,7 @@ var state = {
   scrollSpeed: 0.95,
   danmakuOffsetSeconds: 0,
   danmakuFontFamily: "",
-  danmakuFontWeight: "",
+  danmakuFontWeight: "400",
   nicoJsonTotalCount: 0,
   danmakuFilterOffset: 0,
   danmakuFilterLimit: 0,
@@ -471,7 +472,7 @@ function fontFamilyToPresetKey(family) {
 }
 
 function updateFontUI() {
-  if (!fontSelect || !fontCustomInput || !fontCustomRow || !fontWeightSelect) return;
+  if (!fontSelect || !fontCustomInput || !fontCustomRow) return;
   var key = state.danmakuFontFamily ? fontFamilyToPresetKey(state.danmakuFontFamily) : "";
   fontSelect.value = key;
   if (key === "custom") {
@@ -480,7 +481,12 @@ function updateFontUI() {
   } else {
     fontCustomRow.style.display = "none";
   }
-  fontWeightSelect.value = state.danmakuFontWeight;
+  if (fontWeightSlider) {
+    fontWeightSlider.value = state.danmakuFontWeight || "400";
+  }
+  if (fontWeightValue) {
+    fontWeightValue.textContent = fontWeightSlider ? fontWeightSlider.value : "400";
+  }
 }
 
 function updateUI() {
@@ -690,9 +696,10 @@ if (fontCustomInput) {
   });
 }
 
-if (fontWeightSelect) {
-  fontWeightSelect.addEventListener("change", function () {
-    state.danmakuFontWeight = fontWeightSelect.value;
+if (fontWeightSlider) {
+  fontWeightSlider.addEventListener("input", function () {
+    state.danmakuFontWeight = fontWeightSlider.value;
+    if (fontWeightValue) fontWeightValue.textContent = fontWeightSlider.value;
     iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: state.danmakuFontWeight });
   });
 }

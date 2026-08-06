@@ -21,7 +21,7 @@ var commentLimit = preferences.get("commentLimit") !== undefined ? preferences.g
 var scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get("scrollSpeed") : 0.95;
 var danmakuTimeOffsetSec = preferences.get("danmakuTimeOffset") !== undefined ? preferences.get("danmakuTimeOffset") : 0;
 var danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
-var danmakuFontWeight = preferences.get("danmakuFontWeight") || "";
+var danmakuFontWeight = preferences.get("danmakuFontWeight") || "400";
 var currentPlaybackSpeed = 1.0;
 var overlayReady = false;
 var preferencesSyncTimer = null;
