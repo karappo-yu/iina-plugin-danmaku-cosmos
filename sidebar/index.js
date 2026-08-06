@@ -324,7 +324,7 @@ var i18n = {
 
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
     style_preset: "\u30b9\u30bf\u30a4\u30eb\u30d7\u30ea\u30bb\u30c3\u30c8",
-    danmaku_offset: "\u5f3e\u5e55\u6642\u9593\u30aa\u30d5\u30bb\u30c3\u30c8 (\u79d2)",
+    danmaku_offset: "\u30b3\u30e1\u30f3\u30c8\u6642\u9593\u30aa\u30d5\u30bb\u30c3\u30c8 (\u79d2)",
     danmaku_offset_hint: "A: \u5de5\u5e30\u3057\u3082\u3069\u3057 • D: \u9032\u3080",
     danmaku_font: "\u30d5\u30a9\u30f3\u30c8",
     danmaku_font_family: "\u30d5\u30a9\u30f3\u30c8",
