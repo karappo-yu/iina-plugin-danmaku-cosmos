@@ -141,7 +141,9 @@ function applyScrollSpeed() {
   nicoRawData = rawFormattedData.map(function (c) {
     var mail = c.mail;
     if (!Array.isArray(mail)) return c;
-    if (mail.indexOf('naka') === -1) return c; // 只处理滚动弹幕
+    // 滚动弹幕判定: 显式 naka, 或没有 ue/shita 位置命令(本地 nico XML 的默认弹幕 mail 为空)
+    var isScroll = mail.indexOf('naka') !== -1 || (mail.indexOf('ue') === -1 && mail.indexOf('shita') === -1);
+    if (!isScroll) return c;
     if (mail.some(function (m) { return /^[@＠][0-9.]/.test(m); })) return c; // 自带时长命令的不动
     return Object.assign({}, c, { mail: mail.concat(['@' + longSecs]) });
   });
