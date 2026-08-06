@@ -2,7 +2,9 @@
 
 ## Overview
 
-An IINA danmaku plugin supporting Niconico (XML / V1 JSON), Bilibili (XML), and **Dandanplay network danmaku** with dual CSS and Canvas rendering modes. This is a niconico-style danmaku plugin — Bilibili and other Chinese formats have limited support and are rendered in niconico style.
+An IINA danmaku plugin supporting Niconico (XML / V1 JSON), Bilibili (XML), and **Dandanplay network danmaku** with dual CSS and Canvas rendering modes. The plugin targets **both danmaku style ecosystems**: the native niconico style (large font, fast scroll, bold) and the Chinese/Bilibili style (small font, slow scroll, thin) — switchable via **Style Presets** in the sidebar, plus fine-grained manual controls (font family/weight, font scale, scroll speed, stroke, time offset).
+
+The CSS renderer (a fork addition, `mode: "css"`) renders text via DOM/CSS instead of canvas: small fonts stay crisp (system font pipeline vs canvas bitmap sampling) and scroll animations run on GPU compositing (`transform`), which is smoother than canvas in IINA's WKWebView.
 
 ## Reference Links
 
@@ -32,32 +34,96 @@ Danmaku Cosmos/
 │   └── lib/                  # Third-party libs (read-only, do not modify)
 │       └── niconicomments.min.js  # Forked niconicomments with CSSRenderer
 ├── sidebar/                  # IINA sidebar control panel
-│   ├── index.html
+│   ├── index.html            # Layout (general settings incl. Style Preset; advanced settings)
 │   ├── index.css
-│   └── index.js
+│   └── index.js              # UI logic, STYLE_PRESETS, i18n dict (en/ja/zh, ja/zh as \uXXXX escapes)
+├── png/                      # README screenshots (excluded from release package by release.yml)
 └── .github/workflows/        # Release packaging
     └── release.yml
 ```
 
 ## Dual Rendering Architecture
 
-### CSS Mode (niconicomments CSSRenderer)
+### CSS Mode (niconicomments CSSRenderer) — default
 
 When `mode: "css"` is passed to NiconiComments, a `CSSRenderer` is created instead of using canvas drawing. The CSSRenderer:
 
 - Creates a 16:9 aspect ratio container (`[data-dm-css-container]`) centered in the viewport
 - Uses `--dm-unit` CSS custom property (`min(100vh, 56.25vw) / 1080`) for responsive coordinate mapping
 - Renders each danmaku as a `div[data-dm-comment]` with `will-change: transform, opacity; contain: layout style`
-- Scroll danmaku: Web Animations API `translateX()` animation, matching `getPosX()` formula
+- Scroll danmaku: CSS `@keyframes dm-scroll` driven by JS-computed duration (inline `animation` style), matching `getPosX()` formula
 - Fixed danmaku (ue/shita): CSS `@keyframes dm-fade` animation
 - Stroke: `-webkit-text-stroke` + `paint-order: stroke fill`
 - Object pool (max 512 elements) for DOM reuse
-- Pause/resume via Web Animations API `pause()`/`play()`
+- Pause/resume via Web Animations API `pause()`/`play()` (container class-driven)
 - Tracks reverse state per danmaku, reanimates when `@reverse` activates/deactivates
+
+### Fonts config (CRITICAL — validation trap)
+
+Fonts are passed to the engine via init config `config.fonts`. **The engine's `isValidFonts` check (typeGuard) requires BOTH `flash` and `html5` key groups** — passing only `{ html5 }` makes the constructor throw `InvalidOptionError` and **all danmaku disappear** (verified in production). Build via `buildDanmakuFontConfig()` in `overlay/main.js`:
+
+```js
+{
+  flash: { gulim: 'normal 600 [size]px gulim, <stack>, Arial', simsun: '...' },  // Flash mode removed; keep template for validation
+  html5: {
+    gothic: { font: <family>, offset: <n>, weight: <n> },   // offsets must be within ±1024
+    mincho: { font: <family>, offset: <n>, weight: <n> },
+    defont: { font: <family>, offset: <n>, weight: <n> },
+  },
+}
+```
+
+CSS mode `applyFont()` reads `config.fonts.html5[type].font` / `.weight` per danmaku; Canvas mode reads the same source. When no custom font is set, default stacks (Yu Gothic / Yu Mincho / Hiragino Sans) with engine-default offsets are used so appearance matches stock. Weight range 100–900 (validated ≤1000).
 
 ### Canvas Mode (niconicomments original)
 
 Based on the original niconicomments library. Supports Auto mode only (HTML5 and Flash modes have been removed). Not recommended to modify Canvas mode internals.
+
+## Danmaku Appearance Customization
+
+All controls live in the sidebar. General settings (top): Style Preset. Advanced settings: render mode, force-simplified, time offset, font family/weight, comment limit, stroke, scroll speed.
+
+### Style Presets
+
+`STYLE_PRESETS` in `sidebar/index.js` — one-click apply of a parameter bundle (add new presets by extending this map):
+
+```js
+var STYLE_PRESETS = {
+  nico:     { fontScale: 1.0, fontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },  // defaults
+  bilibili: { fontScale: 0.4, fontWeight: "200", strokeWidth: 3.5, scrollSpeed: 0.5 },
+};
+```
+
+`applyStylePreset()` sets state + slider UI and fires 4 messages: `set-fontscale`, `set-danmaku-font`, `set-stroke-width`, `set-scroll-speed`. The selected preset is persisted via `set-style-preset` → `preferences.set("stylePreset")` and restored on startup through `request-state`, so the dropdown matches actual settings after restart. Manual slider tweaks do NOT rewrite the preset selection (deliberate simplification).
+
+### Font Settings
+
+- Font family: preset dropdown (Japanese/Chinese/Generic groups) or custom input → `set-danmaku-font` `{fontFamily, fontWeight}` → `applyDanmakuFont()` (main.js: persist + forward) → overlay rebuilds renderer via `initCanvasRenderer()` (instant apply, no reload)
+- Font weight: slider 100–900 (step 50)
+- Custom font selection is guarded: selecting "Custom" with an empty input does NOT send anything (prevents the dropdown jumping back to Default); typing applies; clearing the input reverts to default
+
+### Font Scale
+
+Slider 25%–100% (step 5) → `set-fontscale` → `canvasFontScale`. CSS mode keeps small fonts crisp (system text rendering) — this is the main reason CSS mode is the default.
+
+### Scroll Speed (real speed control — NOT `nakaCommentSpeedOffset`)
+
+The engine's `nakaCommentSpeedOffset` only scales the `width × offset` term in `speed = (commentDrawRange + width×offset) / (long + 100)` and is diluted by the fixed 1920px draw range (~10–26% effect over the UI range) — it does NOT provide perceivable speed control. Real control is implemented by injecting the nicoscript duration command into scrolling danmaku:
+
+- **Command format is `@<seconds>`** (e.g. `@3` = 3s), NOT `long:3` (`RE_LONG = /^[@＠]([0-9.]+)/` in engine parseCommand)
+- Target multiplier `k` (0.5–1.0 from the slider) → `longSecs = 4/k - 1` (exact for the `+100` offset in the denominator); `k >= 1` (100%) skips injection entirely
+- **Scroll danmaku detection**: explicit `naka` in commands OR (no `ue` AND no `shita`) — local nico XML default danmaku have an EMPTY mail attribute (naka is implicit); DDP conversion pushes explicit `naka`
+- Danmaku with their own `@N` duration command are skipped (respect the original)
+- Fixed danmaku (ue/shita) are never touched
+
+Three data paths in `overlay/main.js`:
+- **formatted** (local XML, DDP): `rawFormattedData` kept pristine; `applyScrollSpeed()` maps a fresh copy with `@N` appended to `mail`
+- **nico-json v1** (`thread.comments[].commands` array) and **legacy** (`thread.chat[].mail` string): `rawNicoJsonData` kept pristine (deep-copied via `JSON.parse(JSON.stringify())`); `applyScrollSpeedToNicoJson()` mutates the copy, writing string `mail` back joined
+- `set-scroll-speed` re-applies from the pristine copy + rebuilds the renderer (no double injection)
+
+### Time Offset
+
+`set-danmaku-offset` → `applyDanmakuOffset()` (persist + forward). Overlay adds `danmakuTimeOffsetSec` inside `canvasGetCurrentTime()` (base time + offset), so both CSS and Canvas modes shift instantly. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; step = |current offset|, fallback 1 — quirky but works; `adjust-danmaku-offset` handler in main.js is dead code, never sent).
 
 ## Dandanplay Network Danmaku
 
@@ -81,18 +147,9 @@ Based on the original niconicomments library. Supports Auto mode only (HTML5 and
 | **ON** (`dandanplayAutoNetwork=true`) | Network-first: auto-load DDP cache/network, background auto-match |
 | **OFF** (`dandanplayAutoNetwork=false`) | Local-first: load local files, DDP cache shown in list but not auto-loaded |
 
-### Render Mode Toggle
-
-| Setting | Mode |
-|---------|------|
-| **OFF** (default) | CSS Auto (`'css'`) |
-| **ON** | Canvas Auto (`'default'`) |
-
-HTML5 and Flash modes have been removed.
-
 ### DDP Comment Conversion
 
-DDP `p` format: `time,mode,color,userId` → converted to nico-like internal format with `_dateSec: 1767196800` (2026-01-01) for correct Canvas Auto HTML5 detection.
+DDP `p` format: `time,mode,color,userId` → converted to nico-like internal format with `_dateSec: 1767196800` (2026-01-01) for correct Canvas Auto HTML5 detection. Note DDP conversion **explicitly pushes `naka`** to commands — this is why scroll-speed injection matches DDP danmaku.
 
 ### API Credentials
 
@@ -111,11 +168,13 @@ All communication uses `postMessage` / `onMessage` across three channels:
 | `overlay → main.js` | One-way | Canvas unsupported notice, jump commands, seek state |
 | `sidebar → main.js` | One-way | Toggle, param changes, file operations |
 
+Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-stroke-width`, `set-stroke-opacity`, `set-stroke-color`, `set-stroke-inversion-color`, `set-comment-limit`, `set-scroll-speed` (multiplier 0.5–1.0), `set-danmaku-offset`, `set-danmaku-font`, `set-style-preset` (persisted in main.js only, not forwarded).
+
 **Important**: overlay and sidebar do **NOT** communicate directly — all traffic goes through `main.js`.
 
 **Sidebar lazy loading**: IINA sidebar tabs are lazy — the sidebar WebView doesn't exist until the user opens it. Therefore, sidebar uses a **pull pattern** for state sync:
 1. After loading, sidebar sends `request-state` proactively
-2. `main.js` pushes the full current state in the `request-state` callback
+2. `main.js` pushes the full current state in the `request-state` callback (including `stylePreset`, `danmakuFontFamily/Weight`)
 3. Subsequent state changes use event-driven incremental `sidebar.postMessage` updates
 4. Never assume `main.js` can push messages to sidebar at initialization time
 
@@ -143,19 +202,31 @@ Later scripts depend on functions mounted on `window` by earlier scripts (e.g., 
   - `_reverse` — whether reverse danmaku (mode 6)
   - `_layer` — CA layer ID (-1 = default layer, assigned at runtime by niconicomments)
 
+- **Overlay data paths** (`prepareCanvasSource` in `overlay/main.js`):
+  - `nico-json` type → `JSON.parse` directly, format detected by `detectNicoFormat` (`v1` when `data[0].comments`, else `legacy`) — pristine copy kept in `rawNicoJsonData`
+  - everything else → `buildFormattedCanvasData(parsedList, type)` → pristine copy kept in `rawFormattedData`
+  - Both paths then apply scroll-speed injection (see Scroll Speed section)
+
 - **Communication encoding**: Danmaku XML/JSON content is encoded with `encodeURIComponent()` (via the `encodeContent` function) in `main.js` before sending to overlay, then decoded with `decodeURIComponent()` on the overlay side. Do not change this encoding protocol unless replacing it entirely (both ends must stay in sync).
 
 ### CSS Mode (niconicomments) Render Flow
 
-1. `time-update` fires → `canvasRenderLoop` calls `niconiComments.drawCanvas(vpos)`
-2. `drawCanvas` with `cssRenderer` calls `cssRenderer.updateComments(timeline, vpos, frameActiveState)`
-3. `updateComments` diffs visible comments vs `activeElements`, creates/recycles DOM elements
-4. CSS animations drive movement; Web Animations API handles pause/resume
-5. When video pauses, `pauseCSS()` pauses all active animations; `resumeCSS()` resumes them
+1. `time-update` fires → `canvasSyncAnchor()` → `startCanvasLoop()` (rAF)
+2. `canvasRenderLoop` calls `niconiComments.drawCanvas(vpos)` where `vpos = canvasGetCurrentTime() * 100` (includes time offset)
+3. `drawCanvas` with `cssRenderer` calls `cssRenderer.updateComments(timeline, vpos, frameActiveState)`
+4. `updateComments` diffs visible comments vs `activeElements`, creates/recycles DOM elements
+5. Scroll danmaku get inline `animation: dm-scroll <remainingSec>s linear forwards` with `--dm-from/--dm-to` CSS vars; fixed danmaku use `dm-fade`
+6. When video pauses, `pauseCSS()` pauses all active animations; `resumeCSS()` resumes them
 
 ### Canvas Mode
 
-Based on the `niconicomments` third-party library. All formats (Niconico XML, Bilibili XML, DDP converted) are normalized via `buildFormattedCanvasData()` in `overlay/main.js` before being passed to NiconiComments. Not recommended to modify Canvas mode internals.
+Based on the `niconicomments` third-party library. All formats are normalized via `buildFormattedCanvasData()` before being passed to NiconiComments. Not recommended to modify Canvas mode internals.
+
+## Release Workflow
+
+- Push a `v*` tag (e.g. `v3.11`) → `.github/workflows/release.yml` auto-packages `danmaku-cosmos.iinaplgz` (excludes `.github`, `png/*`, README, etc.) and creates a GitHub release
+- **`generate_release_notes: true` only produces content for merged PRs** — direct-push commits yield an EMPTY notes body (just a changelog link). Always manually fill notes after release: `gh release edit vX.Y --notes "..."`
+- Keep `Info.json` `version` in sync with the tag (bump + commit before tagging)
 
 ## Coding Conventions
 
@@ -166,6 +237,8 @@ Based on the `niconicomments` third-party library. All formats (Niconico XML, Bi
 - **Network requests**: Use `iina.http` module. DDP API uses `X-AppId`/`X-AppSecret` header auth.
 - **Backtick sanitization**: Always sanitize strings with U+0060 backtick before `sidebar.postMessage`.
 - **Preferences sync**: Use `syncPreferencesSoon()` (debounced) instead of calling `preferences.sync()` directly.
+- **i18n**: All UI strings in `sidebar/index.js` `i18n` dict — three languages (`en` plain, `ja`/`zh` as `\uXXXX` escapes). New UI strings must be added to all three. Japanese terminology follows niconico official usage: use コメント (not 弾幕) except when matching literal folder names.
+- **Style presets**: New presets = one entry in `STYLE_PRESETS` + an `<option>` in `sidebar/index.html`. Parameters must fit existing slider ranges (fontScale 25–100%, weight 100–900 step 50, strokeWidth 1–8, scrollSpeed 0.5–1.0).
 
 ### Logging Conventions
 
@@ -178,11 +251,13 @@ Based on the `niconicomments` third-party library. All formats (Niconico XML, Bi
 ## Known Limitations
 
 - `canvas.width = 1920; canvas.height = 1080` is hardcoded and does not adapt to window aspect ratio
-- Filenames containing `[` or `]` may cause auto-load to fail (regex matching in `extractEpisodeNumber`)
+- Filenames containing `[` or `]` may cause auto-load to fail (regex matching in `extractNumberFromName`, `[n]`-style only; special formats like `第3话` often fail)
 - Canvas mode does not support CSS-mode-specific settings (font scale, scroll duration, blocking, lane limits)
 - CSS mode (niconicomments) Comment Art vertical positioning may differ slightly from Canvas mode
 - DDP cache only stores the last loaded episode per video (hash overwrite)
 - Backtick U+0060 in any sidebar message field causes IINA IPC to silently drop the entire message
+- Scroll speed: danmaku carrying their own `@N` duration command are excluded from injection (rare, respected by design)
+- Style preset dropdown is not rewritten when sliders are manually tweaked (deliberate simplification; preset value persists independently)
 
 ## Avoid
 
@@ -192,6 +267,7 @@ Based on the `niconicomments` third-party library. All formats (Niconico XML, Bi
 - Do not change the `<script>` loading order in the overlay HTML
 - Do not use `console.log` for high-frequency output in production code (especially in `time-update` callbacks)
 - Do not send `JSON.stringify` payloads to `sidebar.postMessage` — always send plain objects
+- Do not pass a partial `fonts` config (missing `flash`) to the engine — validation throws and danmaku vanish
 
 ## Related Repository
 
