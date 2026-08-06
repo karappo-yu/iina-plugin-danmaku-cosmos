@@ -85,7 +85,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 1. **同名 JSON**：`video.mkv` → `video.json`
 2. **同名 XML**：`video.mkv` → `video.xml`
 3. **弹幕文件夹/同名**：`video.mkv` → `弹幕/video.xml`（支持 `弹幕` / `Comments` / `コメント` 三种文件夹名）
-4. **弹幕文件夹/集数**：`video.mkv` → `弹幕/3.xml`（从文件名中自动提取集数）
+4. **弹幕文件夹/集数**：`video[3].mkv` → `弹幕/comment[3].xml`（正则匹配从文件名中自动提取集数，很多时候特殊格式会不起作用）
 
 #### 手动加载
 
@@ -164,7 +164,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 1. **同名の JSON**：`video.mkv` → `video.json`
 2. **同名の XML**：`video.mkv` → `video.xml`
 3. **コメント/同名**：`video.mkv` → `コメント/video.xml`（`弾幕` / `Comments` / `コメント` フォルダ名に対応）
-4. **コメント/番号**：`video.mkv` → `コメント/3.xml`（ファイル名から話数を抽出）
+4. **コメント/番号**：`video[3].mkv` → `コメント/comment[3].xml`（正規表現でファイル名から話数を抽出。特殊な形式では機能しないことが多い）
 
 #### 手動読み込み
 
@@ -244,7 +244,7 @@ Automatically searches in the same directory with this priority:
 1. **Same name JSON**: `video.mkv` → `video.json`
 2. **Same name XML**: `video.mkv` → `video.xml`
 3. **Comments/Same name**: `video.mkv` → `Comments/video.xml` (supports `弹幕` / `Comments` / `コメント` folder names)
-4. **Comments/Number**: `video.mkv` → `Comments/3.xml` (extracts episode number from filename)
+4. **Comments/Number**: `video[3].mkv` → `Comments/comment[3].xml` (extracts the episode number from the filename via regex; often fails with special filename formats)
 
 #### Manual Load
 
