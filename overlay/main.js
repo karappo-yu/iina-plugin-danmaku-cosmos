@@ -18,6 +18,7 @@ let danmakuFontWeight = "";
 let niconiComments = null;
 let nicoRawData = null;
 let rawFormattedData = null; // 未注入滚动速度 long 命令的原始 formatted 数据
+let rawNicoJsonData = null; // 未注入滚动速度 long 命令的原始 nico-json 数据
 let nicoRawFormat = 'legacy';
 let currentDanmakuType = 'none';
 let canvasRafId = null;
@@ -112,11 +113,14 @@ function buildFormattedCanvasData(list, sourceType) {
 function prepareCanvasSource(rawStr, parsedList, sourceType) {
   nicoRawData = null;
   rawFormattedData = null;
+  rawNicoJsonData = null;
   nicoRawFormat = 'formatted';
   if (sourceType === 'nico-json') {
     try {
-      nicoRawData = JSON.parse(rawStr);
+      rawNicoJsonData = JSON.parse(rawStr);
+      nicoRawData = JSON.parse(rawStr); // 独立副本,避免重复注入叠加
       nicoRawFormat = detectNicoFormat(nicoRawData);
+      applyScrollSpeedToNicoJson(nicoRawData);
       return;
     } catch (e) {
       console.warn('niconicocomments JSON parse failed, using formatted data:', e);
@@ -125,6 +129,31 @@ function prepareCanvasSource(rawStr, parsedList, sourceType) {
   rawFormattedData = buildFormattedCanvasData(parsedList, sourceType);
   applyScrollSpeed();
   nicoRawFormat = 'formatted';
+}
+
+// nico-json (v1/legacy 线程数组) 的滚动速度注入:
+// v1: thread.comments[].commands 数组; legacy: thread.chat[].mail 字符串
+function applyScrollSpeedToNicoJson(data) {
+  if (!Array.isArray(data)) return;
+  var k = scrollSpeed;
+  if (!isFinite(k) || k <= 0) k = 1;
+  var longSecs = Math.max(0.5, 4 / k - 1);
+  for (var i = 0; i < data.length; i++) {
+    var thread = data[i];
+    if (!thread) continue;
+    var comments = Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null);
+    if (!comments) continue;
+    for (var j = 0; j < comments.length; j++) {
+      var c = comments[j];
+      if (!c) continue;
+      var cmds = Array.isArray(c.commands) ? c.commands : (typeof c.mail === 'string' ? c.mail.split(/\s+/).filter(Boolean) : null);
+      if (!cmds) continue;
+      if (cmds.indexOf('ue') !== -1 || cmds.indexOf('shita') !== -1) continue; // 固定弹幕不注入
+      if (cmds.some(function (m) { return /^[@＠][0-9.]/.test(m); })) continue; // 自带时长命令不动
+      cmds.push('@' + longSecs);
+      if (typeof c.mail === 'string') c.mail = cmds.join(' '); // legacy 字符串同步回写
+    }
+  }
 }
 
 // 滚动弹幕速度倍率: 引擎 speed = (画布宽 + 弹幕宽×offset) / (long + 100)
@@ -452,6 +481,10 @@ iina.onMessage("set-scroll-speed", (data) => {
   scrollSpeed = data.speed;
   if (rawFormattedData) {
     applyScrollSpeed();
+    initCanvasRenderer(nicoRawData);
+  } else if (rawNicoJsonData) {
+    nicoRawData = JSON.parse(JSON.stringify(rawNicoJsonData));
+    applyScrollSpeedToNicoJson(nicoRawData);
     initCanvasRenderer(nicoRawData);
   }
 });
