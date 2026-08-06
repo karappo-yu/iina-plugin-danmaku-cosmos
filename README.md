@@ -91,7 +91,6 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 - **侧边栏**：点击「添加」按钮选择弹幕文件
 - **菜单栏**：插件 → Danmaku → 手动加载弹幕文件…
-- 支持同时加载多个文件，自动去重合并
 
 ### 注意事项
 
@@ -171,7 +170,6 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 - **サイドバー**：「追加」ボタンからコメントファイルを選択
 - **メニュー**：プラグイン → Danmaku → コメントファイルを読み込む…
-- 複数ファイルの同時読み込み、自動重複排除対応
 
 ---
 
@@ -252,7 +250,6 @@ Automatically searches in the same directory with this priority:
 
 - **Sidebar**: Click "Add" to select danmaku files
 - **Menu**: Plugins → Danmaku → Load Comment File…
-- Multiple files can be loaded simultaneously with automatic dedup
 
 ### Notes
 
