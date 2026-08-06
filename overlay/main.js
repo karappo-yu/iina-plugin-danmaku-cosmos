@@ -137,6 +137,7 @@ function applyScrollSpeedToNicoJson(data) {
   if (!Array.isArray(data)) return;
   var k = scrollSpeed;
   if (!isFinite(k) || k <= 0) k = 1;
+  if (k >= 1) return; // 100% = 原生速度,不做任何处理
   var longSecs = Math.max(0.5, 4 / k - 1);
   for (var i = 0; i < data.length; i++) {
     var thread = data[i];
@@ -166,6 +167,10 @@ function applyScrollSpeed() {
   }
   var k = scrollSpeed;
   if (!isFinite(k) || k <= 0) k = 1;
+  if (k >= 1) { // 100% = 原生速度,不做任何处理
+    nicoRawData = rawFormattedData;
+    return;
+  }
   var longSecs = Math.max(0.5, 4 / k - 1);
   nicoRawData = rawFormattedData.map(function (c) {
     var mail = c.mail;
