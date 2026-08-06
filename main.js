@@ -22,6 +22,7 @@ var scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get
 var danmakuTimeOffsetSec = preferences.get("danmakuTimeOffset") !== undefined ? preferences.get("danmakuTimeOffset") : 0;
 var danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
 var danmakuFontWeight = preferences.get("danmakuFontWeight") || "400";
+var stylePreset = preferences.get("stylePreset") || "nico";
 var currentPlaybackSpeed = 1.0;
 var overlayReady = false;
 var preferencesSyncTimer = null;
@@ -1350,6 +1351,12 @@ function registerSidebarHandlers() {
     applyDanmakuFont(data.fontFamily, data.fontWeight);
   });
 
+  sidebar.onMessage("set-style-preset", function (data) {
+    stylePreset = data.preset || "nico";
+    preferences.set("stylePreset", stylePreset);
+    syncPreferencesSoon();
+  });
+
   sidebar.onMessage("adjust-danmaku-offset", function (data) {
     var delta = parseFloat(data.delta);
     if (isNaN(delta)) delta = 0;
@@ -1394,6 +1401,7 @@ function registerSidebarHandlers() {
       danmakuTimeOffsetSec: danmakuTimeOffsetSec,
       danmakuFontFamily: danmakuFontFamily,
       danmakuFontWeight: danmakuFontWeight,
+      stylePreset: stylePreset,
       danmakuForceSimplified: danmakuForceSimplified,
       danmakuFileType: currentDanmakuStatus.fileType,
       danmakuFileName: currentDanmakuStatus.fileName,

@@ -761,6 +761,7 @@ if (stylePresetSelect) {
     if (!preset) return;
     applyStylePreset(preset);
     state.stylePreset = stylePresetSelect.value;
+    iina.postMessage("set-style-preset", { preset: stylePresetSelect.value });
   });
 }
 
@@ -949,6 +950,7 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.danmakuTimeOffsetSec !== undefined) state.danmakuOffsetSeconds = data.danmakuTimeOffsetSec;
   if (data.danmakuFontFamily !== undefined) state.danmakuFontFamily = data.danmakuFontFamily;
   if (data.danmakuFontWeight !== undefined) state.danmakuFontWeight = data.danmakuFontWeight;
+  if (data.stylePreset !== undefined) state.stylePreset = data.stylePreset;
   if (data.danmakuForceSimplified !== undefined) state.danmakuForceSimplified = !!data.danmakuForceSimplified;
   if (data.danmakuFileType !== undefined) state.danmakuType = data.danmakuFileType;
   if (data.danmakuFileName !== undefined) state.danmakuFileName = data.danmakuFileName;
