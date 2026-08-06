@@ -12,6 +12,8 @@ let strokeWidth = 2.8;
 let commentLimit = 0;
 let scrollSpeed = 0.95;
 let danmakuTimeOffsetSec = 0;
+let danmakuFontFamily = "";
+let danmakuFontWeight = "";
 
 let niconiComments = null;
 let nicoRawData = null;
@@ -155,6 +157,36 @@ function disposeCanvasRenderer() {
   niconiComments = null;
 }
 
+var DEFAULT_DANMAKU_FONT_STACKS = {
+  gothic: { font: '"游ゴシック体", "游ゴシック", "Yu Gothic", YuGothic, yugothic, YuGo-Medium, "Hiragino Sans", HiraginoSans', offset: -0.04, weight: 400 },
+  mincho: { font: '"游明朝体", "游明朝", "Yu Mincho", YuMincho, yumincho, YuMin-Medium, "Hiragino Mincho ProN", HiraMinProN, "Hiragino Mincho ProN W3", HiraMinProN-W3', offset: -0.01, weight: 400 },
+  defont: { font: '"Hiragino Sans", "ヒラギノ角ゴシック", HiraginoSans', offset: -0.05, weight: 600 },
+};
+
+function buildDanmakuFontConfig() {
+  var weight = danmakuFontWeight ? parseInt(danmakuFontWeight, 10) : 400;
+  if (isNaN(weight) || weight < 100 || weight > 900) weight = 400;
+  var mk = function (type) {
+    var def = DEFAULT_DANMAKU_FONT_STACKS[type];
+    return {
+      font: danmakuFontFamily || def.font,
+      offset: danmakuFontFamily ? 0 : def.offset,
+      weight: weight,
+    };
+  };
+  return {
+    flash: {
+      gulim: 'normal 600 [size]px gulim, ' + (danmakuFontFamily || DEFAULT_DANMAKU_FONT_STACKS.gothic.font) + ', Arial',
+      simsun: 'normal 400 [size]px simsun, batang, "PMingLiU", MingLiU-ExtB, ' + (danmakuFontFamily || DEFAULT_DANMAKU_FONT_STACKS.mincho.font) + ', Arial',
+    },
+    html5: {
+      gothic: mk('gothic'),
+      mincho: mk('mincho'),
+      defont: mk('defont'),
+    },
+  };
+}
+
 function initCanvasRenderer(data) {
   const canvas = document.getElementById('niconicomments-canvas');
   if (!canvas || typeof NiconiComments === 'undefined') return;
@@ -175,6 +207,7 @@ function initCanvasRenderer(data) {
       contextLineWidth: { html5: strokeWidth, flash: strokeWidth },
       commentLimit: commentLimit > 0 ? commentLimit : undefined,
       nakaCommentSpeedOffset: scrollSpeed,
+      fonts: buildDanmakuFontConfig(),
     },
   });
   nicoRawData = data;
@@ -245,6 +278,8 @@ iina.onMessage("load-danmaku", (data) => {
   if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
   if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
+  if (data.danmakuFontFamily !== undefined) danmakuFontFamily = data.danmakuFontFamily || "";
+  if (data.danmakuFontWeight !== undefined) danmakuFontWeight = data.danmakuFontWeight || "";
   if (data.opacity !== undefined) {
     canvasOpacity = data.opacity;
     const canvas = document.getElementById('niconicomments-canvas');
@@ -403,6 +438,12 @@ iina.onMessage("set-danmaku-offset", (data) => {
   }
 });
 
+iina.onMessage("set-danmaku-font", (data) => {
+  if (data.fontFamily !== undefined) danmakuFontFamily = data.fontFamily || "";
+  if (data.fontWeight !== undefined) danmakuFontWeight = data.fontWeight || "";
+  if (nicoRawData) initCanvasRenderer(nicoRawData);
+});
+
 iina.onMessage("clear-danmaku", () => {
   destroyCanvasRenderer();
   const cssContainer = document.querySelector('[data-dm-css-container]');
@@ -431,6 +472,8 @@ iina.onMessage("apply-settings", (data) => {
   if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
   if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
+  if (data.danmakuFontFamily !== undefined) danmakuFontFamily = data.danmakuFontFamily || "";
+  if (data.danmakuFontWeight !== undefined) danmakuFontWeight = data.danmakuFontWeight || "";
   if (data.danmakuForceSimplified !== undefined) {
     updateSimplifiedConverter(data.danmakuForceSimplified);
   }

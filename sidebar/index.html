@@ -129,6 +129,42 @@
         <div class="control-row" style="margin-top:6px">
           <span id="danmaku-offset-hint" class="value-text" data-i18n="danmaku_offset_hint">A: rewind • D: advance</span>
         </div>
+        <h3 class="section-title" data-i18n="danmaku_font" style="margin-top:10px">Font</h3>
+        <div class="control-row">
+          <span class="toggle-label" data-i18n="danmaku_font_family">Font Family</span>
+          <select id="danmaku-font-select" data-clickable style="margin-left:auto;max-width:190px;padding:4px;border-radius:4px;border:1px solid var(--separator);background:var(--secondary-system-fill);color:var(--label)">
+            <option value="">Default</option>
+            <optgroup label="Japanese">
+              <option value="gothic">Hiragino Gothic</option>
+              <option value="mincho">Hiragino Mincho</option>
+              <option value="maru">Hiragino Maru Gothic</option>
+              <option value="yugothic">Yu Gothic</option>
+              <option value="yumincho">Yu Mincho</option>
+            </optgroup>
+            <optgroup label="Chinese">
+              <option value="pingfang">PingFang SC</option>
+              <option value="songti">Songti SC</option>
+              <option value="kaiti">KaiTi</option>
+              <option value="yahei">Microsoft YaHei</option>
+              <option value="simsun">SimSun</option>
+            </optgroup>
+            <optgroup label="Generic">
+              <option value="sans">sans-serif</option>
+              <option value="serif">serif</option>
+              <option value="mono">monospace</option>
+            </optgroup>
+            <option value="custom">Custom…</option>
+          </select>
+        </div>
+        <div class="control-row" id="danmaku-font-custom-row" style="display:none;margin-top:6px">
+          <span class="toggle-label" data-i18n="danmaku_font_custom">Custom Font</span>
+          <input type="text" id="danmaku-font-custom" placeholder="'Helvetica Neue', sans-serif" style="margin-left:auto;width:150px;padding:4px;border-radius:4px;border:1px solid var(--separator);background:var(--secondary-system-fill);color:var(--label)" />
+        </div>
+        <h3 class="section-title" data-i18n="danmaku_font_weight" style="margin-top:10px">Weight</h3>
+        <div class="control-row">
+          <input type="range" id="danmaku-font-weight-slider" data-clickable min="100" max="900" step="50" value="400" class="slider" />
+          <span id="danmaku-font-weight-value" class="value-text">400</span>
+        </div>
         <h3 class="section-title" data-i18n="comment_limit" style="margin-top:10px">Comment Limit</h3>
         <div class="control-row">
           <input type="range" id="comment-limit-slider" data-clickable min="0" max="200" step="10" value="0" class="slider" />
