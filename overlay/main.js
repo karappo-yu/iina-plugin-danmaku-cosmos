@@ -10,13 +10,14 @@ let strokeInversionColor = '#ffffff';
 let strokeOpacity = 0.4;
 let strokeWidth = 2.8;
 let commentLimit = 0;
-let scrollSpeed = 0.95;
+let scrollSpeed = 1.0; // 滚动速度倍率 (0.5 ~ 2.0), 通过 naka 弹幕 long 命令实现
 let danmakuTimeOffsetSec = 0;
 let danmakuFontFamily = "";
 let danmakuFontWeight = "";
 
 let niconiComments = null;
 let nicoRawData = null;
+let rawFormattedData = null; // 未注入滚动速度 long 命令的原始 formatted 数据
 let nicoRawFormat = 'legacy';
 let currentDanmakuType = 'none';
 let canvasRafId = null;
@@ -110,6 +111,7 @@ function buildFormattedCanvasData(list, sourceType) {
 
 function prepareCanvasSource(rawStr, parsedList, sourceType) {
   nicoRawData = null;
+  rawFormattedData = null;
   nicoRawFormat = 'formatted';
   if (sourceType === 'nico-json') {
     try {
@@ -120,8 +122,29 @@ function prepareCanvasSource(rawStr, parsedList, sourceType) {
       console.warn('niconicocomments JSON parse failed, using formatted data:', e);
     }
   }
-  nicoRawData = buildFormattedCanvasData(parsedList, sourceType);
+  rawFormattedData = buildFormattedCanvasData(parsedList, sourceType);
+  applyScrollSpeed();
   nicoRawFormat = 'formatted';
+}
+
+// 滚动弹幕速度倍率: 引擎 speed = (画布宽 + 弹幕宽×offset) / (long + 100)
+// long 在分母 → 通过给 naka 弹幕注入 @秒数 命令(nicoscript 显示时长)实现真实速度倍率。
+// 默认 long=300 (3s): 目标倍率 k → long = 400/k - 100 (vpos) = 4/k - 1 (秒)
+function applyScrollSpeed() {
+  if (!rawFormattedData) {
+    nicoRawData = null;
+    return;
+  }
+  var k = scrollSpeed;
+  if (!isFinite(k) || k <= 0) k = 1;
+  var longSecs = Math.max(0.5, 4 / k - 1);
+  nicoRawData = rawFormattedData.map(function (c) {
+    var mail = c.mail;
+    if (!Array.isArray(mail)) return c;
+    if (mail.indexOf('naka') === -1) return c; // 只处理滚动弹幕
+    if (mail.some(function (m) { return /^[@＠][0-9.]/.test(m); })) return c; // 自带时长命令的不动
+    return Object.assign({}, c, { mail: mail.concat(['@' + longSecs]) });
+  });
 }
 
 const canvasEventHandlers = {
@@ -206,7 +229,6 @@ function initCanvasRenderer(data) {
       contextStrokeOpacity: strokeOpacity,
       contextLineWidth: { html5: strokeWidth, flash: strokeWidth },
       commentLimit: commentLimit > 0 ? commentLimit : undefined,
-      nakaCommentSpeedOffset: scrollSpeed,
       fonts: buildDanmakuFontConfig(),
     },
   });
@@ -426,7 +448,10 @@ iina.onMessage("set-comment-limit", (data) => {
 
 iina.onMessage("set-scroll-speed", (data) => {
   scrollSpeed = data.speed;
-  if (nicoRawData) initCanvasRenderer(nicoRawData);
+  if (rawFormattedData) {
+    applyScrollSpeed();
+    initCanvasRenderer(nicoRawData);
+  }
 });
 
 iina.onMessage("set-danmaku-offset", (data) => {

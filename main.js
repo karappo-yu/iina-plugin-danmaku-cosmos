@@ -18,7 +18,7 @@ var strokeWidth = preferences.get("strokeWidth") !== undefined ? preferences.get
 var strokeColor = preferences.get("strokeColor") || '#000000';
 var strokeInversionColor = preferences.get("strokeInversionColor") || '#ffffff';
 var commentLimit = preferences.get("commentLimit") !== undefined ? preferences.get("commentLimit") : 0;
-var scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get("scrollSpeed") : 0.95;
+var scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get("scrollSpeed") : 1.0;
 var danmakuTimeOffsetSec = preferences.get("danmakuTimeOffset") !== undefined ? preferences.get("danmakuTimeOffset") : 0;
 var danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
 var danmakuFontWeight = preferences.get("danmakuFontWeight") || "400";
