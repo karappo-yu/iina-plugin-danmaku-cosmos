@@ -22,6 +22,7 @@ var fontCustomRow = document.getElementById("danmaku-font-custom-row");
 var fontCustomInput = document.getElementById("danmaku-font-custom");
 var fontWeightSlider = document.getElementById("danmaku-font-weight-slider");
 var fontWeightValue = document.getElementById("danmaku-font-weight-value");
+var stylePresetSelect = document.getElementById("style-preset-select");
 var filterSection = document.getElementById("danmaku-filter-section");
 var filterDateNew = document.getElementById("danmaku-filter-date-new");
 var filterDateOld = document.getElementById("danmaku-filter-date-old");
@@ -89,6 +90,7 @@ var state = {
   danmakuOffsetSeconds: 0,
   danmakuFontFamily: "",
   danmakuFontWeight: "400",
+  stylePreset: "custom",
   nicoJsonTotalCount: 0,
   danmakuFilterOffset: 0,
   danmakuFilterLimit: 0,
@@ -266,6 +268,8 @@ var i18n = {
     density_filter: "Count (/min)",
 
     advanced: "Advanced",
+    style_preset: "Style Preset",
+    style_custom: "Custom",
     danmaku_offset: "Danmaku Offset (s)",
     danmaku_offset_hint: "A: rewind • D: advance",
     danmaku_font: "Font",
@@ -320,6 +324,8 @@ var i18n = {
     density_filter: "\u6570\u91cf",
 
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
+    style_preset: "\u30b9\u30bf\u30a4\u30eb\u30d7\u30ea\u30bb\u30c3\u30c8",
+    style_custom: "\u30ab\u30b9\u30bf\u30e0",
     danmaku_offset: "\u5f3e\u5e55\u6642\u9593\u30aa\u30d5\u30bb\u30c3\u30c8 (\u79d2)",
     danmaku_offset_hint: "A: \u5de5\u5e30\u3057\u3082\u3069\u3057 • D: \u9032\u3080",
     danmaku_font: "\u30d5\u30a9\u30f3\u30c8",
@@ -374,6 +380,8 @@ var i18n = {
     density_filter: "\u6570\u91cf",
 
     advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
+    style_preset: "\u98ce\u683c\u9884\u8bbe",
+    style_custom: "\u81ea\u5b9a\u4e49",
     danmaku_offset: "\u5f39\u5e55\u65f6\u95f4\u504f\u79fb (\u79d2)",
     danmaku_offset_hint: "A: \u5feb\u9000 • D: \u5feb\u8fdb",
     danmaku_font: "\u5b57\u4f53",
@@ -495,6 +503,38 @@ function updateFontUI() {
   }
 }
 
+var STYLE_PRESETS = {
+  nico: { fontScale: 1.0, fontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },
+  bilibili: { fontScale: 0.4, fontWeight: "100", strokeWidth: 3.5, scrollSpeed: 0.5 }
+};
+
+function markStyleCustom() {
+  state.stylePreset = "custom";
+  if (stylePresetSelect) stylePresetSelect.value = "custom";
+}
+
+function applyStylePreset(p) {
+  // 字体缩放
+  state.canvasFontScale = p.fontScale;
+  fontsizeSlider.value = Math.round(p.fontScale * 100);
+  fontsizeValue.textContent = Math.round(p.fontScale * 100) + "%";
+  iina.postMessage("set-fontscale", { scale: p.fontScale });
+  // 字体粗细
+  state.danmakuFontWeight = p.fontWeight;
+  iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: p.fontWeight });
+  // 描边粗细
+  state.strokeWidth = p.strokeWidth;
+  strokeWidthSlider.value = p.strokeWidth;
+  strokeWidthValue.textContent = String(p.strokeWidth) + 'px';
+  iina.postMessage("set-stroke-width", { width: p.strokeWidth });
+  // 滚动速度
+  state.scrollSpeed = p.scrollSpeed;
+  speedSlider.value = Math.round(p.scrollSpeed * 100);
+  speedValue.textContent = Math.round(p.scrollSpeed * 100) + '%';
+  iina.postMessage("set-scroll-speed", { speed: p.scrollSpeed });
+  updateFontUI();
+}
+
 function updateUI() {
   var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0 || fileListState.unknownFiles.length > 0;
   var hasDanmaku = state.danmakuLoaded || hasFiles;
@@ -519,6 +559,7 @@ function updateUI() {
   if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified; 
   updateOffsetUI();
   updateFontUI();
+  if (stylePresetSelect) stylePresetSelect.value = state.stylePreset;
   updateFilterUI();
 }
 
@@ -637,6 +678,7 @@ fontsizeSlider.addEventListener("input", function () {
   state.canvasFontScale = val;
   fontsizeValue.textContent = Math.round(val * 100) + "%";
   iina.postMessage("set-fontscale", { scale: val });
+  markStyleCustom();
 });
 
 strokeOpacitySlider.addEventListener("input", function () {
@@ -651,6 +693,7 @@ strokeWidthSlider.addEventListener("input", function () {
   state.strokeWidth = val;
   strokeWidthValue.textContent = String(val) + 'px';
   iina.postMessage("set-stroke-width", { width: val });
+  markStyleCustom();
 });
 
 strokeColorInput.addEventListener("input", function () {
@@ -712,6 +755,7 @@ if (fontWeightSlider) {
     state.danmakuFontWeight = fontWeightSlider.value;
     if (fontWeightValue) fontWeightValue.textContent = fontWeightSlider.value;
     iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: state.danmakuFontWeight });
+    markStyleCustom();
   });
 }
 
@@ -720,7 +764,20 @@ speedSlider.addEventListener("input", function () {
   state.scrollSpeed = val;
   speedValue.textContent = Math.round(val * 100) + '%';
   iina.postMessage("set-scroll-speed", { speed: val });
+  markStyleCustom();
 });
+
+if (stylePresetSelect) {
+  stylePresetSelect.addEventListener("change", function () {
+    var preset = STYLE_PRESETS[stylePresetSelect.value];
+    if (!preset) {
+      state.stylePreset = "custom";
+      return;
+    }
+    applyStylePreset(preset);
+    state.stylePreset = stylePresetSelect.value;
+  });
+}
 
 var MIN_FILTER_LIMIT = 100;
 var filterDragMode = null;
