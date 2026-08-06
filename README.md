@@ -18,7 +18,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 ### 功能特性
 
 - **Niconico 格式完整支持**：Niconico XML、Niconico V1 JSON
-- **Bilibili XML 基础支持**：普通滚动弹幕、顶部/底部固定弹幕（以 niconico 风格渲染）
+- **Bilibili XML 基础支持**：普通滚动弹幕、顶部/底部固定弹幕，可通过风格预设切换 niconico 或 Bilibili 渲染风格
 - **弹弹play 网络弹幕**：自动匹配视频文件，从弹弹play API 获取网络弹幕，支持缓存和手动搜索
 - **繁简转换**：支持强制将繁体中文弹幕转换为简体中文，可在设置和 UI 中自由切换
 - **双渲染模式**：
@@ -95,7 +95,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 ### 注意事项
 
-- 本插件以 niconico 弹幕风格为核心，Bilibili 等中文弹幕将以 niconico 风格渲染，不支持 Bilibili 高级弹幕、代码弹幕、BAS 弹幕等特有功能
+- 本插件以 niconico 弹幕风格为核心，Bilibili 等中文弹幕默认以 niconico 风格渲染，可通过风格预设切换为 Bilibili 风格；不支持 Bilibili 高级弹幕、代码弹幕、BAS 弹幕等特有功能
 - CSS 模式下字符画（コメントアート）的垂直位置可能与 Canvas 模式略有差异
 - Canvas 模式下字符画在 IINA 的 WebKit 渲染中可能出现错位（Safari canvas 2D 无 GPU 加速）
 - 文件名包含特殊字符（如 `[`、`]`）可能导致自动加载失败
@@ -105,7 +105,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 ## 日本語
 
-> **注意**：本プラグインは niconico コメントスタイルを中心に設計されており、Bilibili など中国語コメントフォーマットのサポートは限定的です。中国語コメントは niconico スタイルで描画され、Bilibili 固有の高度なコメント（mode 7）、スクリプトコメント（mode 8）、BAS コメント（mode 9）などには対応していません。
+> **注意**：本プラグインは niconico コメントスタイルを中心に設計されており、Bilibili など中国語コメントフォーマットのサポートは限定的です。中国語コメントは既定で niconico スタイルで描画され、スタイルプリセットで Bilibili スタイルに切り替え可能です。Bilibili 固有の高度なコメント（mode 7）、スクリプトコメント（mode 8）、BAS コメント（mode 9）などには対応していません。
 
 ### インストール
 
@@ -117,7 +117,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 ### 機能
 
 - **Niconico フォーマット完全対応**：Niconico XML、Niconico V1 JSON
-- **Bilibili XML 基本対応**：通常スクロールコメント、上部/下部固定コメント（niconico スタイルで描画）
+- **Bilibili XML 基本対応**：通常スクロールコメント、上部/下部固定コメント。スタイルプリセットで niconico / Bilibili スタイルを選択可能
 - **弹弹play ネットワークコメント**：動画ファイルを自動認識し、弹弹play API からネットワークコメントを取得。キャッシュ対応、手動検索可能
 - **繁体字から簡体字への変換**：繁体字中国語のコメントを強制的に簡体字に変換する機能を追加。設定および UI から切り替え可能
 - **デュアル描画モード**：
@@ -177,7 +177,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 ## English
 
-> **Note**: This plugin is designed around the niconico comment style. Bilibili and other Chinese danmaku formats have limited support — they are rendered in niconico style, and Bilibili-specific features like advanced comments (mode 7), scripting comments (mode 8), and BAS comments (mode 9) are not supported.
+> **Note**: This plugin is designed around the niconico comment style. Bilibili and other Chinese danmaku formats have limited support — they are rendered in niconico style by default, switchable to Bilibili style via Style Preset. Bilibili-specific features like advanced comments (mode 7), scripting comments (mode 8), and BAS comments (mode 9) are not supported.
 
 ### Installation
 
@@ -189,7 +189,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 ### Features
 
 - **Full Niconico format support**: Niconico XML, Niconico V1 JSON
-- **Basic Bilibili XML support**: Normal scrolling, top/bottom fixed comments (rendered in niconico style)
+- **Basic Bilibili XML support**: Normal scrolling, top/bottom fixed comments; render style switchable via Style Preset (niconico or Bilibili)
 - **Dandanplay network danmaku**: Auto-match videos via dandanplay API, with caching and manual search
 - **Traditional to Simplified Chinese Conversion**: Option to force convert Traditional Chinese danmaku to Simplified Chinese, configurable in settings and UI
 - **Dual rendering modes**:
