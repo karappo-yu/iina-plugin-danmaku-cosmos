@@ -458,7 +458,13 @@ var FONT_PRESETS = {
   gothic: '"Hiragino Kaku Gothic ProN", "Hiragino Sans", "ヒラギノ角ゴ ProN", sans-serif',
   mincho: '"Hiragino Mincho ProN", "ヒラギノ明朝 ProN", serif',
   maru: '"Hiragino Maru Gothic ProN", "ヒラギノ丸ゴ ProN", sans-serif',
+  yugothic: '"Yu Gothic", YuGothic, yugothic, "Hiragino Sans", sans-serif',
+  yumincho: '"Yu Mincho", YuMincho, yumincho, "Hiragino Mincho ProN", serif',
+  pingfang: '"PingFang SC", "PingFang TC", "Hiragino Sans GB", sans-serif',
   songti: '"Songti SC", "SimSun", "宋体", serif',
+  kaiti: '"Kaiti SC", "KaiTi", "楷体", serif',
+  yahei: '"Microsoft YaHei", "微软雅黑", "PingFang SC", sans-serif',
+  simsun: '"SimSun", "宋体", serif',
   sans: "sans-serif",
   serif: "serif",
   mono: "monospace"
@@ -677,15 +683,20 @@ if (offsetInput) {
 if (fontSelect) {
   fontSelect.addEventListener("change", function () {
     var key = fontSelect.value;
-    var family = FONT_PRESETS[key] !== undefined ? FONT_PRESETS[key] : "";
     if (key === "custom") {
-      family = fontCustomInput.value.trim();
       fontCustomRow.style.display = "";
+      fontCustomInput.focus();
+      var customFamily = fontCustomInput.value.trim();
+      if (customFamily) {
+        state.danmakuFontFamily = customFamily;
+        iina.postMessage("set-danmaku-font", { fontFamily: customFamily, fontWeight: state.danmakuFontWeight });
+      }
     } else {
       fontCustomRow.style.display = "none";
+      var preset = FONT_PRESETS[key] !== undefined ? FONT_PRESETS[key] : "";
+      state.danmakuFontFamily = preset;
+      iina.postMessage("set-danmaku-font", { fontFamily: preset, fontWeight: state.danmakuFontWeight });
     }
-    state.danmakuFontFamily = family;
-    iina.postMessage("set-danmaku-font", { fontFamily: family, fontWeight: state.danmakuFontWeight });
   });
 }
 
