@@ -12,6 +12,8 @@ let strokeWidth = 2.8;
 let commentLimit = 0;
 let scrollSpeed = 0.95;
 let danmakuTimeOffsetSec = 0;
+let danmakuFontFamily = "";
+let danmakuFontWeight = "";
 
 let niconiComments = null;
 let nicoRawData = null;
@@ -155,6 +157,16 @@ function disposeCanvasRenderer() {
   niconiComments = null;
 }
 
+function buildDanmakuFontConfig() {
+  if (!danmakuFontFamily) return undefined;
+  var weight = danmakuFontWeight ? parseInt(danmakuFontWeight, 10) : 400;
+  if (isNaN(weight) || weight < 100 || weight > 900) weight = 400;
+  var item = { font: danmakuFontFamily, offset: 0, weight: weight };
+  return {
+    html5: { gothic: item, mincho: item, defont: item },
+  };
+}
+
 function initCanvasRenderer(data) {
   const canvas = document.getElementById('niconicomments-canvas');
   if (!canvas || typeof NiconiComments === 'undefined') return;
@@ -175,6 +187,7 @@ function initCanvasRenderer(data) {
       contextLineWidth: { html5: strokeWidth, flash: strokeWidth },
       commentLimit: commentLimit > 0 ? commentLimit : undefined,
       nakaCommentSpeedOffset: scrollSpeed,
+      fonts: buildDanmakuFontConfig(),
     },
   });
   nicoRawData = data;
@@ -245,6 +258,8 @@ iina.onMessage("load-danmaku", (data) => {
   if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
   if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
+  if (data.danmakuFontFamily !== undefined) danmakuFontFamily = data.danmakuFontFamily || "";
+  if (data.danmakuFontWeight !== undefined) danmakuFontWeight = data.danmakuFontWeight || "";
   if (data.opacity !== undefined) {
     canvasOpacity = data.opacity;
     const canvas = document.getElementById('niconicomments-canvas');
@@ -403,6 +418,12 @@ iina.onMessage("set-danmaku-offset", (data) => {
   }
 });
 
+iina.onMessage("set-danmaku-font", (data) => {
+  if (data.fontFamily !== undefined) danmakuFontFamily = data.fontFamily || "";
+  if (data.fontWeight !== undefined) danmakuFontWeight = data.fontWeight || "";
+  if (nicoRawData) initCanvasRenderer(nicoRawData);
+});
+
 iina.onMessage("clear-danmaku", () => {
   destroyCanvasRenderer();
   const cssContainer = document.querySelector('[data-dm-css-container]');
@@ -431,6 +452,8 @@ iina.onMessage("apply-settings", (data) => {
   if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
   if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
+  if (data.danmakuFontFamily !== undefined) danmakuFontFamily = data.danmakuFontFamily || "";
+  if (data.danmakuFontWeight !== undefined) danmakuFontWeight = data.danmakuFontWeight || "";
   if (data.danmakuForceSimplified !== undefined) {
     updateSimplifiedConverter(data.danmakuForceSimplified);
   }

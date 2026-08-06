@@ -129,6 +129,37 @@
         <div class="control-row" style="margin-top:6px">
           <span id="danmaku-offset-hint" class="value-text" data-i18n="danmaku_offset_hint">A: rewind • D: advance</span>
         </div>
+        <h3 class="section-title" data-i18n="danmaku_font" style="margin-top:10px">Font</h3>
+        <div class="control-row">
+          <span class="toggle-label" data-i18n="danmaku_font_family">Font Family</span>
+          <select id="danmaku-font-select" data-clickable style="margin-left:auto;max-width:170px;padding:4px;border-radius:4px;border:1px solid var(--separator);background:var(--secondary-system-fill);color:var(--label)">
+            <option value="">Default</option>
+            <option value="gothic">Gothic (Hiragino)</option>
+            <option value="mincho">Mincho (Hiragino)</option>
+            <option value="maru">Maru Gothic</option>
+            <option value="songti">Songti / SimSun</option>
+            <option value="sans">sans-serif</option>
+            <option value="serif">serif</option>
+            <option value="mono">monospace</option>
+            <option value="custom">Custom…</option>
+          </select>
+        </div>
+        <div class="control-row" id="danmaku-font-custom-row" style="display:none;margin-top:6px">
+          <span class="toggle-label" data-i18n="danmaku_font_custom">Custom Font</span>
+          <input type="text" id="danmaku-font-custom" placeholder="'Helvetica Neue', sans-serif" style="margin-left:auto;width:150px;padding:4px;border-radius:4px;border:1px solid var(--separator);background:var(--secondary-system-fill);color:var(--label)" />
+        </div>
+        <div class="control-row" style="margin-top:6px">
+          <span class="toggle-label" data-i18n="danmaku_font_weight">Weight</span>
+          <select id="danmaku-font-weight" data-clickable style="margin-left:auto;padding:4px;border-radius:4px;border:1px solid var(--separator);background:var(--secondary-system-fill);color:var(--label)">
+            <option value="">Default</option>
+            <option value="100">100 Thin</option>
+            <option value="300">300 Light</option>
+            <option value="400">400 Regular</option>
+            <option value="500">500 Medium</option>
+            <option value="700">700 Bold</option>
+            <option value="900">900 Black</option>
+          </select>
+        </div>
         <h3 class="section-title" data-i18n="comment_limit" style="margin-top:10px">Comment Limit</h3>
         <div class="control-row">
           <input type="range" id="comment-limit-slider" data-clickable min="0" max="200" step="10" value="0" class="slider" />

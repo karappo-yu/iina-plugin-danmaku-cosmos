@@ -17,6 +17,10 @@ var speedSlider = document.getElementById("speed-slider");
 var speedValue = document.getElementById("speed-value");
 var offsetInput = document.getElementById("danmaku-offset-input");
 var offsetHint = document.getElementById("danmaku-offset-hint");
+var fontSelect = document.getElementById("danmaku-font-select");
+var fontCustomRow = document.getElementById("danmaku-font-custom-row");
+var fontCustomInput = document.getElementById("danmaku-font-custom");
+var fontWeightSelect = document.getElementById("danmaku-font-weight");
 var filterSection = document.getElementById("danmaku-filter-section");
 var filterDateNew = document.getElementById("danmaku-filter-date-new");
 var filterDateOld = document.getElementById("danmaku-filter-date-old");
@@ -82,6 +86,8 @@ var state = {
   commentLimit: 0,
   scrollSpeed: 0.95,
   danmakuOffsetSeconds: 0,
+  danmakuFontFamily: "",
+  danmakuFontWeight: "",
   nicoJsonTotalCount: 0,
   danmakuFilterOffset: 0,
   danmakuFilterLimit: 0,
@@ -261,6 +267,10 @@ var i18n = {
     advanced: "Advanced",
     danmaku_offset: "Danmaku Offset (s)",
     danmaku_offset_hint: "A: rewind • D: advance",
+    danmaku_font: "Font",
+    danmaku_font_family: "Font Family",
+    danmaku_font_custom: "Custom Font",
+    danmaku_font_weight: "Weight",
     comment_limit: "Comment Limit",
     stroke_color: "Stroke Color",
     stroke_inversion: "Invert Color",
@@ -311,6 +321,10 @@ var i18n = {
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
     danmaku_offset: "\u5f3e\u5e55\u6642\u9593\u30aa\u30d5\u30bb\u30c3\u30c8 (\u79d2)",
     danmaku_offset_hint: "A: \u5de5\u5e30\u3057\u3082\u3069\u3057 • D: \u9032\u3080",
+    danmaku_font: "\u30d5\u30a9\u30f3\u30c8",
+    danmaku_font_family: "\u30d5\u30a9\u30f3\u30c8",
+    danmaku_font_custom: "\u30ab\u30b9\u30bf\u30e0\u30d5\u30a9\u30f3\u30c8",
+    danmaku_font_weight: "\u592a\u3055",
     comment_limit: "\u30b3\u30e1\u30f3\u30c8\u5236\u9650",
     stroke_color: "\u7e01\u53d6\u308a\u306e\u8272",
     stroke_inversion: "\u9006\u7e01\u53d6\u308a\u8272",
@@ -361,6 +375,10 @@ var i18n = {
     advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
     danmaku_offset: "\u5f39\u5e55\u65f6\u95f4\u504f\u79fb (\u79d2)",
     danmaku_offset_hint: "A: \u5feb\u9000 • D: \u5feb\u8fdb",
+    danmaku_font: "\u5b57\u4f53",
+    danmaku_font_family: "\u5b57\u4f53",
+    danmaku_font_custom: "\u81ea\u5b9a\u4e49\u5b57\u4f53",
+    danmaku_font_weight: "\u7c97\u7ec6",
     comment_limit: "\u5f39\u5e55\u4e0a\u9650",
     stroke_color: "\u63cf\u8fb9\u989c\u8272",
     stroke_inversion: "\u53cd\u8272\u63cf\u8fb9",
@@ -434,6 +452,37 @@ function updateOffsetUI() {
   }
 }
 
+var FONT_PRESETS = {
+  "": "",
+  gothic: '"Hiragino Kaku Gothic ProN", "Hiragino Sans", "ヒラギノ角ゴ ProN", sans-serif',
+  mincho: '"Hiragino Mincho ProN", "ヒラギノ明朝 ProN", serif',
+  maru: '"Hiragino Maru Gothic ProN", "ヒラギノ丸ゴ ProN", sans-serif',
+  songti: '"Songti SC", "SimSun", "宋体", serif',
+  sans: "sans-serif",
+  serif: "serif",
+  mono: "monospace"
+};
+
+function fontFamilyToPresetKey(family) {
+  for (var key in FONT_PRESETS) {
+    if (FONT_PRESETS.hasOwnProperty(key) && key !== "" && FONT_PRESETS[key] === family) return key;
+  }
+  return "custom";
+}
+
+function updateFontUI() {
+  if (!fontSelect || !fontCustomInput || !fontCustomRow || !fontWeightSelect) return;
+  var key = state.danmakuFontFamily ? fontFamilyToPresetKey(state.danmakuFontFamily) : "";
+  fontSelect.value = key;
+  if (key === "custom") {
+    fontCustomRow.style.display = "";
+    fontCustomInput.value = state.danmakuFontFamily;
+  } else {
+    fontCustomRow.style.display = "none";
+  }
+  fontWeightSelect.value = state.danmakuFontWeight;
+}
+
 function updateUI() {
   var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0 || fileListState.unknownFiles.length > 0;
   var hasDanmaku = state.danmakuLoaded || hasFiles;
@@ -457,6 +506,7 @@ function updateUI() {
   if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
   if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified; 
   updateOffsetUI();
+  updateFontUI();
   updateFilterUI();
 }
 
@@ -615,6 +665,35 @@ if (offsetInput) {
     state.danmakuOffsetSeconds = val;
     iina.postMessage("set-danmaku-offset", { offset: state.danmakuOffsetSeconds });
     updateOffsetUI();
+  });
+}
+
+if (fontSelect) {
+  fontSelect.addEventListener("change", function () {
+    var key = fontSelect.value;
+    var family = FONT_PRESETS[key] !== undefined ? FONT_PRESETS[key] : "";
+    if (key === "custom") {
+      family = fontCustomInput.value.trim();
+      fontCustomRow.style.display = "";
+    } else {
+      fontCustomRow.style.display = "none";
+    }
+    state.danmakuFontFamily = family;
+    iina.postMessage("set-danmaku-font", { fontFamily: family, fontWeight: state.danmakuFontWeight });
+  });
+}
+
+if (fontCustomInput) {
+  fontCustomInput.addEventListener("input", function () {
+    state.danmakuFontFamily = fontCustomInput.value.trim();
+    iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: state.danmakuFontWeight });
+  });
+}
+
+if (fontWeightSelect) {
+  fontWeightSelect.addEventListener("change", function () {
+    state.danmakuFontWeight = fontWeightSelect.value;
+    iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: state.danmakuFontWeight });
   });
 }
 
@@ -808,6 +887,8 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.commentLimit !== undefined) state.commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) state.scrollSpeed = data.scrollSpeed;
   if (data.danmakuTimeOffsetSec !== undefined) state.danmakuOffsetSeconds = data.danmakuTimeOffsetSec;
+  if (data.danmakuFontFamily !== undefined) state.danmakuFontFamily = data.danmakuFontFamily;
+  if (data.danmakuFontWeight !== undefined) state.danmakuFontWeight = data.danmakuFontWeight;
   if (data.danmakuForceSimplified !== undefined) state.danmakuForceSimplified = !!data.danmakuForceSimplified;
   if (data.danmakuFileType !== undefined) state.danmakuType = data.danmakuFileType;
   if (data.danmakuFileName !== undefined) state.danmakuFileName = data.danmakuFileName;

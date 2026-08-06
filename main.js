@@ -20,6 +20,8 @@ var strokeInversionColor = preferences.get("strokeInversionColor") || '#ffffff';
 var commentLimit = preferences.get("commentLimit") !== undefined ? preferences.get("commentLimit") : 0;
 var scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get("scrollSpeed") : 0.95;
 var danmakuTimeOffsetSec = preferences.get("danmakuTimeOffset") !== undefined ? preferences.get("danmakuTimeOffset") : 0;
+var danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
+var danmakuFontWeight = preferences.get("danmakuFontWeight") || "";
 var currentPlaybackSpeed = 1.0;
 var overlayReady = false;
 var preferencesSyncTimer = null;
@@ -96,6 +98,18 @@ function applyDanmakuOffset(offsetSec) {
     overlay.postMessage("set-danmaku-offset", { offset: danmakuTimeOffsetSec });
   }
   sidebar.postMessage("danmaku-state", { danmakuTimeOffsetSec: danmakuTimeOffsetSec });
+}
+
+function applyDanmakuFont(fontFamily, fontWeight) {
+  danmakuFontFamily = fontFamily || "";
+  danmakuFontWeight = fontWeight || "";
+  preferences.set("danmakuFontFamily", danmakuFontFamily);
+  preferences.set("danmakuFontWeight", danmakuFontWeight);
+  syncPreferencesSoon();
+  if (overlayReady) {
+    overlay.postMessage("set-danmaku-font", { fontFamily: danmakuFontFamily, fontWeight: danmakuFontWeight });
+  }
+  sidebar.postMessage("danmaku-state", { danmakuFontFamily: danmakuFontFamily, danmakuFontWeight: danmakuFontWeight });
 }
 
 function findDanmakuFileByPath(path) {
@@ -342,6 +356,8 @@ function applyDanmakuFilter(offset, limit) {
     commentLimit: commentLimit,
     scrollSpeed: scrollSpeed,
     danmakuTimeOffsetSec: danmakuTimeOffsetSec,
+    danmakuFontFamily: danmakuFontFamily,
+    danmakuFontWeight: danmakuFontWeight,
     preservePosition: true,
   });
   sendDanmakuFilterInfo();
@@ -1105,6 +1121,8 @@ function markOverlayReady() {
     commentLimit: commentLimit,
     scrollSpeed: scrollSpeed,
     danmakuTimeOffsetSec: danmakuTimeOffsetSec,
+    danmakuFontFamily: danmakuFontFamily,
+    danmakuFontWeight: danmakuFontWeight,
     danmakuForceSimplified: danmakuForceSimplified
   });
 
@@ -1328,6 +1346,10 @@ function registerSidebarHandlers() {
     applyDanmakuOffset(data.offset);
   });
 
+  sidebar.onMessage("set-danmaku-font", function (data) {
+    applyDanmakuFont(data.fontFamily, data.fontWeight);
+  });
+
   sidebar.onMessage("adjust-danmaku-offset", function (data) {
     var delta = parseFloat(data.delta);
     if (isNaN(delta)) delta = 0;
@@ -1370,6 +1392,8 @@ function registerSidebarHandlers() {
       commentLimit: commentLimit,
       scrollSpeed: scrollSpeed,
       danmakuTimeOffsetSec: danmakuTimeOffsetSec,
+      danmakuFontFamily: danmakuFontFamily,
+      danmakuFontWeight: danmakuFontWeight,
       danmakuForceSimplified: danmakuForceSimplified,
       danmakuFileType: currentDanmakuStatus.fileType,
       danmakuFileName: currentDanmakuStatus.fileName,
