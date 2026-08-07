@@ -41,7 +41,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 普通设置顶部的「风格预设」可一键切换：
 
 - **Nico**：恢复全部默认值（字体缩放 100%、粗细 400、描边 2.8px、滚动速度 100%）
-- **Bilibili**：字体缩放 40%、粗细 200、描边 3.5px、滚动速度 50%
+- **Bilibili**：字体缩放 35%、粗细 200、描边 3.5px、滚动速度 50%
 
 也可通过「字体缩放」「滚动速度」「字体粗细」等选项手动微调。
 
@@ -139,7 +139,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 通常設定の上部にある「スタイルプリセット」でワンクリック切り替え：
 
 - **Nico**：全項目を既定値に戻す（フォント倍率 100%、太さ 400、縁取り 2.8px、スクロール速度 100%）
-- **Bilibili**：フォント倍率 40%、太さ 200、縁取り 3.5px、スクロール速度 50%
+- **Bilibili**：フォント倍率 35%、太さ 200、縁取り 3.5px、スクロール速度 50%
 
 「フォント倍率」「スクロール速度」「フォントの太さ」などのオプションで手動微調整も可能です。
 
@@ -210,7 +210,7 @@ Danmaku appearance can be freely combined via the customization options:
 The **Style Preset** dropdown at the top of the general settings applies presets in one click:
 
 - **Nico**: restores all defaults (Font Scale 100%, Weight 400, Stroke Width 2.8px, Scroll Speed 100%)
-- **Bilibili**: Font Scale 40%, Weight 200, Stroke Width 3.5px, Scroll Speed 50%
+- **Bilibili**: Font Scale 35%, Weight 200, Stroke Width 3.5px, Scroll Speed 50%
 
 Manual fine-tuning is also available via **Font Scale**, **Scroll Speed**, and **Weight**.
 

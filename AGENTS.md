@@ -90,7 +90,7 @@ All controls live in the sidebar. General settings (top): Style Preset. Advanced
 ```js
 var STYLE_PRESETS = {
   nico:     { fontScale: 1.0, fontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },  // defaults
-  bilibili: { fontScale: 0.4, fontWeight: "200", strokeWidth: 3.5, scrollSpeed: 0.5 },
+  bilibili: { fontScale: 0.35, fontWeight: "200", strokeWidth: 3.5, scrollSpeed: 0.5 },
 };
 ```
 
