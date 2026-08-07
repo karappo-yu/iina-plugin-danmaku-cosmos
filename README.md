@@ -77,8 +77,6 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 在侧边栏「高级设置」中切换渲染模式。
 
-> **快放/慢放提示**：CSS 模式为性能考虑未适配快放/慢放（弹幕不随播放速度变化）。需要快放/慢放时请切换至 Canvas 模式。
-
 ### 弹幕文件加载
 
 #### 自动加载
@@ -102,12 +100,15 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - Canvas 模式下字符画在 IINA 的 WebKit 渲染中可能出现错位（Safari canvas 2D 无 GPU 加速）
 - 文件名包含特殊字符（如 `[`、`]`）可能导致自动加载失败
 - 最小化窗口后再恢复，弹幕会重新渲染（已知限制）
+- CSS 模式为性能考虑未适配快放/慢放（弹幕不随播放速度变化），需要快放/慢放时请切换至 Canvas 模式
 
 ---
 
 ## 日本語
 
 > **注意**：本プラグインは niconico コメントスタイルを中心に設計されており、Bilibili など中国語コメントフォーマットのサポートは限定的です。中国語コメントは既定で niconico スタイルで描画され、スタイルプリセットで Bilibili スタイルに切り替え可能です。Bilibili 固有の高度なコメント（mode 7）、スクリプトコメント（mode 8）、BAS コメント（mode 9）などには対応していません。
+
+> **注意**：CSS モードはパフォーマンス上の理由から早送り/スロー再生に未対応です（コメントが再生速度に追従しません）。早送り/スロー再生時は Canvas モードに切り替えてください。
 
 ### インストール
 
@@ -125,7 +126,6 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **デュアル描画モード**：
   - **CSS モード**（デフォルト）：WebKit GPU 合成加速（`transform` + `will-change`）により、IINA の WKWebView で Canvas より滑らかに描画
   - **Canvas モード**：改造 niconicomments、Canvas 描画が必要な場合に使用
-  - **早送り/スロー再生について**：CSS モードはパフォーマンス上の理由から早送り/スロー再生に未対応です（コメントが再生速度に追従しません）。早送り/スロー再生時は Canvas モードに切り替えてください。
 - **自動読み込み**：同じフォルダから優先順位に従って自動検索
 - **手動読み込み**：メニューやサイドバーからコメントファイルを選択
 - **サイドバーコントロール**：コメント表示、描画モード、繁簡変換、透明度、フォント倍率、スクロール速度などをリアルタイム調整
@@ -241,8 +241,6 @@ The plugin integrates the dandanplay open platform API for automatic network dan
 
 Toggle between modes in the sidebar's Advanced settings.
 
-> **Playback speed note**: CSS mode does not adapt to fast/slow playback for performance reasons (danmaku won't follow the playback speed). Switch to Canvas mode when using fast/slow playback.
-
 ### Loading Comment Files
 
 #### Auto Load
@@ -264,6 +262,7 @@ Automatically searches in the same directory with this priority:
 - This plugin is designed around the niconico comment style. Bilibili and other Chinese danmaku formats have limited support — they are rendered in niconico style, and Bilibili-specific features like advanced comments (mode 7), scripting comments (mode 8), and BAS comments (mode 9) are not supported
 - Comment Art (CA) vertical positioning may differ slightly between CSS and Canvas modes
 - Canvas mode CA may appear misaligned in IINA's WebKit renderer (Safari canvas 2D lacks GPU acceleration)
+- CSS mode does not adapt to fast/slow playback for performance reasons (danmaku won't follow the playback speed); switch to Canvas mode when using fast/slow playback
 - Filenames with special characters (like `[`, `]`) may cause auto-load to fail
 - Minimizing and restoring the window causes danmaku to re-render (known limitation)
 
