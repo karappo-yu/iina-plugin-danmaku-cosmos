@@ -505,8 +505,8 @@ function updateFontUI() {
 
 var STYLE_PRESETS = {
   nico: { fontScale: 1.0, fontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },
-  balanced: { fontScale: 0.5, fontWeight: "400", strokeWidth: 3, scrollSpeed: 0.65 },
-  bilibili: { fontScale: 0.35, fontWeight: "200", strokeWidth: 3.5, scrollSpeed: 0.5 }
+  balanced: { fontScale: 0.5, fontWeight: "400", strokeWidth: 3, scrollSpeed: 0.5 },
+  bilibili: { fontScale: 0.35, fontWeight: "200", strokeWidth: 3.5, scrollSpeed: 0.4 }
 };
 
 function applyStylePreset(p) {

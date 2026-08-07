@@ -29,7 +29,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **侧边栏控制面板**：实时调整弹幕开关、渲染模式、繁简转换、透明度、字体缩放、滚动速度等
 - **弹幕时间偏移**：在高级设置中可手动输入偏移秒数，或按 A / D 键快速回退/前进，用于调整弹幕显示时间
 - **弹幕字体设置**：在高级设置中可选择字体预设（日文/中文字体）或自定义字体，并可调节粗细，用于调整弹幕的显示效果
-- **滚动速度控制**：在高级设置中可调节滚动弹幕的速度（50%~100%，仅调慢），固定弹幕不受影响
+- **滚动速度控制**：在高级设置中可调节滚动弹幕的速度（25%~100%，仅调慢），固定弹幕不受影响
 
 ### 风格调节
 
@@ -41,8 +41,8 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 普通设置顶部的「风格预设」可一键切换：
 
 - **Nico**：恢复全部默认值（字体缩放 100%、粗细 400、描边 2.8px、滚动速度 100%）
-- **平衡（Balanced）**：字体缩放 50%、粗细 400、描边 3px、滚动速度 65%
-- **Bilibili**：字体缩放 35%、粗细 200、描边 3.5px、滚动速度 50%
+- **平衡（Balanced）**：字体缩放 50%、粗细 400、描边 3px、滚动速度 50%
+- **Bilibili**：字体缩放 35%、粗细 200、描边 3.5px、滚动速度 40%
 
 也可通过「字体缩放」「滚动速度」「字体粗细」等选项手动微调。
 
@@ -128,7 +128,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **サイドバーコントロール**：コメント表示、描画モード、繁簡変換、透明度、フォント倍率、スクロール速度などをリアルタイム調整
 - **コメントタイムオフセット**：詳細設定で秒数を入力したり、A / D キーで素早く巻き戻し／進めることができ、コメントの表示時間を調整できます
 - **コメントフォント設定**：詳細設定でフォント（日本語・中国語フォントのプリセットやカスタム）と太さを選択でき、コメントの表示効果を調整できます
-- **スクロール速度調整**：詳細設定でスクロールコメントの速度を調整できます（50%〜100%、減速のみ）。固定コメントには影響しません
+- **スクロール速度調整**：詳細設定でスクロールコメントの速度を調整できます（25%〜100%、減速のみ）。固定コメントには影響しません
 
 ### スタイル調整
 
@@ -140,8 +140,8 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 通常設定の上部にある「スタイルプリセット」でワンクリック切り替え：
 
 - **Nico**：全項目を既定値に戻す（フォント倍率 100%、太さ 400、縁取り 2.8px、スクロール速度 100%）
-- **バランス**：フォント倍率 50%、太さ 400、縁取り 3px、スクロール速度 65%
-- **Bilibili**：フォント倍率 35%、太さ 200、縁取り 3.5px、スクロール速度 50%
+- **バランス**：フォント倍率 50%、太さ 400、縁取り 3px、スクロール速度 50%
+- **Bilibili**：フォント倍率 35%、太さ 200、縁取り 3.5px、スクロール速度 40%
 
 「フォント倍率」「スクロール速度」「フォントの太さ」などのオプションで手動微調整も可能です。
 
@@ -200,7 +200,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **Sidebar control panel**: Real-time adjustment of danmaku visibility, render mode, Chinese conversion, opacity, font scale, scroll speed, and more
 - **Danmaku time offset**: Adjust timing in Advanced settings by entering a seconds offset, or use A / D keys to quickly rewind or advance to change the display timing of danmaku
 - **Danmaku font settings**: Choose a font (Japanese/Chinese presets or custom) and weight in Advanced settings to adjust the danmaku appearance
-- **Scroll speed control**: Adjust the scrolling danmaku speed in Advanced settings (50%–100%, slow-down only); fixed comments are unaffected
+- **Scroll speed control**: Adjust the scrolling danmaku speed in Advanced settings (25%–100%, slow-down only); fixed comments are unaffected
 
 ### Style Adjustment
 
@@ -212,8 +212,8 @@ Danmaku appearance can be freely combined via the customization options:
 The **Style Preset** dropdown at the top of the general settings applies presets in one click:
 
 - **Nico**: restores all defaults (Font Scale 100%, Weight 400, Stroke Width 2.8px, Scroll Speed 100%)
-- **Balanced**: Font Scale 50%, Weight 400, Stroke Width 3px, Scroll Speed 65%
-- **Bilibili**: Font Scale 35%, Weight 200, Stroke Width 3.5px, Scroll Speed 50%
+- **Balanced**: Font Scale 50%, Weight 400, Stroke Width 3px, Scroll Speed 50%
+- **Bilibili**: Font Scale 35%, Weight 200, Stroke Width 3.5px, Scroll Speed 40%
 
 Manual fine-tuning is also available via **Font Scale**, **Scroll Speed**, and **Weight**.
 

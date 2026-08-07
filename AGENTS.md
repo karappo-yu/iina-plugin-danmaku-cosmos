@@ -90,8 +90,8 @@ All controls live in the sidebar. General settings (top): Style Preset. Advanced
 ```js
 var STYLE_PRESETS = {
   nico:     { fontScale: 1.0, fontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },  // defaults
-  balanced: { fontScale: 0.5, fontWeight: "400", strokeWidth: 3, scrollSpeed: 0.65 },
-  bilibili: { fontScale: 0.35, fontWeight: "200", strokeWidth: 3.5, scrollSpeed: 0.5 },
+  balanced: { fontScale: 0.5, fontWeight: "400", strokeWidth: 3, scrollSpeed: 0.5 },
+  bilibili: { fontScale: 0.35, fontWeight: "200", strokeWidth: 3.5, scrollSpeed: 0.4 },
 };
 ```
 
@@ -112,7 +112,7 @@ Slider 25%–100% (step 5) → `set-fontscale` → `canvasFontScale`. CSS mode k
 The engine's `nakaCommentSpeedOffset` only scales the `width × offset` term in `speed = (commentDrawRange + width×offset) / (long + 100)` and is diluted by the fixed 1920px draw range (~10–26% effect over the UI range) — it does NOT provide perceivable speed control. Real control is implemented by injecting the nicoscript duration command into scrolling danmaku:
 
 - **Command format is `@<seconds>`** (e.g. `@3` = 3s), NOT `long:3` (`RE_LONG = /^[@＠]([0-9.]+)/` in engine parseCommand)
-- Target multiplier `k` (0.5–1.0 from the slider) → `longSecs = 4/k - 1` (exact for the `+100` offset in the denominator); `k >= 1` (100%) skips injection entirely
+- Target multiplier `k` (0.25–1.0 from the slider) → `longSecs = 4/k - 1` (exact for the `+100` offset in the denominator); `k >= 1` (100%) skips injection entirely
 - **Scroll danmaku detection**: explicit `naka` in commands OR (no `ue` AND no `shita`) — local nico XML default danmaku have an EMPTY mail attribute (naka is implicit); DDP conversion pushes explicit `naka`
 - Danmaku with their own `@N` duration command are skipped (respect the original)
 - Fixed danmaku (ue/shita) are never touched
@@ -169,7 +169,7 @@ All communication uses `postMessage` / `onMessage` across three channels:
 | `overlay → main.js` | One-way | Canvas unsupported notice, jump commands, seek state |
 | `sidebar → main.js` | One-way | Toggle, param changes, file operations |
 
-Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-stroke-width`, `set-stroke-opacity`, `set-stroke-color`, `set-stroke-inversion-color`, `set-comment-limit`, `set-scroll-speed` (multiplier 0.5–1.0), `set-danmaku-offset`, `set-danmaku-font`, `set-style-preset` (persisted in main.js only, not forwarded).
+Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-stroke-width`, `set-stroke-opacity`, `set-stroke-color`, `set-stroke-inversion-color`, `set-comment-limit`, `set-scroll-speed` (multiplier 0.25–1.0), `set-danmaku-offset`, `set-danmaku-font`, `set-style-preset` (persisted in main.js only, not forwarded).
 
 **Important**: overlay and sidebar do **NOT** communicate directly — all traffic goes through `main.js`.
 
@@ -239,7 +239,7 @@ Based on the `niconicomments` third-party library. All formats are normalized vi
 - **Backtick sanitization**: Always sanitize strings with U+0060 backtick before `sidebar.postMessage`.
 - **Preferences sync**: Use `syncPreferencesSoon()` (debounced) instead of calling `preferences.sync()` directly.
 - **i18n**: All UI strings in `sidebar/index.js` `i18n` dict — three languages (`en` plain, `ja`/`zh` as `\uXXXX` escapes). New UI strings must be added to all three. Japanese terminology follows niconico official usage: use コメント (not 弾幕) except when matching literal folder names.
-- **Style presets**: New presets = one entry in `STYLE_PRESETS` + an `<option>` in `sidebar/index.html`. Parameters must fit existing slider ranges (fontScale 25–100%, weight 100–900 step 50, strokeWidth 1–8, scrollSpeed 0.5–1.0).
+- **Style presets**: New presets = one entry in `STYLE_PRESETS` + an `<option>` in `sidebar/index.html`. Parameters must fit existing slider ranges (fontScale 25–100%, weight 100–900 step 50, strokeWidth 1–8, scrollSpeed 0.25–1.0).
 
 ### Logging Conventions
 
