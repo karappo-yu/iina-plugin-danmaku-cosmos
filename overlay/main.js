@@ -269,6 +269,10 @@ function initCanvasRenderer(data) {
     },
   });
   nicoRawData = data;
+  // 初始化时同步当前播放速度(CSS 模式滚动动画时长按倍率缩放)
+  if (niconiComments && niconiComments.setPlaybackSpeed) {
+    niconiComments.setPlaybackSpeed(playbackSpeed);
+  }
   bindCanvasEvents(niconiComments);
   drawCanvasAtVpos(canvasGetCurrentTime() * 100, true);
   if (isPaused && useCssMode) {
@@ -415,6 +419,10 @@ iina.onMessage("playback-speed", (data) => {
   const anchoredTime = canvasGetCurrentTime();
   playbackSpeed = data && data.speed ? data.speed : 1.0;
   canvasSyncAnchor(anchoredTime);
+  // 通知 CSS 渲染器:速度变化时重设滚动动画时长(1x 无操作)
+  if (niconiComments && niconiComments.setPlaybackSpeed) {
+    niconiComments.setPlaybackSpeed(playbackSpeed);
+  }
 });
 
 iina.onMessage("toggle-danmaku", (data) => {
