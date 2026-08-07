@@ -269,6 +269,7 @@ var i18n = {
 
     advanced: "Advanced",
     style_preset: "Style Preset",
+    style_balanced: "Balanced",
     danmaku_offset: "Danmaku Offset (s)",
     danmaku_offset_hint: "A: rewind • D: advance",
     danmaku_font: "Font",
@@ -324,6 +325,7 @@ var i18n = {
 
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
     style_preset: "\u30b9\u30bf\u30a4\u30eb\u30d7\u30ea\u30bb\u30c3\u30c8",
+    style_balanced: "\u30d0\u30e9\u30f3\u30b9",
     danmaku_offset: "\u30b3\u30e1\u30f3\u30c8\u6642\u9593\u30aa\u30d5\u30bb\u30c3\u30c8 (\u79d2)",
     danmaku_offset_hint: "A: \u5de5\u5e30\u3057\u3082\u3069\u3057 • D: \u9032\u3080",
     danmaku_font: "\u30d5\u30a9\u30f3\u30c8",
@@ -379,6 +381,7 @@ var i18n = {
 
     advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
     style_preset: "\u98ce\u683c\u9884\u8bbe",
+    style_balanced: "\u5e73\u8861",
     danmaku_offset: "\u5f39\u5e55\u65f6\u95f4\u504f\u79fb (\u79d2)",
     danmaku_offset_hint: "A: \u5feb\u9000 • D: \u5feb\u8fdb",
     danmaku_font: "\u5b57\u4f53",
@@ -502,6 +505,7 @@ function updateFontUI() {
 
 var STYLE_PRESETS = {
   nico: { fontScale: 1.0, fontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },
+  balanced: { fontScale: 0.5, fontWeight: "400", strokeWidth: 3, scrollSpeed: 0.65 },
   bilibili: { fontScale: 0.35, fontWeight: "200", strokeWidth: 3.5, scrollSpeed: 0.5 }
 };
 
