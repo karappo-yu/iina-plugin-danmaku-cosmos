@@ -42,7 +42,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 - **Nico**：恢复全部默认值（字体缩放 100%、粗细 400、描边 2.8px、滚动速度 100%）
 - **平衡（Balanced）**：字体缩放 50%、粗细 400、描边 3px、滚动速度 50%
-- **Bilibili**：字体缩放 35%、粗细 200、描边 3.5px、滚动速度 40%
+- **Bilibili**：字体缩放 35%、粗细 200、描边 2.5px、滚动速度 40%
 
 也可通过「字体缩放」「滚动速度」「字体粗细」等选项手动微调。
 
@@ -141,7 +141,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 - **Nico**：全項目を既定値に戻す（フォント倍率 100%、太さ 400、縁取り 2.8px、スクロール速度 100%）
 - **バランス**：フォント倍率 50%、太さ 400、縁取り 3px、スクロール速度 50%
-- **Bilibili**：フォント倍率 35%、太さ 200、縁取り 3.5px、スクロール速度 40%
+- **Bilibili**：フォント倍率 35%、太さ 200、縁取り 2.5px、スクロール速度 40%
 
 「フォント倍率」「スクロール速度」「フォントの太さ」などのオプションで手動微調整も可能です。
 
@@ -213,7 +213,7 @@ The **Style Preset** dropdown at the top of the general settings applies presets
 
 - **Nico**: restores all defaults (Font Scale 100%, Weight 400, Stroke Width 2.8px, Scroll Speed 100%)
 - **Balanced**: Font Scale 50%, Weight 400, Stroke Width 3px, Scroll Speed 50%
-- **Bilibili**: Font Scale 35%, Weight 200, Stroke Width 3.5px, Scroll Speed 40%
+- **Bilibili**: Font Scale 35%, Weight 200, Stroke Width 2.5px, Scroll Speed 40%
 
 Manual fine-tuning is also available via **Font Scale**, **Scroll Speed**, and **Weight**.
 
