@@ -872,6 +872,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
       strokeWidth: strokeWidth,
       commentLimit: commentLimit,
       scrollSpeed: scrollSpeed,
+      preservePosition: true,
     };
     if (overlayReady) {
       overlay.postMessage("load-danmaku", payload);
@@ -1089,6 +1090,7 @@ function loadLocalDanmaku(fileInfo) {
     strokeWidth: strokeWidth,
     commentLimit: commentLimit,
     scrollSpeed: scrollSpeed,
+    preservePosition: true,
   };
 
   if (fileType === 'nico-json') {
@@ -1221,6 +1223,7 @@ function loadManualDanmakuFile(path) {
     strokeWidth: strokeWidth,
     commentLimit: commentLimit,
     scrollSpeed: scrollSpeed,
+    preservePosition: true,
   };
 
   if (manualFileType === 'nico-json') {
@@ -1490,6 +1493,7 @@ function registerSidebarHandlers() {
       strokeWidth: strokeWidth,
       commentLimit: commentLimit,
       scrollSpeed: scrollSpeed,
+      preservePosition: true,
     };
 
     if (fileType === 'nico-json') {
