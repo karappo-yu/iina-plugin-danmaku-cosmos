@@ -142,6 +142,7 @@ function applyScrollSpeedToNicoJson(data) {
   for (var i = 0; i < data.length; i++) {
     var thread = data[i];
     if (!thread) continue;
+    if (thread.fork === 'owner') continue; // owner 弹幕(投稿者弹幕)不注入,保持默认速度
     var comments = Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null);
     if (!comments) continue;
     for (var j = 0; j < comments.length; j++) {
