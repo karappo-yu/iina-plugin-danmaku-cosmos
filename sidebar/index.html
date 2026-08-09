@@ -49,11 +49,11 @@
     <div class="section">
       <div class="control-row">
         <span class="toggle-label" data-i18n="style_preset">样式预设</span>
-        <select id="style-preset-select" data-clickable>
-          <option value="nico" selected>Nico</option>
-          <option value="balanced" data-i18n="style_balanced">Balanced</option>
-          <option value="bilibili">Bilibili</option>
-        </select>
+        <div class="segmented" id="style-preset-segmented" data-clickable style="margin-left:auto;width:190px">
+          <button class="seg-item active" data-preset="nico">Nico</button>
+          <button class="seg-item" data-preset="balanced" data-i18n="style_balanced">Balanced</button>
+          <button class="seg-item" data-preset="bilibili">Bilibili</button>
+        </div>
       </div>
     </div>
 

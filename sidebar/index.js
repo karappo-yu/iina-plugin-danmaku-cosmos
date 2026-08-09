@@ -22,7 +22,7 @@ var fontCustomRow = document.getElementById("danmaku-font-custom-row");
 var fontCustomInput = document.getElementById("danmaku-font-custom");
 var fontWeightSlider = document.getElementById("danmaku-font-weight-slider");
 var fontWeightValue = document.getElementById("danmaku-font-weight-value");
-var stylePresetSelect = document.getElementById("style-preset-select");
+var stylePresetSegmented = document.getElementById("style-preset-segmented");
 var filterSection = document.getElementById("danmaku-filter-section");
 var filterDateNew = document.getElementById("danmaku-filter-date-new");
 var filterDateOld = document.getElementById("danmaku-filter-date-old");
@@ -555,8 +555,16 @@ function updateUI() {
   if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified; 
   updateOffsetUI();
   updateFontUI();
-  if (stylePresetSelect) stylePresetSelect.value = state.stylePreset;
+  syncStylePresetUI();
   updateFilterUI();
+}
+
+function syncStylePresetUI() {
+  if (!stylePresetSegmented) return;
+  var items = stylePresetSegmented.querySelectorAll(".seg-item");
+  for (var i = 0; i < items.length; i++) {
+    items[i].classList.toggle("active", items[i].dataset.preset === state.stylePreset);
+  }
 }
 
 function updateFilterUI() {
@@ -759,13 +767,17 @@ speedSlider.addEventListener("input", function () {
   iina.postMessage("set-scroll-speed", { speed: val });
 });
 
-if (stylePresetSelect) {
-  stylePresetSelect.addEventListener("change", function () {
-    var preset = STYLE_PRESETS[stylePresetSelect.value];
+if (stylePresetSegmented) {
+  stylePresetSegmented.addEventListener("click", function (e) {
+    var item = e.target && e.target.closest ? e.target.closest(".seg-item") : null;
+    if (!item) return;
+    var presetName = item.dataset.preset;
+    var preset = STYLE_PRESETS[presetName];
     if (!preset) return;
     applyStylePreset(preset);
-    state.stylePreset = stylePresetSelect.value;
-    iina.postMessage("set-style-preset", { preset: stylePresetSelect.value });
+    state.stylePreset = presetName;
+    iina.postMessage("set-style-preset", { preset: presetName });
+    syncStylePresetUI();
   });
 }
 
