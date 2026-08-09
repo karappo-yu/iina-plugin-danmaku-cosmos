@@ -527,24 +527,6 @@ input[type="color"]::-webkit-color-swatch {
   padding: 2px 6px;
 }
 
-/* Unknown files toggle */
-.danmaku-file-unknown-toggle {
-  font-size: 11px;
-  color: var(--tertiary-label);
-  cursor: pointer;
-  padding: 6px 8px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  user-select: none;
-  border-radius: var(--radius-sm);
-}
-
-.danmaku-file-unknown-toggle:hover {
-  color: var(--secondary-label);
-  background: var(--bg-hover);
-}
-
 .toggle-arrow {
   display: inline-block;
   transition: transform 0.2s;
@@ -554,14 +536,6 @@ input[type="color"]::-webkit-color-swatch {
 
 .toggle-arrow.expanded {
   transform: rotate(90deg);
-}
-
-.danmaku-file-unknown-content {
-  display: none;
-}
-
-.danmaku-file-unknown-content.expanded {
-  display: block;
 }
 
 /* File info card */

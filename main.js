@@ -424,7 +424,6 @@ function findDanmakuByEpisode(videoUrl) {
   var prefixJsonFiles = [];
   var epNumXmlFiles = [];
   var epNumJsonFiles = [];
-  var unknownFiles = [];
   var seenPaths = {};
 
   for (var d = 0; d < searchDirs.length; d++) {
@@ -466,15 +465,14 @@ function findDanmakuByEpisode(videoUrl) {
         if (ext === 'xml') prefixXmlFiles.push(fileInfo); else prefixJsonFiles.push(fileInfo);
       } else if (videoEpNum !== null && fileEpNum !== null && fileEpNum === videoEpNum) {
         if (ext === 'xml') epNumXmlFiles.push(fileInfo); else epNumJsonFiles.push(fileInfo);
-      } else if (fileEpNum === null) {
-        unknownFiles.push(fileInfo);
       }
+      // Files that don't match the video (no episode number) are skipped entirely
     }
   }
 
   var xmlFiles = exactXmlFiles.concat(prefixXmlFiles).concat(epNumXmlFiles);
   var jsonFiles = exactJsonFiles.concat(prefixJsonFiles).concat(epNumJsonFiles);
-  return { xmlFiles: xmlFiles, jsonFiles: jsonFiles, unknownFiles: unknownFiles };
+  return { xmlFiles: xmlFiles, jsonFiles: jsonFiles, unknownFiles: [] };
 }
 
 function encodeContent(str) {
@@ -1522,7 +1520,6 @@ function registerSidebarHandlers() {
 
       if (ext === 'xml') danmakuFileList.xmlFiles.push(fileInfo);
       else if (ext === 'json') danmakuFileList.jsonFiles.push(fileInfo);
-      else danmakuFileList.unknownFiles.push(fileInfo);
 
       danmakuFileList.selectedPaths = [];
 

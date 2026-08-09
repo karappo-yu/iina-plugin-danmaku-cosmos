@@ -101,9 +101,7 @@ var state = {
 var fileListState = {
   xmlFiles: [],
   jsonFiles: [],
-  unknownFiles: [],
   selectedPaths: [],
-  unknownExpanded: false,
   errorPaths: {}
 };
 
@@ -168,7 +166,6 @@ function renderFileList() {
   var lang = getBrowserLang();
   var xmlTitle = lang === 'zh' ? 'XML 弹幕' : lang === 'ja' ? 'XML\u30b3\u30e1\u30f3\u30c8' : 'XML Danmaku';
   var jsonTitle = lang === 'zh' ? 'JSON 弹幕' : lang === 'ja' ? 'JSON\u30b3\u30e1\u30f3\u30c8' : 'JSON Danmaku';
-  var unknownTitle = lang === 'zh' ? '\u5176\u4ed6\u5f39\u5e55' : lang === 'ja' ? '\u305d\u306e\u4ed6\u30b3\u30e1\u30f3\u30c8' : 'Other Danmaku';
 
   if (fileListState.xmlFiles.length > 0) {
     var xmlGroup = createFileGroup(xmlTitle, fileListState.xmlFiles, fileListState.selectedPaths);
@@ -177,28 +174,6 @@ function renderFileList() {
   if (fileListState.jsonFiles.length > 0) {
     var jsonGroup = createFileGroup(jsonTitle, fileListState.jsonFiles, fileListState.selectedPaths);
     if (jsonGroup) container.appendChild(jsonGroup);
-  }
-  if (fileListState.unknownFiles.length > 0) {
-    var toggleEl = document.createElement('div');
-    toggleEl.className = 'danmaku-file-unknown-toggle';
-    var arrow = document.createElement('span');
-    arrow.className = 'toggle-arrow' + (fileListState.unknownExpanded ? ' expanded' : '');
-    arrow.textContent = '\u25b6';
-    var label = document.createElement('span');
-    label.textContent = unknownTitle + ' (' + fileListState.unknownFiles.length + ')';
-    toggleEl.appendChild(arrow);
-    toggleEl.appendChild(label);
-    toggleEl.addEventListener('click', function () {
-      fileListState.unknownExpanded = !fileListState.unknownExpanded;
-      renderFileList();
-    });
-    container.appendChild(toggleEl);
-
-    var unknownContent = document.createElement('div');
-    unknownContent.className = 'danmaku-file-unknown-content' + (fileListState.unknownExpanded ? ' expanded' : '');
-    var unknownGroup = createFileGroup('', fileListState.unknownFiles, fileListState.selectedPaths);
-    if (unknownGroup) unknownContent.appendChild(unknownGroup);
-    container.appendChild(unknownContent);
   }
 
   updateFileCount();
@@ -209,7 +184,7 @@ function updateFileCount() {
   if (!countEl) return;
   var lang = getBrowserLang();
   var selected = fileListState.selectedPaths.length;
-  var total = fileListState.xmlFiles.length + fileListState.jsonFiles.length + fileListState.unknownFiles.length;
+  var total = fileListState.xmlFiles.length + fileListState.jsonFiles.length;
   if (lang === 'zh') countEl.textContent = '\u5df2\u9009 ' + selected + ' / ' + total + ' \u4e2a\u6587\u4ef6';
   else if (lang === 'ja') countEl.textContent = selected + ' / ' + total + ' \u30d5\u30a1\u30a4\u30eb\u9078\u629e';
   else countEl.textContent = selected + ' / ' + total + ' selected';
@@ -217,14 +192,14 @@ function updateFileCount() {
 
 function updateDanmakuInfoUI() {
   var fileListSection = document.getElementById('danmaku-file-list-section');
-  var hasDanmaku = state.danmakuLoaded || fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0 || fileListState.unknownFiles.length > 0;
+  var hasDanmaku = state.danmakuLoaded || fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0;
   if (fileListSection) fileListSection.style.display = '';
   toggleDanmaku.disabled = !hasDanmaku;
   if (!hasDanmaku) toggleDanmaku.checked = false;
 }
 
 function updateEnabledUI() {
-  var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0 || fileListState.unknownFiles.length > 0;
+  var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0;
   var show = state.enabled && (state.danmakuLoaded || hasFiles);
   settingsSections.forEach(function(sec) {
     if (sec) sec.style.display = show ? '' : 'none';
@@ -512,7 +487,7 @@ function applyStylePreset(p) {
 }
 
 function updateUI() {
-  var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0 || fileListState.unknownFiles.length > 0;
+  var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0;
   var hasDanmaku = state.danmakuLoaded || hasFiles;
   toggleDanmaku.checked = state.enabled && hasDanmaku;
   toggleDanmaku.disabled = !hasDanmaku;
@@ -984,7 +959,6 @@ iina.onMessage("danmaku-file-list", function (data) {
   }
   fileListState.xmlFiles = data.xmlFiles || [];
   fileListState.jsonFiles = data.jsonFiles || [];
-  fileListState.unknownFiles = data.unknownFiles || [];
   fileListState.selectedPaths = data.selectedPaths || [];
   renderFileList();
   updateDanmakuInfoUI();
