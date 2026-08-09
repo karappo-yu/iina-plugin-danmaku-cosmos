@@ -35,6 +35,7 @@ body {
   font-size: 13px;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
     Roboto, "Helvetica Neue", sans-serif;
+  font-weight: 500;
   color: var(--label);
   background: none;
   overflow-y: auto;
@@ -812,4 +813,50 @@ kbd {
 /* Force dark (no light mode to match image) */
 @media (prefers-color-scheme: light) {
   /* still keep dark tokens so the panel always looks like the reference */
+}
+/* ========== Tab bar (IINA style: icon + text, active brightens) ========== */
+.tabbar {
+  display: flex;
+  align-items: center;
+  margin: -14px -16px 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 11px 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+.tab:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+.tab.active {
+  color: #fff;
+  font-weight: 700;
+}
+.tab svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  flex-shrink: 0;
+}
+.tab svg circle {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* Advanced tab: divider between switch / slider / misc groups (full-width) */
+.adv-separator {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  margin: 16px -16px;
 }

@@ -35,13 +35,11 @@ var densitySection = document.getElementById("danmaku-density-section");
 var densitySlider = document.getElementById("density-slider");
 var densityValue = document.getElementById("density-value");
 var densityCount = document.getElementById("density-count");
-var advancedToggle = document.getElementById("advanced-toggle");
-var advancedContent = document.getElementById("advanced-content");
-var advancedArrow = document.getElementById("advanced-arrow");
+var tabBasic = document.getElementById("tab-basic");
+var tabAdvanced = document.getElementById("tab-advanced");
+var tabButtons = document.querySelectorAll(".tabbar .tab");
 var fileAddBtn = document.getElementById("danmaku-file-add-btn");
 var commentLimitRow = document.getElementById("comment-limit-row");
-
-var advancedOpen = false;
 
 var ddpError = document.getElementById("dandanplay-error");
 var ddpMatches = document.getElementById("dandanplay-matches");
@@ -268,6 +266,8 @@ var i18n = {
     density_filter: "Count (/min)",
 
     advanced: "Advanced",
+    tab_basic: "Basic",
+    tab_advanced: "Advanced",
     style_preset: "Style Preset",
     style_balanced: "Balanced",
     danmaku_offset: "Danmaku Offset (s)",
@@ -324,6 +324,8 @@ var i18n = {
     density_filter: "\u6570\u91cf",
 
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
+    tab_basic: "\u57fa\u672c",
+    tab_advanced: "\u9ad8\u5ea6",
     style_preset: "\u30b9\u30bf\u30a4\u30eb\u30d7\u30ea\u30bb\u30c3\u30c8",
     style_balanced: "\u30d0\u30e9\u30f3\u30b9",
     danmaku_offset: "\u30b3\u30e1\u30f3\u30c8\u6642\u9593\u30aa\u30d5\u30bb\u30c3\u30c8 (\u79d2)",
@@ -380,6 +382,8 @@ var i18n = {
     density_filter: "\u6570\u91cf",
 
     advanced: "\u9ad8\u7ea7\u8bbe\u7f6e",
+    tab_basic: "\u57fa\u7840",
+    tab_advanced: "\u9ad8\u7ea7",
     style_preset: "\u98ce\u683c\u9884\u8bbe",
     style_balanced: "\u5e73\u8861",
     danmaku_offset: "\u5f39\u5e55\u65f6\u95f4\u504f\u79fb (\u79d2)",
@@ -640,11 +644,19 @@ toggleDanmaku.addEventListener("change", function () {
   iina.postMessage("toggle-danmaku");
 });
 
-advancedToggle.addEventListener("click", function () {
-  advancedOpen = !advancedOpen;
-  advancedContent.style.display = advancedOpen ? '' : 'none';
-  advancedArrow.textContent = advancedOpen ? '▼' : '▶';
-});
+// Tab switching (basic / advanced)
+if (tabButtons.length) {
+  tabButtons.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      var name = tab.dataset.tab;
+      tabButtons.forEach(function (t) {
+        t.classList.toggle("active", t === tab);
+      });
+      if (tabBasic) tabBasic.style.display = name === "basic" ? "" : "none";
+      if (tabAdvanced) tabAdvanced.style.display = name === "advanced" ? "" : "none";
+    });
+  });
+}
 
 if (fileAddBtn) {
   fileAddBtn.addEventListener("click", function () {
