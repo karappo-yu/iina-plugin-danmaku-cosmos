@@ -125,39 +125,19 @@ function createFileItem(fileInfo, isChecked, isDisabled) {
     iina.postMessage("select-danmaku-file", { path: fileInfo.path });
   });
 
-  var info = document.createElement('div');
-  info.className = 'danmaku-file-item-info';
+  // Track selector: solid dot when selected, empty placeholder otherwise
+  var selector = document.createElement('div');
+  selector.className = 'danmaku-file-selector';
+  var dot = document.createElement('div');
+  dot.className = isChecked ? 'danmaku-file-dot' : 'danmaku-file-empty-dot';
+  selector.appendChild(dot);
+  item.appendChild(selector);
 
   var name = document.createElement('span');
   name.className = 'danmaku-file-item-name';
   name.textContent = fileInfo.filename;
-  name.title = fileInfo.filename;
-
-  var type = document.createElement('span');
-  type.className = 'danmaku-file-item-type';
-  type.textContent = fileInfo.type;
-
-  info.appendChild(name);
-  info.appendChild(type);
-
-  var pathEl = document.createElement('span');
-  pathEl.className = 'danmaku-file-item-path';
-  pathEl.textContent = fileInfo.relativePath;
-  pathEl.title = fileInfo.relativePath;
-
-  var deleteBtn = document.createElement('button');
-  deleteBtn.className = 'danmaku-file-item-delete';
-  deleteBtn.textContent = '\u00d7';
-  deleteBtn.title = 'Delete';
-  deleteBtn.setAttribute('data-clickable', '');
-  deleteBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    iina.postMessage("danmaku-file-delete", { path: fileInfo.path });
-  });
-
-  item.appendChild(info);
-  item.appendChild(pathEl);
-  item.appendChild(deleteBtn);
+  name.title = fileInfo.relativePath || fileInfo.filename;
+  item.appendChild(name);
 
   if (fileListState.errorPaths[fileInfo.path]) {
     var errorEl = document.createElement('div');
@@ -173,10 +153,6 @@ function createFileGroup(title, files, selectedPaths) {
   if (files.length === 0) return null;
   var group = document.createElement('div');
   group.className = 'danmaku-file-group';
-  var titleEl = document.createElement('div');
-  titleEl.className = 'danmaku-file-group-title';
-  titleEl.textContent = title;
-  group.appendChild(titleEl);
   for (var i = 0; i < files.length; i++) {
     var isChecked = selectedPaths.indexOf(files[i].path) !== -1;
     group.appendChild(createFileItem(files[i], isChecked, false));

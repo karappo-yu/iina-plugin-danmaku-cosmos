@@ -424,72 +424,47 @@ input[type="color"]::-webkit-color-swatch {
   padding: 0 2px;
 }
 
-/* Track-style list item */
+/* Track-style list item (IINA danmaku file tracks) */
 .danmaku-file-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
+  padding: 2px 16px;
+  margin: 0 -16px;
   cursor: pointer;
   transition: background 0.12s;
-  background: var(--bg-group);
-  margin-bottom: 4px;
+  background: rgba(255, 255, 255, 0.1);
 }
-
-.danmaku-file-item:hover {
-  background: var(--bg-hover);
+/* Separator only between rows (no line at the very top or bottom of the list) */
+.danmaku-file-item + .danmaku-file-item {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
-
+/* No hover change; selection is indicated by the dot only */
 .danmaku-file-item.selected {
-  background: var(--bg-selected);
+  background: rgba(255, 255, 255, 0.1);
 }
 
-.danmaku-file-item input[type="checkbox"] {
-  margin: 0;
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
-/* Radio-style indicator for selected */
-.danmaku-file-item .item-radio {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid var(--secondary-label);
-  flex-shrink: 0;
-  position: relative;
-  transition: border-color 0.15s;
-}
-
-.danmaku-file-item.selected .item-radio {
-  border-color: var(--accent);
-}
-
-.danmaku-file-item.selected .item-radio::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.danmaku-file-item-info {
-  flex: 1;
-  min-width: 0;
+/* Selector: solid dot when selected, empty placeholder otherwise */
+.danmaku-file-selector {
+  width: 12px;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  overflow: hidden;
+  justify-content: flex-start;
+  flex-shrink: 0;
+}
+.danmaku-file-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #eee;
+}
+.danmaku-file-empty-dot {
+  width: 10px;
+  height: 10px;
 }
 
 .danmaku-file-item-name {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
@@ -498,23 +473,19 @@ input[type="color"]::-webkit-color-swatch {
   color: var(--label);
 }
 
-.danmaku-file-item-meta {
-  font-size: 11px;
-  color: var(--tertiary-label);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.danmaku-file-item-type {
-  font-size: 9px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--secondary-label);
+/* Source badge after the name (icon + label) */
+.danmaku-file-item-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
   flex-shrink: 0;
-  letter-spacing: 0.3px;
+}
+.danmaku-file-item-source svg {
+  width: 11px;
+  height: 11px;
+  fill: rgba(255, 255, 255, 0.55);
 }
 
 .danmaku-file-item-delete {
