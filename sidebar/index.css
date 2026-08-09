@@ -36,7 +36,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
     Roboto, "Helvetica Neue", sans-serif;
   color: var(--label);
-  background: var(--bg);
+  background: none;
   overflow-y: auto;
   -webkit-font-smoothing: antialiased;
 }
@@ -329,33 +329,63 @@ input[type="color"]::-webkit-color-swatch {
 /* ========== Segmented control style (for presets etc) ========== */
 .segmented {
   display: flex;
-  background: var(--bg-group);
-  border-radius: var(--radius-sm);
-  padding: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 0;
   gap: 0;
+  overflow: hidden;
 }
 
 .segmented button,
 .segmented .seg-item {
   flex: 1;
-  padding: 5px 8px;
+  padding: 6px 8px;
   font-size: 11px;
   font-family: inherit;
   font-weight: 500;
-  color: var(--secondary-label);
+  color: #fff;
   background: transparent;
   border: none;
-  border-radius: 5px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
+  position: relative;
 }
 
 .segmented button.active,
 .segmented .seg-item.active {
   color: #fff;
   background: var(--accent);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Pressed (mouse down): unselected segments fill with the same-size
+   lighter gray block as the selected blue, covering the separator line */
+.segmented .seg-item:not(.active):active {
+  background: rgb(143, 147, 159);
+}
+.segmented .seg-item:not(.active):active::before {
+  display: none;
+}
+.segmented .seg-item:not(.active):active + .seg-item::before {
+  display: none;
+}
+
+/* IINA segmented control: one container bar, thin white separators only
+   between UNSELECTED segments. Pseudo-element lines (zero layout width,
+   no border gap next to the selected segment). */
+.segmented .seg-item + .seg-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 18%;
+  bottom: 18%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.25);
+}
+.segmented .seg-item.active::before,
+.segmented .seg-item.active + .seg-item::before {
+  display: none;
 }
 
 /* ========== Danmaku file list (like video track list in image) ========== */
