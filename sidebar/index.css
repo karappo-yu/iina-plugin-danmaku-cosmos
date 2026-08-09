@@ -35,7 +35,7 @@ body {
   font-size: 13px;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
     Roboto, "Helvetica Neue", sans-serif;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--label);
   background: none;
   overflow-y: auto;
@@ -300,17 +300,17 @@ input[type="color"]::-webkit-color-swatch {
   font-size: 12px;
   font-family: inherit;
   font-weight: 500;
-  color: var(--accent);
-  background: rgba(10, 132, 255, 0.12);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .danmaku-file-action-btn:hover,
 .btn:hover {
-  background: rgba(10, 132, 255, 0.22);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .danmaku-file-action-btn:active,

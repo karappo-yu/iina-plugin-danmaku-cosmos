@@ -49,13 +49,25 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 ### 截图
 
-本地 niconico CA 弹幕：
+niconico 风格：
 
-<img src="png/兼容niconico的ca弹幕(本地弹幕).png" width="75%" alt="本地 niconico CA 弹幕" />
+<img src="png/nico_style.png" width="75%" alt="niconico 风格" />
 
-弹弹play 网络中文弹幕：
+Balanced 风格：
 
-<img src="png/网络中文弹幕截图.png" width="75%" alt="弹弹play 网络中文弹幕" />
+<img src="png/balance_style.png" width="75%" alt="Balanced 风格" />
+
+Bilibili 风格：
+
+<img src="png/bilibili_style.png" width="75%" alt="Bilibili 风格" />
+
+自定义风格：
+
+<img src="png/costom_style.png" width="75%" alt="自定义风格" />
+
+CA 弹幕：
+
+<img src="png/comment art.png" width="75%" alt="CA 弹幕" />
 
 ### 网络弹幕
 
