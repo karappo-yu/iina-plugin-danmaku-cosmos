@@ -283,6 +283,16 @@ function initCanvasRenderer(data) {
     const cssContainer = document.querySelector('[data-dm-css-container]');
     if (cssContainer) cssContainer.style.opacity = canvasOpacity;
   }
+  // 弹幕关闭状态下重建渲染器(改字体/描边等)时,renderer 会新建容器,
+  // 需恢复隐藏状态,否则弹幕会重新出现。
+  if (!danmakuVisible) {
+    const canvasEl = document.getElementById('niconicomments-canvas');
+    if (canvasEl) canvasEl.style.display = 'none';
+    const cssContainer = document.querySelector('[data-dm-css-container]');
+    if (cssContainer) cssContainer.style.display = 'none';
+    stopCanvasLoop();
+    if (niconiComments) niconiComments.clear();
+  }
 }
 
 function destroyCanvasRenderer() {
