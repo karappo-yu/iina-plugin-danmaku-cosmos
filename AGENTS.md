@@ -36,7 +36,7 @@ Danmaku Cosmos/
 ├── sidebar/                  # IINA sidebar control panel
 │   ├── index.html            # Layout (general settings incl. Style Preset; advanced settings)
 │   ├── index.css
-│   └── index.js              # UI logic, STYLE_PRESETS, i18n dict (en/ja/zh, ja/zh as \uXXXX escapes)
+│   └── index.js              # UI logic, STYLE_PRESETS, i18n dict (en/ja/zh, ja/zh as \uXXXX escapes); main.js has its own PLUGIN_I18N dict for OSD/menu strings
 ├── png/                      # README screenshots (excluded from release package by release.yml)
 └── .github/workflows/        # Release packaging
     └── release.yml
@@ -238,7 +238,7 @@ Based on the `niconicomments` third-party library. All formats are normalized vi
 - **Network requests**: Use `iina.http` module. DDP API uses `X-AppId`/`X-AppSecret` header auth.
 - **Backtick sanitization**: Always sanitize strings with U+0060 backtick before `sidebar.postMessage`.
 - **Preferences sync**: Use `syncPreferencesSoon()` (debounced) instead of calling `preferences.sync()` directly.
-- **i18n**: All UI strings in `sidebar/index.js` `i18n` dict — three languages (`en` plain, `ja`/`zh` as `\uXXXX` escapes). New UI strings must be added to all three. Japanese terminology follows niconico official usage: use コメント (not 弾幕) except when matching literal folder names.
+- **i18n**: Two dictionaries, both with three languages (`en` plain, `ja`/`zh` as `\uXXXX` escapes). Sidebar UI strings live in `sidebar/index.js` `i18n` dict (language from `navigator.language`, applied via `data-i18n` / `data-i18n-placeholder` attributes and `t(key)`). OSD, menu items, and file-dialog titles live in `main.js` `PLUGIN_I18N` dict (language from `iina.utils.preferredLocalizations()`, accessed via `t(key, vars)` — supports `{name}` interpolation). New strings must be added to all three languages of the relevant dict. Never hardcode UI strings in either language. Japanese terminology follows niconico official usage: use コメント (not 弾幕) except when matching literal folder names.
 - **Style presets**: New presets = one entry in `STYLE_PRESETS` + an `<option>` in `sidebar/index.html`. Parameters must fit existing slider ranges (fontScale 25–100%, weight 100–900 step 50, strokeWidth 1–8, scrollSpeed 0.25–1.0).
 
 ### Logging Conventions

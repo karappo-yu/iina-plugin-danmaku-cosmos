@@ -16,7 +16,6 @@ var commentLimitValue = document.getElementById("comment-limit-value");
 var speedSlider = document.getElementById("speed-slider");
 var speedValue = document.getElementById("speed-value");
 var offsetInput = document.getElementById("danmaku-offset-input");
-var offsetHint = document.getElementById("danmaku-offset-hint");
 var fontSelect = document.getElementById("danmaku-font-select");
 var fontCustomRow = document.getElementById("danmaku-font-custom-row");
 var fontCustomInput = document.getElementById("danmaku-font-custom");
@@ -39,7 +38,6 @@ var tabBasic = document.getElementById("tab-basic");
 var tabAdvanced = document.getElementById("tab-advanced");
 var tabButtons = document.querySelectorAll(".tabbar .tab");
 var fileAddBtn = document.getElementById("danmaku-file-add-btn");
-var commentLimitRow = document.getElementById("comment-limit-row");
 
 var ddpError = document.getElementById("dandanplay-error");
 var ddpMatches = document.getElementById("dandanplay-matches");
@@ -176,18 +174,6 @@ function renderFileList() {
     if (jsonGroup) container.appendChild(jsonGroup);
   }
 
-  updateFileCount();
-}
-
-function updateFileCount() {
-  var countEl = document.getElementById('danmaku-file-count');
-  if (!countEl) return;
-  var lang = getBrowserLang();
-  var selected = fileListState.selectedPaths.length;
-  var total = fileListState.xmlFiles.length + fileListState.jsonFiles.length;
-  if (lang === 'zh') countEl.textContent = '\u5df2\u9009 ' + selected + ' / ' + total + ' \u4e2a\u6587\u4ef6';
-  else if (lang === 'ja') countEl.textContent = selected + ' / ' + total + ' \u30d5\u30a1\u30a4\u30eb\u9078\u629e';
-  else countEl.textContent = selected + ' / ' + total + ' selected';
 }
 
 function updateDanmakuInfoUI() {
@@ -222,8 +208,6 @@ var i18n = {
     style_preset: "Style Preset",
     style_balanced: "Balanced",
     danmaku_offset: "Danmaku Offset (s)",
-    danmaku_offset_hint: "A: rewind • D: advance",
-    danmaku_font: "Font",
     danmaku_font_family: "Font Family",
     danmaku_font_custom: "Custom Font",
     danmaku_font_weight: "Weight",
@@ -233,29 +217,12 @@ var i18n = {
     stroke_opacity: "Opacity",
     stroke_width: "Width",
     scroll_speed: "Scroll Speed",
-    danmaku_not_found: "No danmaku file found",
     file_add: "Add",
-    dandanplay_label: "DanDanPlay",
-    dandanplay_anime: "Anime",
-    dandanplay_episode: "Episode",
-    dandanplay_count: "Comments",
-    dandanplay_refresh: "Refresh",
+    off: "Off",
+    dandanplay_search_placeholder: "Anime title...",
     dandanplay_search: "Search",
     dandanplay_search_go: "Go",
-    dandanplay_priority: "Priority",
-    dandanplay_priority_local: "Local First",
-    dandanplay_priority_network: "Network First",
-    dandanplay_priority_local_only: "Local Only",
-    dandanplay_priority_network_only: "Network Only",
-    dandanplay_auto_match: "Auto Match",
     dandanplay_select_match: "Network Danmaku",
-    dandanplay_status_idle: "Not active",
-    dandanplay_status_matching: "Matching...",
-    dandanplay_status_loading: "Loading comments...",
-    dandanplay_status_loaded: "Loaded",
-    dandanplay_status_error: "Error",
-    dandanplay_status_no_match: "No match found",
-    dandanplay_status_multiple_matches: "Select a match",
     ddp_auto_network: "Auto-load network danmaku",
     canvas_renderer: "Use Canvas renderer",
     danmaku_force_simplified: "Force Simplified Chinese",
@@ -276,12 +243,10 @@ var i18n = {
 
     advanced: "\u9ad8\u5ea6\u306a\u8a2d\u5b9a",
     tab_basic: "\u57fa\u672c",
-    tab_advanced: "\u9ad8\u5ea6",
+    tab_advanced: "\u8a73\u7d30",
     style_preset: "\u30b9\u30bf\u30a4\u30eb\u30d7\u30ea\u30bb\u30c3\u30c8",
     style_balanced: "\u30d0\u30e9\u30f3\u30b9",
     danmaku_offset: "\u30b3\u30e1\u30f3\u30c8\u6642\u9593\u30aa\u30d5\u30bb\u30c3\u30c8 (\u79d2)",
-    danmaku_offset_hint: "A: \u5de5\u5e30\u3057\u3082\u3069\u3057 • D: \u9032\u3080",
-    danmaku_font: "\u30d5\u30a9\u30f3\u30c8",
     danmaku_font_family: "\u30d5\u30a9\u30f3\u30c8",
     danmaku_font_custom: "\u30ab\u30b9\u30bf\u30e0\u30d5\u30a9\u30f3\u30c8",
     danmaku_font_weight: "\u592a\u3055",
@@ -291,29 +256,12 @@ var i18n = {
     stroke_opacity: "\u7e01\u53d6\u308a\u900f\u660e\u5ea6",
     stroke_width: "\u7e01\u53d6\u308a\u306e\u592a\u3055",
     scroll_speed: "\u30b9\u30af\u30ed\u30fc\u30eb\u901f\u5ea6",
-    danmaku_not_found: "\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093",
     file_add: "\u8ffd\u52a0",
-    dandanplay_label: "\u5f3e\u5f3ePlay",
-    dandanplay_anime: "\u30a2\u30cb\u30e1",
-    dandanplay_episode: "\u8a71",
-    dandanplay_count: "\u30b3\u30e1\u30f3\u30c8\u6570",
-    dandanplay_refresh: "\u66f4\u65b0",
+    off: "\u30aa\u30d5",
+    dandanplay_search_placeholder: "\u30a2\u30cb\u30e1\u30bf\u30a4\u30c8\u30eb...",
     dandanplay_search: "\u691c\u7d22",
     dandanplay_search_go: "Go",
-    dandanplay_priority: "\u512a\u5148\u5ea6",
-    dandanplay_priority_local: "\u30ed\u30fc\u30ab\u30eb\u512a\u5148",
-    dandanplay_priority_network: "\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u512a\u5148",
-    dandanplay_priority_local_only: "\u30ed\u30fc\u30ab\u30eb\u306e\u307f",
-    dandanplay_priority_network_only: "\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u306e\u307f",
-    dandanplay_auto_match: "\u81ea\u52d5\u30de\u30c3\u30c1",
     dandanplay_select_match: "\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u30b3\u30e1\u30f3\u30c8",
-    dandanplay_status_idle: "\u672a\u4f7f\u7528",
-    dandanplay_status_matching: "\u30de\u30c3\u30c1\u4e2d...",
-    dandanplay_status_loading: "\u30b3\u30e1\u30f3\u30c8\u8aad\u307f\u8fbc\u307f\u4e2d...",
-    dandanplay_status_loaded: "\u8aad\u307f\u8fbc\u307f\u5b8c\u4e86",
-    dandanplay_status_error: "\u30a8\u30e9\u30fc",
-    dandanplay_status_no_match: "\u30de\u30c3\u30c1\u306a\u3057",
-    dandanplay_status_multiple_matches: "\u30de\u30c3\u30c1\u3092\u9078\u629e",
     ddp_auto_network: "\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u30b3\u30e1\u30f3\u30c8\u3092\u81ea\u52d5\u8aad\u307f\u8fbc\u307f",
     canvas_renderer: "Canvas \u63cf\u753b\u3092\u4f7f\u7528",
     danmaku_force_simplified: "\u7c21\u4f53\u5b57\u306b\u5f37\u5236\u5909\u63db",
@@ -338,8 +286,6 @@ var i18n = {
     style_preset: "\u98ce\u683c\u9884\u8bbe",
     style_balanced: "\u5e73\u8861",
     danmaku_offset: "\u5f39\u5e55\u65f6\u95f4\u504f\u79fb (\u79d2)",
-    danmaku_offset_hint: "A: \u5feb\u9000 • D: \u5feb\u8fdb",
-    danmaku_font: "\u5b57\u4f53",
     danmaku_font_family: "\u5b57\u4f53",
     danmaku_font_custom: "\u81ea\u5b9a\u4e49\u5b57\u4f53",
     danmaku_font_weight: "\u7c97\u7ec6",
@@ -349,29 +295,12 @@ var i18n = {
     stroke_opacity: "\u63cf\u8fb9\u900f\u660e\u5ea6",
     stroke_width: "\u63cf\u8fb9\u7c97\u7ec6",
     scroll_speed: "\u6eda\u52a8\u901f\u5ea6",
-    danmaku_not_found: "\u672a\u627e\u5230\u5f39\u5e55\u6587\u4ef6",
     file_add: "\u6dfb\u52a0",
-    dandanplay_label: "\u5f39\u5f39Play",
-    dandanplay_anime: "\u756a\u5267",
-    dandanplay_episode: "\u96c6\u6570",
-    dandanplay_count: "\u5f39\u5e55\u6570",
-    dandanplay_refresh: "\u5237\u65b0",
+    off: "\u5173\u95ed",
+    dandanplay_search_placeholder: "\u52a8\u753b\u6807\u9898...",
     dandanplay_search: "\u624b\u52a8\u641c\u7d22",
     dandanplay_search_go: "\u641c\u7d22",
-    dandanplay_priority: "\u52a0\u8f7d\u4f18\u5148\u7ea7",
-    dandanplay_priority_local: "\u672c\u5730\u4f18\u5148",
-    dandanplay_priority_network: "\u7f51\u7edc\u4f18\u5148",
-    dandanplay_priority_local_only: "\u4ec5\u672c\u5730",
-    dandanplay_priority_network_only: "\u4ec5\u7f51\u7edc",
-    dandanplay_auto_match: "\u81ea\u52a8\u5339\u914d",
     dandanplay_select_match: "\u7f51\u7edc\u5f39\u5e55",
-    dandanplay_status_idle: "\u672a\u542f\u7528",
-    dandanplay_status_matching: "\u5339\u914d\u4e2d...",
-    dandanplay_status_loading: "\u52a0\u8f7d\u5f39\u5e55\u4e2d...",
-    dandanplay_status_loaded: "\u5df2\u52a0\u8f7d",
-    dandanplay_status_error: "\u9519\u8bef",
-    dandanplay_status_no_match: "\u672a\u627e\u5230\u5339\u914d",
-    dandanplay_status_multiple_matches: "\u8bf7\u9009\u62e9\u5339\u914d",
     ddp_auto_network: "\u81ea\u52a8\u52a0\u8f7d\u7f51\u7edc\u5f39\u5e55",
     canvas_renderer: "\u4f7f\u7528 Canvas \u6e32\u67d3",
     danmaku_force_simplified: "\u5f3a\u5236\u8f6c\u6362\u7b80\u4f53", 
@@ -404,15 +333,15 @@ function applyI18n() {
     var key = el.getAttribute("data-i18n");
     if (dict[key]) el.textContent = dict[key];
   });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach(function(el) {
+    var key = el.getAttribute("data-i18n-placeholder");
+    if (dict[key]) el.placeholder = dict[key];
+  });
 }
 
 function updateOffsetUI() {
   if (offsetInput) {
     offsetInput.value = state.danmakuOffsetSeconds;
-  }
-  if (offsetHint) {
-    var offsetText = (state.danmakuOffsetSeconds >= 0 ? '+' : '') + Number(state.danmakuOffsetSeconds || 0).toFixed(1) + 's';
-    offsetHint.textContent = t('danmaku_offset_hint') + ' (' + offsetText + ')';
   }
 }
 
@@ -501,9 +430,8 @@ function updateUI() {
   strokeWidthValue.textContent = String(state.strokeWidth) + 'px';
   strokeColorInput.value = state.strokeColor;
   strokeInversionInput.value = state.strokeInversionColor;
-  if (commentLimitRow) commentLimitRow.style.display = state.commentLimit > 0 ? '' : 'none';
   commentLimitSlider.value = state.commentLimit;
-  commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : 'Off';
+  commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : t('off');
   speedSlider.value = Math.round(state.scrollSpeed * 100);
   speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
   if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
@@ -544,7 +472,7 @@ function updateDensitySlider() {
     densityValue.textContent = density + ' /min';
   } else {
     densitySlider.value = 600;
-    densityValue.textContent = 'Off';
+    densityValue.textContent = t('off');
   }
   if (densityCount) {
     densityCount.textContent = state.filteredCount > 0 ? '\uff08' + state.filteredCount + '\uff09' : '';
@@ -674,7 +602,7 @@ strokeInversionInput.addEventListener("input", function () {
 commentLimitSlider.addEventListener("input", function () {
   var val = parseInt(commentLimitSlider.value, 10);
   state.commentLimit = val;
-  commentLimitValue.textContent = val > 0 ? String(val) : 'Off';
+  commentLimitValue.textContent = val > 0 ? String(val) : t('off');
   iina.postMessage("set-comment-limit", { limit: val });
 });
 
@@ -890,7 +818,7 @@ if (densitySlider) {
   densitySlider.addEventListener("input", function () {
     var val = parseInt(densitySlider.value, 10);
     if (val >= 600) {
-      densityValue.textContent = 'Off';
+      densityValue.textContent = t('off');
     } else {
       densityValue.textContent = val + ' /min';
     }

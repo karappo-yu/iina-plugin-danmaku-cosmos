@@ -81,7 +81,6 @@
                 <span class="danmaku-file-item-name">example.xml</span>
                 <span class="danmaku-file-item-meta">Ass · 12,340 comments</span>
               </div>
-              <button class="danmaku-file-item-delete" title="Remove">×</button>
             </div>
             -->
           </div>
@@ -108,7 +107,7 @@
         </div>
         <div id="dandanplay-search-panel" style="display:none">
           <div class="dandanplay-search-input-row">
-            <input type="text" id="dandanplay-search-input" data-clickable placeholder="动画标题..." />
+            <input type="text" id="dandanplay-search-input" data-clickable data-i18n-placeholder="dandanplay_search_placeholder" placeholder="动画标题..." />
             <button id="dandanplay-search-go-btn" class="danmaku-file-action-btn" data-clickable data-i18n="dandanplay_search_go">搜索</button>
           </div>
           <div id="dandanplay-search-results" style="display:none">
@@ -146,7 +145,7 @@
         </div>
         <div class="control-row">
           <input type="range" id="density-slider" data-clickable min="100" max="600" step="50" value="600" class="slider" />
-          <span id="density-value" class="value-text">关闭</span>
+          <span id="density-value" class="value-text" data-i18n="off">关闭</span>
         </div>
       </div>
 
@@ -213,7 +212,7 @@
       <div class="section-title" data-i18n="comment_limit" style="margin-top:14px">评论数量限制</div>
       <div class="control-row">
         <input type="range" id="comment-limit-slider" data-clickable min="0" max="200" step="10" value="0" class="slider" />
-        <span id="comment-limit-value" class="value-text">关闭</span>
+        <span id="comment-limit-value" class="value-text" data-i18n="off">关闭</span>
       </div>
 
       <!-- Stroke Opacity -->
