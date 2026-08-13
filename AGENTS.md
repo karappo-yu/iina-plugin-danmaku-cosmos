@@ -140,13 +140,14 @@ Three data paths in `overlay/main.js`:
 - Single hash-keyed cache file per video: `@data/danmaku-cache/{pathHash}.json`
 - Contains `{episodeId, animeTitle, episodeTitle, cachedAt, comments}` (converted nico format)
 - 24h TTL; each new DDP load overwrites previous cache for same video path
+- **Fresh cache (within TTL) fully skips background auto-match** — no hash recompute, no API call (honors the README "replay within 24h skips re-download" promise). Refresh only happens after TTL expiry, or when the user manually triggers matching via the 网络弹幕 panel (`dandanplay-trigger-match`)
 - Cache is NOT discoverable as a local file — only loaded via `ddpReadVideoCache()`
 
 ### Priority (auto-network toggle)
 
 | Setting | Behavior |
 |---------|----------|
-| **ON** (`dandanplayAutoNetwork=true`) | Network-first: auto-load DDP cache/network, background auto-match |
+| **ON** (`dandanplayAutoNetwork=true`) | Network-first: fresh DDP cache auto-loads without any network traffic; no cache → auto-match |
 | **OFF** (`dandanplayAutoNetwork=false`) | Local-first: load local files, DDP cache shown in list but not auto-loaded |
 
 ### DDP Comment Conversion
