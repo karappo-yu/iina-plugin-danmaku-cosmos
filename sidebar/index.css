@@ -613,12 +613,6 @@ input[type="color"]::-webkit-color-swatch {
   border-radius: var(--radius-sm);
 }
 
-.dandanplay-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-}
-
 .dandanplay-search-input-row {
   display: flex;
   gap: 6px;
@@ -689,14 +683,12 @@ input[type="color"]::-webkit-color-swatch {
 
 /* ========== Advanced collapsible ========== */
 #advanced-toggle,
-#dandanplay-matches-toggle,
 #dandanplay-search-results-toggle {
   cursor: pointer;
   user-select: none;
 }
 
-#advanced-toggle:hover .section-title,
-#dandanplay-matches-toggle:hover .section-title {
+#advanced-toggle:hover .section-title {
   color: var(--label);
 }
 

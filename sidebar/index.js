@@ -217,12 +217,12 @@ var i18n = {
     stroke_opacity: "Opacity",
     stroke_width: "Width",
     scroll_speed: "Scroll Speed",
-    file_add: "Add",
+    file_add: "Add Local",
     off: "Off",
     dandanplay_search_placeholder: "Anime title...",
     dandanplay_search: "Search",
     dandanplay_search_go: "Go",
-    dandanplay_select_match: "Network Danmaku",
+    dandanplay_match: "Network Match",
     ddp_auto_network: "Auto-load network danmaku",
     canvas_renderer: "Use Canvas renderer",
     danmaku_force_simplified: "Force Simplified Chinese",
@@ -256,12 +256,12 @@ var i18n = {
     stroke_opacity: "\u7e01\u53d6\u308a\u900f\u660e\u5ea6",
     stroke_width: "\u7e01\u53d6\u308a\u306e\u592a\u3055",
     scroll_speed: "\u30b9\u30af\u30ed\u30fc\u30eb\u901f\u5ea6",
-    file_add: "\u8ffd\u52a0",
+    file_add: "\u30ed\u30fc\u30ab\u30eb\u8ffd\u52a0",
     off: "\u30aa\u30d5",
     dandanplay_search_placeholder: "\u30a2\u30cb\u30e1\u30bf\u30a4\u30c8\u30eb...",
     dandanplay_search: "\u691c\u7d22",
     dandanplay_search_go: "Go",
-    dandanplay_select_match: "\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u30b3\u30e1\u30f3\u30c8",
+    dandanplay_match: "\u30cd\u30c3\u30c8\u30de\u30c3\u30c1",
     ddp_auto_network: "\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u30b3\u30e1\u30f3\u30c8\u3092\u81ea\u52d5\u8aad\u307f\u8fbc\u307f",
     canvas_renderer: "Canvas \u63cf\u753b\u3092\u4f7f\u7528",
     danmaku_force_simplified: "\u7c21\u4f53\u5b57\u306b\u5f37\u5236\u5909\u63db",
@@ -295,12 +295,12 @@ var i18n = {
     stroke_opacity: "\u63cf\u8fb9\u900f\u660e\u5ea6",
     stroke_width: "\u63cf\u8fb9\u7c97\u7ec6",
     scroll_speed: "\u6eda\u52a8\u901f\u5ea6",
-    file_add: "\u6dfb\u52a0",
+    file_add: "\u672c\u5730\u6dfb\u52a0",
     off: "\u5173\u95ed",
     dandanplay_search_placeholder: "\u52a8\u753b\u6807\u9898...",
     dandanplay_search: "\u624b\u52a8\u641c\u7d22",
     dandanplay_search_go: "\u641c\u7d22",
-    dandanplay_select_match: "\u7f51\u7edc\u5f39\u5e55",
+    dandanplay_match: "\u7f51\u7edc\u5339\u914d",
     ddp_auto_network: "\u81ea\u52a8\u52a0\u8f7d\u7f51\u7edc\u5f39\u5e55",
     canvas_renderer: "\u4f7f\u7528 Canvas \u6e32\u67d3",
     danmaku_force_simplified: "\u5f3a\u5236\u8f6c\u6362\u7b80\u4f53", 
@@ -948,7 +948,6 @@ function ddpUpdateUI() {
         ddpMatchesList.style.display = 'none';
       }
     }
-    if (ddpMatchesArrow) ddpMatchesArrow.className = 'toggle-arrow' + (ddpMatchesExpanded ? ' expanded' : '');
   } catch (e) {}
 }
 
@@ -958,16 +957,16 @@ if (ddpAutoNetwork) {
   });
 }
 
-var ddpMatchesToggle = document.getElementById("dandanplay-matches-toggle");
-var ddpMatchesArrow = document.getElementById("dandanplay-matches-arrow");
-if (ddpMatchesToggle) {
-  ddpMatchesToggle.addEventListener("click", function () {
+// 「网络匹配」按钮:展开/收起匹配结果列表;展开时无结果则触发 hash/文件名匹配
+// (承接原「网络弹幕」展开头的逻辑)
+var ddpMatchBtn = document.getElementById("dandanplay-match-btn");
+if (ddpMatchBtn) {
+  ddpMatchBtn.addEventListener("click", function () {
     ddpMatchesExpanded = !ddpMatchesExpanded;
     if (ddpMatchesExpanded && !ddpState.matches && ddpState.status !== 'matching' && ddpState.status !== 'loading') {
       iina.postMessage("dandanplay-trigger-match");
     }
     if (ddpMatchesList) ddpMatchesList.style.display = ddpMatchesExpanded ? '' : 'none';
-    if (ddpMatchesArrow) ddpMatchesArrow.className = 'toggle-arrow' + (ddpMatchesExpanded ? ' expanded' : '');
   });
 }
 
