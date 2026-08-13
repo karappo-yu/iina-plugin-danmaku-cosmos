@@ -136,27 +136,17 @@ var PLUGIN_I18N = {
 };
 
 function getPluginLang() {
-  // preferredLocalizations only exists in newer IINA builds — detect before calling,
-  // otherwise the TypeError lands in catch and forces a wrong fallback.
   try {
-    if (iina.utils && typeof iina.utils.preferredLocalizations === 'function') {
-      var locs = iina.utils.preferredLocalizations();
-      if (locs && locs.length) {
-        var l = String(locs[0]).toLowerCase();
-        if (l.indexOf('ja') === 0) return 'ja';
-        if (l.indexOf('zh') === 0) return 'zh';
-        return 'en';
-      }
+    var locs = iina.utils.preferredLocalizations();
+    if (locs && locs.length) {
+      var l = String(locs[0]).toLowerCase();
+      if (l.indexOf('ja') === 0) return 'ja';
+      if (l.indexOf('zh') === 0) return 'zh';
+      return 'en';
     }
   } catch (e) {}
-  // Fallback for older IINA (e.g. 1.4.4): WKWebView's navigator.language tracks system language
-  try {
-    var nav = (typeof navigator !== 'undefined' && navigator.language) || '';
-    nav = String(nav).toLowerCase();
-    if (nav.indexOf('ja') === 0) return 'ja';
-    if (nav.indexOf('zh') === 0) return 'zh';
-  } catch (e) {}
-  return 'en';
+  // API unavailable (older IINA): preserve pre-i18n behavior (strings were hardcoded Chinese)
+  return 'zh';
 }
 
 var pluginLang = getPluginLang();
