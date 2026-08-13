@@ -33,7 +33,7 @@ Danmaku Cosmos/
 │   ├── main.js               # Engine entry: message handling, render mode, state mgmt
 │   └── lib/                  # Third-party libs (read-only, do not modify)
 │       ├── niconicomments.min.js  # Forked niconicomments with CSSRenderer
-│       └── opencc.min.js          # opencc-js v1.4.1 UMD bundle (繁→简 conversion; local copy, no CDN)
+│       └── opencc.min.js          # opencc-js v1.4.1 UMD bundle (繁→简; LAZY-loaded on first force-simplified enable, not in index.html)
 ├── sidebar/                  # IINA sidebar control panel
 │   ├── index.html            # Layout (general settings incl. Style Preset; advanced settings)
 │   ├── index.css
@@ -187,8 +187,10 @@ Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-
 ### Overlay Script Load Order (Immutable)
 
 ```
-niconicomments.min.js → opencc.min.js → input.js → main.js
+niconicomments.min.js → input.js → main.js
 ```
+
+`lib/opencc.min.js` (1.1MB) is intentionally NOT in this load order — it is injected dynamically by `ensureOpenCCLoaded()` in `overlay/main.js` the first time 强制简体 is enabled. When the bundle becomes ready while danmaku is already on screen, `rebuildFromLastLoad()` re-parses `lastLoadRawStr` so conversion takes effect immediately. Do not add it back to `index.html` — the goal is keeping overlay startup free of the 1.1MB parse cost.
 
 Later scripts depend on functions mounted on `window` by earlier scripts (e.g., `window.parseDanmaku` from `input.js`). Do not reorder the `<script>` tags.
 
