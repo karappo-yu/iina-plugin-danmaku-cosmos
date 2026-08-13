@@ -33,7 +33,7 @@ Danmaku Cosmos/
 │   ├── main.js               # Engine entry: message handling, render mode, state mgmt
 │   └── lib/                  # Third-party libs (read-only, do not modify)
 │       ├── niconicomments.min.js  # Forked niconicomments with CSSRenderer
-│       └── opencc.min.js          # opencc-js v1.4.1 UMD bundle (繁→简; LAZY-loaded on first force-simplified enable, not in index.html)
+│       └── opencc.min.js          # opencc-js v1.4.1 UMD bundle (繁→简; LAZY-loaded on first force-simplified enable, not in index.html). Conversion only applies to formatted-path types (nico-xml, bilibili-xml, dandanplay); nico-json is Japanese-only and never converted
 ├── sidebar/                  # IINA sidebar control panel
 │   ├── index.html            # Layout (general settings incl. Style Preset; advanced settings)
 │   ├── index.css

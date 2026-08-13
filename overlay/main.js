@@ -65,12 +65,13 @@ function buildSimplifiedConverter() {
 
 function rebuildFromLastLoad() {
   if (!lastLoadRawStr || !lastLoadType) return;
+  // nico-json 只可能是日语弹幕,繁简转换对其无意义 —— 该格式走 JSON.parse 直通引擎,
+  // 从不经过 toSimplified,因此也无需重建(避免无意义的渲染器重建/闪屏)
+  if (lastLoadType === 'nico-json') return;
   let list = [];
-  if (lastLoadType !== 'nico-json') {
-    try {
-      list = lastLoadType === 'dandanplay' ? JSON.parse(lastLoadRawStr) : parseDanmaku(lastLoadRawStr, true);
-    } catch (e) { return; }
-  }
+  try {
+    list = lastLoadType === 'dandanplay' ? JSON.parse(lastLoadRawStr) : parseDanmaku(lastLoadRawStr, true);
+  } catch (e) { return; }
   prepareCanvasSource(lastLoadRawStr, list, lastLoadType);
   if (nicoRawData) {
     canvasIsPlaying = !isPaused;

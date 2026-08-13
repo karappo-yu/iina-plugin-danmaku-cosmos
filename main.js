@@ -1385,27 +1385,24 @@ function registerSidebarHandlers() {
     });
     
     // 如果当前已经加载了弹幕文件，重新驱动加载管道，让 OpenCC 重新清洗文本
+    // nico-json 只可能是日语弹幕，繁简转换对其无意义（overlay 也从不转换该格式），跳过重建
     var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
-    if (selectedPath) {
-      if (currentDanmakuStatus.fileType === 'nico-json') {
-        applyDanmakuFilter(danmakuFilterOffset, danmakuFilterLimit);
-      } else {
-        overlay.postMessage("load-danmaku", {
-          xmlContent: danmakuCache[selectedPath],
-          path: selectedPath,
-          danmakuType: currentDanmakuStatus.fileType === 'dandanplay' ? 'dandanplay' : 'bilibili-xml',
-          opacity: canvasOpacity,
-          canvasFontScale: canvasFontScale,
-          strokeColor: strokeColor,
-          strokeInversionColor: strokeInversionColor,
-          strokeOpacity: strokeOpacity,
-          strokeWidth: strokeWidth,
-          commentLimit: commentLimit,
-          scrollSpeed: scrollSpeed,
-          preservePosition: true,
-          danmakuForceSimplified: danmakuForceSimplified
-        });
-      }
+    if (selectedPath && currentDanmakuStatus.fileType !== 'nico-json') {
+      overlay.postMessage("load-danmaku", {
+        xmlContent: danmakuCache[selectedPath],
+        path: selectedPath,
+        danmakuType: currentDanmakuStatus.fileType === 'dandanplay' ? 'dandanplay' : 'bilibili-xml',
+        opacity: canvasOpacity,
+        canvasFontScale: canvasFontScale,
+        strokeColor: strokeColor,
+        strokeInversionColor: strokeInversionColor,
+        strokeOpacity: strokeOpacity,
+        strokeWidth: strokeWidth,
+        commentLimit: commentLimit,
+        scrollSpeed: scrollSpeed,
+        preservePosition: true,
+        danmakuForceSimplified: danmakuForceSimplified
+      });
     }
   }
   });
