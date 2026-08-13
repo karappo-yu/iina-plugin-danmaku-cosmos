@@ -1116,10 +1116,11 @@ function loadDanmakuForVideo(url) {
 
   // === Step 3: Auto-load to overlay based on autoNetwork setting ===
   if (dandanplayAutoNetwork) {
-    // network-first: auto-load DDP cache, trigger background auto-match
+    // network-first: 缓存新鲜(24h TTL 内)时只用缓存,完全跳过后台自动匹配
+    // (不重算 hash、不发 API)。缓存刷新发生在 TTL 过期后,
+    // 或用户在「网络弹幕」面板手动触发匹配时(dandanplay-trigger-match)
     if (hasDDPCache) {
       ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, true);
-      ddpAutoMatchAndLoad(url);
     } else {
       // Don't pre-load local file — wait for DDP auto-match result
       if (overlayReady) overlay.postMessage("clear-danmaku", {});
@@ -1130,8 +1131,8 @@ function loadDanmakuForVideo(url) {
     if (hasLocal) {
       loadLocalDanmaku(allLocalFiles[0]);
     } else if (hasDDPCache) {
+      // 同上:缓存新鲜时跳过后台匹配
       ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, true);
-      ddpAutoMatchAndLoad(url);
     } else {
       if (overlayReady) overlay.postMessage("clear-danmaku", {});
       danmakuNotFound();
