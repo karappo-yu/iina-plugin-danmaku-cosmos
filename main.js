@@ -28,8 +28,6 @@ var overlayReady = false;
 var preferencesSyncTimer = null;
 var ddpCacheDirPath = null;
 var ddpCacheDirChecked = false;
-var ddpHashScriptPath = null;
-var ddpHashScriptReady = false;
 
 var DDP_APP_ID = preferences.get("dandanplayAppId") || 't43832ky57';
 var DDP_APP_SECRET = preferences.get("dandanplayAppSecret") || 'IDnPEdEKDIziKeYVxm6VcaJE4Bv2fnzT';
@@ -632,28 +630,27 @@ function ddpParseBody(res) {
   return null;
 }
 
+// Compute MD5 of the first 16MB + file size for DDP hash matching.
+// Runs as an async /bin/sh subprocess so it never blocks video opening (JS thread stays free).
+// Uses only macOS base-system tools (dd, /sbin/md5, stat) — no python3/Xcode CLT dependency,
+// so hash matching works on any Mac out of the box.
+// Any failure (unreadable file, missing tools) yields null -> caller silently falls back
+// to fileNameOnly matching. The file path is passed as a positional arg ($1) so filenames
+// with quotes/spaces/brackets need no escaping.
 function ddpCalcFileHash(filePath) {
   if (!filePath) return Promise.resolve(null);
+  var script = 'set -e\n'
+    + 'set -o pipefail\n'
+    + 'f="$1"\n'
+    + 'test -r "$f"\n'
+    + 'h=$(dd if="$f" bs=1m count=16 2>/dev/null | /sbin/md5 -q)\n'
+    + 'sz=$(stat -f %z "$f")\n'
+    + 'printf "%s %s\\n" "$h" "$sz"';
   try {
-    if (!ddpHashScriptPath) ddpHashScriptPath = iina.utils.resolvePath('@data/ddp_hash.py');
-    if (!ddpHashScriptPath) return Promise.resolve(null);
-    if (!ddpHashScriptReady || !file.exists(ddpHashScriptPath)) {
-      var script = 'import hashlib,sys,os\n'
-        + 'try:\n'
-        + '  p=sys.argv[1]\n'
-        + '  with open(p,"rb") as f:\n'
-        + '    h=hashlib.md5(f.read(16*1024*1024)).hexdigest()\n'
-        + '  print(h+" "+str(os.path.getsize(p)))\n'
-        + 'except Exception as e:\n'
-        + '  print("ERROR "+str(e))';
-      file.write(ddpHashScriptPath, script);
-      ddpHashScriptReady = true;
-    }
-
-    return iina.utils.exec('/usr/bin/env', ['python3', ddpHashScriptPath, filePath]).then(function(result) {
+    return iina.utils.exec('/bin/sh', ['-c', script, 'ddp-hash', filePath]).then(function(result) {
       if (!result || result.status !== 0 || !result.stdout) return null;
-      var parts = result.stdout.trim().split(' ');
-      if (parts.length >= 2 && parts[0].length === 32 && parts[0] !== 'ERROR') {
+      var parts = result.stdout.trim().split(/\s+/);
+      if (parts.length >= 2 && /^[0-9a-f]{32}$/.test(parts[0])) {
         return { hash: parts[0], fileSize: parseInt(parts[1], 10) || 0 };
       }
       return null;
