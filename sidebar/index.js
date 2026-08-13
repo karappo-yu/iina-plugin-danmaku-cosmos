@@ -1024,6 +1024,10 @@ if (ddpSearchInput) {
 iina.onMessage("dandanplay-status", function (data) {
   try {
     if (data.status !== undefined) ddpState.status = data.status;
+    // 新视频加载时 main.js 会 ddpResetState() 推送 status='idle':
+    // 复位为闭合,避免新视频残留上一个视频的展开状态(列表为空却展开,
+    // 用户要收起再展开才能触发匹配)。展开头部时会自动触发匹配
+    if (data.status === 'idle') ddpMatchesExpanded = false;
     if (data.animeTitle !== undefined) ddpState.animeTitle = data.animeTitle;
     if (data.episodeTitle !== undefined) ddpState.episodeTitle = data.episodeTitle;
     if (data.episodeId !== undefined) ddpState.episodeId = data.episodeId;
