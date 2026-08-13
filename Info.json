@@ -1,7 +1,7 @@
 {
   "name": "Danmaku Cosmos",
   "identifier": "com.danmaku-cosmos.iina-plugin",
-  "version": "4.0",
+  "version": "4.1",
   "description": "IINA弹幕插件 (niconicocomments-only渲染)",
   "author": {
     "name": "karappo-yu"
@@ -10,7 +10,6 @@
   "globalEntry": "global.js",
   "permissions": [
     "show-osd",
-    "show-alert",
     "video-overlay",
     "network-request",
     "file-system"
