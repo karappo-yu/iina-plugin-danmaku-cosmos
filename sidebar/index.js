@@ -963,8 +963,12 @@ var ddpMatchBtn = document.getElementById("dandanplay-match-btn");
 if (ddpMatchBtn) {
   ddpMatchBtn.addEventListener("click", function () {
     ddpMatchesExpanded = !ddpMatchesExpanded;
-    if (ddpMatchesExpanded && !ddpState.matches && ddpState.status !== 'matching' && ddpState.status !== 'loading') {
-      iina.postMessage("dandanplay-trigger-match");
+    if (ddpMatchesExpanded) {
+      // 展开匹配结果时,先收起手动搜索面板(与搜索按钮的行为对称,两列结果不叠加)
+      if (ddpSearchPanel) ddpSearchPanel.style.display = 'none';
+      if (!ddpState.matches && ddpState.status !== 'matching' && ddpState.status !== 'loading') {
+        iina.postMessage("dandanplay-trigger-match");
+      }
     }
     if (ddpMatchesList) ddpMatchesList.style.display = ddpMatchesExpanded ? '' : 'none';
   });
