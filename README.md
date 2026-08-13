@@ -283,6 +283,7 @@ Automatically searches in the same directory with this priority:
 | Library | License | Repository |
 |---------|---------|------------|
 | [niconicomments](https://github.com/xpadev-net/niconicomments) (forked with CSS renderer) | MIT | https://github.com/karappo-yu/niconicomments |
+| [opencc-js](https://github.com/nk2028/opencc-js) v1.4.1 (UMD bundle, loaded locally) | MIT | https://github.com/nk2028/opencc-js |
 
 The MIT License requires that the copyright notice and license text be included in any distribution. The original copyright notices are preserved in the bundled minified JavaScript files distributed with this plugin.
 

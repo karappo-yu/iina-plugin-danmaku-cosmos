@@ -32,7 +32,8 @@ Danmaku Cosmos/
 │   ├── input.js              # Danmaku data parser (Niconico XML, Bilibili XML)
 │   ├── main.js               # Engine entry: message handling, render mode, state mgmt
 │   └── lib/                  # Third-party libs (read-only, do not modify)
-│       └── niconicomments.min.js  # Forked niconicomments with CSSRenderer
+│       ├── niconicomments.min.js  # Forked niconicomments with CSSRenderer
+│       └── opencc.min.js          # opencc-js v1.4.1 UMD bundle (繁→简 conversion; local copy, no CDN)
 ├── sidebar/                  # IINA sidebar control panel
 │   ├── index.html            # Layout (general settings incl. Style Preset; advanced settings)
 │   ├── index.css
@@ -186,7 +187,7 @@ Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-
 ### Overlay Script Load Order (Immutable)
 
 ```
-niconicomments.min.js → input.js → main.js
+niconicomments.min.js → opencc.min.js → input.js → main.js
 ```
 
 Later scripts depend on functions mounted on `window` by earlier scripts (e.g., `window.parseDanmaku` from `input.js`). Do not reorder the `<script>` tags.
