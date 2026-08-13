@@ -974,7 +974,12 @@ if (ddpSearchBtn) {
   ddpSearchBtn.addEventListener("click", function () {
     var visible = ddpSearchPanel.style.display !== 'none';
     ddpSearchPanel.style.display = visible ? 'none' : '';
-    if (!visible && ddpSearchInput) ddpSearchInput.focus();
+    if (!visible) {
+      // 打开手动搜索面板时,收起网络匹配结果列表(避免两列结果叠在一起)
+      ddpMatchesExpanded = false;
+      if (ddpMatchesList) ddpMatchesList.style.display = 'none';
+      if (ddpSearchInput) ddpSearchInput.focus();
+    }
   });
 }
 

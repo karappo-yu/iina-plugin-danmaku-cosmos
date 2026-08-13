@@ -404,7 +404,7 @@ input[type="color"]::-webkit-color-swatch {
 
 .danmaku-file-list-actions {
   display: flex;
-  gap: 6px;
+  gap: 12px;
 }
 
 .danmaku-file-group {
