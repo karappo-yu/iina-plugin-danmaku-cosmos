@@ -207,6 +207,15 @@ var danmakuFilterDensity = 0;
 var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听(控制播放时间推送)
 var lastBrowserTimeSent = 0;     // 时间推送节流标记
 var pluginRootPath = '';         // sidebar 上报的插件根目录(用于读 overlay/lib/opencc.min.js)
+
+// 校验 sidebar 上报的插件根目录: 只接受绝对路径且拒绝 .. 穿越
+// (消息源理论上可被篡改;裸路径会被 file.read + eval 执行任意文件)
+function sanitizePluginRoot(p) {
+  if (typeof p !== 'string' || p.length === 0) return '';
+  if (p.charAt(0) !== '/') return '';   // 必须绝对路径
+  if (p.indexOf('..') !== -1) return ''; // 拒绝路径穿越
+  return p;
+}
 var openccSimplifier = null;     // 简繁转换器(hk→cn,懒加载;仅强制简体开启且列表被监听时构建)
 
 function sanitizeIPCString(value) {
@@ -2365,7 +2374,7 @@ function registerSidebarHandlers() {
   // 过滤 tab: sidebar 懒加载,只能由 sidebar 主动拉取弹幕列表;watch 控制播放时间推送
   sidebar.onMessage("danmaku-browser-request", function (data) {
     // sidebar 上报插件根目录(file:// 定位),供 main 读 overlay/lib/opencc.min.js
-    if (data && data.pluginRoot) pluginRootPath = data.pluginRoot;
+    if (data && data.pluginRoot) pluginRootPath = sanitizePluginRoot(data.pluginRoot);
     sendDanmakuBrowserData(buildDanmakuBrowserList());
   });
 
