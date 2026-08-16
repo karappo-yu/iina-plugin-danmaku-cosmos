@@ -2110,8 +2110,9 @@ function registerSidebarHandlers() {
     if (sec < 0) sec = 0;
     try {
       core.osd('seek \u2192 ' + sec.toFixed(2) + 's');
-      core.player.seekTo(sec);
+      core.seekTo(sec); // seekTo 是 core 对象的方法(core.player 不存在)
     } catch (e) {
+      core.osd('seek ERR: ' + e);
       debugLog('danmaku-seek failed: ' + e);
     }
   });
