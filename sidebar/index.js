@@ -1305,13 +1305,16 @@ function browserRenderWindow() {
     browserRowNodes.clear();
     return;
   }
-  var scrollTop = browserListEl.scrollTop;
+  var rawScrollTop = browserListEl.scrollTop;
   var viewH = browserListEl.clientHeight;
+  // 关键: scrollTop 可能仍是旧视图的大值(切换视图瞬间浏览器异步应用
+  // scrollTop=0,布局未稳定时甚至不生效)——必须 clamp 到当前视图的有效
+  // 范围,否则渲染窗口与视口错位: 顶部渲染的行在深处视口外,列表看似空白。
+  var maxScroll = Math.max(0, total * BROWSER_ROW_H - viewH);
+  var scrollTop = Math.min(rawScrollTop, maxScroll);
   var first = Math.max(0, Math.floor(scrollTop / BROWSER_ROW_H) - 8);
   var last = Math.min(total - 1, Math.ceil((scrollTop + viewH) / BROWSER_ROW_H) + 8);
-  // 防空保护: scrollTop 可能仍是旧视图的大值(切换视图瞬间,浏览器异步应用
-  // scrollTop=0),导致 first > last 渲染空窗口——此时渲染顶部窗口,后续
-  // scroll 事件会修正到正确位置。
+  // 防空保护(兜底): 窗口仍无效时渲染顶部
   if (first > last) {
     first = 0;
     last = Math.min(total - 1, Math.ceil(viewH / BROWSER_ROW_H) + 8);
@@ -1350,13 +1353,15 @@ function browserSetViewMode(mode) {
   browserRowNodes.forEach(function (el) { el.remove(); });
   browserRowNodes.clear();
   browserDataKey = '';
-  browserExpectedScrollTop = -1;
-  if (browserListEl) browserListEl.scrollTop = 0;
+  if (browserListEl) {
+    browserListEl.scrollTop = 0;
+    void browserListEl.scrollTop; // 强制 reflow,让 scrollTop=0 同步生效
+    browserExpectedScrollTop = 0; // scrollTop=0 的 scroll 事件是程序滚动,不退出跟随
+  }
   browserUpdateTotal();
   browserUpdateEmpty();
   browserRenderWindow();
-  // scrollTop=0 由浏览器异步应用(尤其滚动动画中): 延迟再渲染一次兜底,
-  // 避免切换瞬间读到旧 scrollTop 渲染出空窗口
+  // 布局完全稳定后再渲染一次兜底(异步滚动动画/惯性滚动场景)
   setTimeout(function () { browserRenderWindow(); }, 0);
   browserUpdateDiag();
 }
@@ -1419,12 +1424,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v13';
+    el.textContent = 'browser v14';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v13 watch→' + browserDiag.watchSent
+  el.textContent = 'v14 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
