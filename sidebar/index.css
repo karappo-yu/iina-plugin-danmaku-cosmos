@@ -823,6 +823,13 @@ kbd {
   text-decoration: line-through;
   text-decoration-color: var(--secondary-label);
 }
+/* owner(投稿者)弹幕: 不参与过滤,半透明浅红底色以示区分 */
+.danmaku-browser-row.owner {
+  background: rgba(255, 90, 90, 0.16);
+}
+.danmaku-browser-row.owner:hover {
+  background: rgba(255, 90, 90, 0.26);
+}
 .danmaku-browser-time {
   flex-shrink: 0;
   min-width: 40px;

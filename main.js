@@ -1003,16 +1003,18 @@ function buildDanmakuBrowserList() {
         for (var i = 0; i < data.length; i++) {
           var thread = data[i];
           if (!thread) continue;
-          if (thread.fork === 'owner' || thread.fork === 'easy') continue;
+          if (thread.fork === 'easy') continue;
           var comments = Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null);
           if (!comments) continue;
+          var isOwnerThread = thread.fork === 'owner';
           for (var j = 0; j < comments.length; j++) {
             var c = comments[j];
             if (!c) continue;
             var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
             var text = c.body !== undefined ? c.body : c.content;
             if (!isFinite(t) || !text) continue;
-            items.push({ t: t, text: text, blocked: danmakuBlocklistEnabled && isBlockedText(text), _fixed: isFixedCommentCommands(c.commands) || isFixedCommentMail(c.mail) });
+            // owner 弹幕进列表但不参与任何过滤: 不打屏蔽标记、不做展示层合并
+            items.push({ t: t, text: text, blocked: isOwnerThread ? false : (danmakuBlocklistEnabled && isBlockedText(text)), _fixed: isFixedCommentCommands(c.commands) || isFixedCommentMail(c.mail), _owner: isOwnerThread || undefined });
           }
         }
       }
@@ -1059,8 +1061,10 @@ function buildDanmakuBrowserList() {
     var visible = [];
     var blockedItems = [];
     var fixedItems = [];
+    var ownerItems = [];
     for (var di = 0; di < items.length; di++) {
       if (items[di].blocked) blockedItems.push(items[di]);
+      else if (items[di]._owner) ownerItems.push(items[di]); // owner 弹幕不参与展示层合并(原样逐条列出)
       else if (items[di]._fixed) fixedItems.push(items[di]); // 固定弹幕不做展示层合并(画面由引擎渐进合并)
       else visible.push(items[di]);
     }
@@ -1072,7 +1076,7 @@ function buildDanmakuBrowserList() {
     }
     // 被屏蔽弹幕展示层合并(保持 blocked 标记;时间窗相同)
     var blockedMerged = mergeDuplicateItems(blockedItems, danmakuDedupeWindow * 100);
-    items = blockedMerged.concat(fixedItems).concat(mergedOut);
+    items = blockedMerged.concat(ownerItems).concat(fixedItems).concat(mergedOut);
   }
   items.sort(function (a, b) { return a.t - b.t; });
   return items;
