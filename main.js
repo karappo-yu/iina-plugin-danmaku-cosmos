@@ -2404,7 +2404,11 @@ event.on("iina.window-loaded", function () {
   registerSidebarHandlers();
 });
 
-overlay.onMessage("overlay-ready", function () { markOverlayReady(); });
+overlay.onMessage("overlay-ready", function (data) {
+  // overlay 启动即上报插件根目录: 简繁转换器不依赖侧栏懒加载
+  if (data && data.pluginRoot) pluginRootPath = sanitizePluginRoot(data.pluginRoot);
+  markOverlayReady();
+});
 
 event.on("iina.plugin-overlay-loaded", function () {
   overlay.show();

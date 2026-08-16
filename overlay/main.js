@@ -534,4 +534,17 @@ iina.onMessage("apply-settings", (data) => {
   if (data.danmakuFontWeight !== undefined) danmakuFontWeight = data.danmakuFontWeight || "";
 });
 
-iina.postMessage("overlay-ready", {});
+// overlay 自身的 file:// 根目录(插件启动即加载,上报给 main 用于读 opencc.min.js
+// ——不依赖侧栏懒加载,简繁转换器在重启后打开新视频时即可构建)
+function overlayPluginRoot() {
+  try {
+    var u = new URL('../', window.location.href);
+    var p = decodeURIComponent(u.pathname);
+    if (p.length > 1 && p.charAt(p.length - 1) === '/') p = p.slice(0, -1);
+    return p;
+  } catch (e) {
+    return '';
+  }
+}
+
+iina.postMessage("overlay-ready", { pluginRoot: overlayPluginRoot() });
