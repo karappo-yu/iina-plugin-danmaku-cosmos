@@ -1591,7 +1591,6 @@ var browserViewSelect = document.getElementById("danmaku-browser-view-select");
 if (browserViewSelect) {
   browserViewSelect.addEventListener("change", function () {
     browserSetViewMode(this.value);
-    this.blur(); // 立即失焦: 避免原生 select 聚焦/系统菜单导致的窗口焦点变化(标题栏刷新)
   });
 }
 
