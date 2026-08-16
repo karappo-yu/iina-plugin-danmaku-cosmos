@@ -631,7 +631,8 @@ function mergeDuplicateItems(items, windowMs) {
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
     if (!it || typeof it.t !== 'number' || !isFinite(it.t)) continue;
-    if (!it.text) { out.push(it); continue; }
+    if (it._skip) { out.push(it); continue; } // 占位(无效/owner 弹幕): 原样透传,不参与去重
+    if (!it.text) { out.push(it); continue; }  // 空文本(未解析/无效评论)原样透传
     var bucket = buckets.get(it.text);
     if (!bucket) { bucket = []; buckets.set(it.text, bucket); }
     bucket.push(it);
@@ -717,6 +718,8 @@ function dedupeNicoJson(encodedContent) {
       if (!c) { entries.push({ t: 0, text: '', _c: c, _skip: true }); continue; }
       var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
       var text = c.body !== undefined ? c.body : c.content;
+      // owner 弹幕(isMyPost)不参与去重: 原样透传,不被合并
+      if (c.isMyPost) { entries.push({ t: t, text: text, _c: c, _skip: true }); continue; }
       if (!isFinite(t) || !text) { entries.push({ t: 0, text: '', _c: c, _skip: true }); continue; }
       entries.push({ t: t, text: text, _c: c });
     }
