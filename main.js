@@ -647,6 +647,21 @@ function encodeXmlText(text) {
     .replace(/'/g, '&apos;');
 }
 
+// 合并弹幕颜色池(鲜艳色,视觉可区分;nico 经典色系)
+var MERGE_COLORS = [
+  { name: 'red',    hex: '#ff0000', dec: 16711680 },
+  { name: 'pink',   hex: '#ff8080', dec: 16744320 },
+  { name: 'orange', hex: '#ffcc00', dec: 16766720 },
+  { name: 'yellow', hex: '#ffff00', dec: 16776960 },
+  { name: 'green',  hex: '#00ff00', dec: 65280 },
+  { name: 'cyan',   hex: '#00ffff', dec: 65535 },
+  { name: 'blue',   hex: '#0000ff', dec: 255 },
+  { name: 'purple', hex: '#800080', dec: 8388736 }
+];
+function pickMergeColor() {
+  return MERGE_COLORS[Math.floor(Math.random() * MERGE_COLORS.length)];
+}
+
 // nico-json 去重: 每个 thread 的 comments 内合并(保留组内最早 comment 的全部字段)
 function dedupeNicoJson(encodedContent) {
   if (!(danmakuDedupeWindow > 0)) return encodedContent;
@@ -676,8 +691,8 @@ function dedupeNicoJson(encodedContent) {
       var e = merged[k];
       if (e._skip) { newComments.push(e._c); continue; }
       if (e._mergeCount > 1) {
-        // 合并出的新弹幕: 追加红色命令(与已有 mail 命令共存)
-        e._c.mail = (e._c.mail ? String(e._c.mail) + ' ' : '') + 'red';
+        // 合并出的新弹幕: 追加随机颜色命令(与已有 mail 命令共存)
+        e._c.mail = (e._c.mail ? String(e._c.mail) + ' ' : '') + pickMergeColor().name;
       }
       if (e._c.body !== undefined) e._c.body = e.text;
       else e._c.content = e.text;
@@ -720,16 +735,17 @@ function dedupeContent(encodedContent, ft) {
       var e = merged[k];
       if (e._skip) { out.push(e._d); continue; }
       if (e._mergeCount > 1 && Array.isArray(e._d._commands)) {
-        // 合并出的新弹幕: 颜色命令替换为红色(无颜色命令则追加)
+        // 合并出的新弹幕: 颜色命令替换为随机颜色(无颜色命令则追加)
+        var mc = pickMergeColor();
         var hasColor = false;
         for (var ci = 0; ci < e._d._commands.length; ci++) {
           if (e._d._commands[ci].charAt(0) === '#') {
-            e._d._commands[ci] = '#ff0000';
+            e._d._commands[ci] = mc.hex;
             hasColor = true;
             break;
           }
         }
-        if (!hasColor) e._d._commands.push('#ff0000');
+        if (!hasColor) e._d._commands.push(mc.hex);
       }
       e._d.text = e.text;
       out.push(e._d);
@@ -768,12 +784,12 @@ function dedupeContent(encodedContent, ft) {
     if (line && kept.has(line)) {
       var head = line.head;
       if (line._mergeCount > 1) {
-        // 合并出的新弹幕: p 属性第 4 段(颜色)替换为红色 #FF0000
+        // 合并出的新弹幕: p 属性第 4 段(颜色)替换为随机颜色
         var pm = head.match(/p="([^"]*)"/);
         if (pm) {
           var pParts = pm[1].split(',');
           if (pParts.length >= 4) {
-            pParts[3] = '16711680';
+            pParts[3] = String(pickMergeColor().dec);
             head = head.replace(pm[1], pParts.join(','));
           }
         }
