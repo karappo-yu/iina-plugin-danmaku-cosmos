@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="index.css?v=31" />
+  <link rel="stylesheet" href="index.css?v=32" />
   <title>Danmaku Control</title>
 </head>
 
@@ -298,10 +298,10 @@
     <!-- 弹幕列表在上(固定位置,不被下方屏蔽词面板展开挤动);屏蔽词在列表下方 -->
     <div id="tab-filter" style="display:none">
       <div class="section" style="margin-top:12px">
-        <div class="section-title">
-          <span data-i18n="filter_title">弹幕列表</span>
+        <div class="toggle-row">
+          <span class="toggle-label" data-i18n="filter_title">弹幕列表</span>
           <span id="danmaku-browser-total" class="browser-total"></span>
-          <label class="switch" data-clickable style="margin-left:auto">
+          <label class="switch" data-clickable>
             <input type="checkbox" id="danmaku-browser-vis-toggle" />
             <span class="switch-slider"></span>
           </label>
