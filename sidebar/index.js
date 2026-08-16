@@ -1332,7 +1332,7 @@ function browserRenderList(list) {
     if (node) continue;
     var item = items[row];
     var div = document.createElement("div");
-    div.className = "danmaku-browser-row" + (item.blocked ? " blocked" : "");
+    div.className = "danmaku-browser-row" + (item.blocked ? " blocked" : "") + (item.owner ? " owner" : "");
     div.style.top = (row * BROWSER_ROW_H) + "px";
     var time = document.createElement("span");
     time.className = "danmaku-browser-time";
@@ -1494,7 +1494,7 @@ iina.onMessage("danmaku-browser-data", function (data) {
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
     if (!item || typeof item.t !== 'number' || !isFinite(item.t) || !item.text) continue;
-    browserItems.push({ t: item.t, text: item.text, blocked: !!item.blocked, merged: !!item.merged });
+    browserItems.push({ t: item.t, text: item.text, blocked: !!item.blocked, merged: !!item.merged, owner: !!item._owner });
   }
   if (!isDone) {
     // 传输中不渲染(done 时一次性渲染)

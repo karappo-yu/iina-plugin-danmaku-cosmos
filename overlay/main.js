@@ -14,6 +14,7 @@ let scrollSpeed = 1.0; // 滚动速度倍率 (0.5 ~ 2.0), 通过 naka 弹幕 lon
 let danmakuTimeOffsetSec = 0;
 let danmakuFontFamily = "";
 let danmakuFontWeight = "";
+let fixedComboEnabled = false; // 固定弹幕渐进合并(= main 的去重开关)
 
 let niconiComments = null;
 let nicoRawData = null;
@@ -245,6 +246,7 @@ function initCanvasRenderer(data) {
       contextLineWidth: { html5: strokeWidth, flash: strokeWidth },
       commentLimit: commentLimit > 0 ? commentLimit : undefined,
       fonts: buildDanmakuFontConfig(),
+      fixedCombo: fixedComboEnabled,
     },
   });
   nicoRawData = data;
@@ -331,6 +333,7 @@ iina.onMessage("load-danmaku", (data) => {
   if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
   if (data.danmakuFontFamily !== undefined) danmakuFontFamily = data.danmakuFontFamily || "";
   if (data.danmakuFontWeight !== undefined) danmakuFontWeight = data.danmakuFontWeight || "";
+  if (data.fixedCombo !== undefined) fixedComboEnabled = !!data.fixedCombo;
   if (data.opacity !== undefined) {
     canvasOpacity = data.opacity;
     const canvas = document.getElementById('niconicomments-canvas');
@@ -532,6 +535,7 @@ iina.onMessage("apply-settings", (data) => {
   if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
   if (data.danmakuFontFamily !== undefined) danmakuFontFamily = data.danmakuFontFamily || "";
   if (data.danmakuFontWeight !== undefined) danmakuFontWeight = data.danmakuFontWeight || "";
+  if (data.fixedCombo !== undefined) fixedComboEnabled = !!data.fixedCombo;
 });
 
 // overlay 自身的 file:// 根目录(插件启动即加载,上报给 main 用于读 opencc.min.js
