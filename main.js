@@ -624,7 +624,9 @@ function mergeDuplicateItems(items, windowMs) {
         j++;
       }
       if (count > 1) {
-        first.text = first.text + '\u2716\ufe0f' + count; // ✖️
+        // 不带变体选择符(VS16): ✖ 按文本字形渲染,颜色继承文字颜色;
+        // 带 \ufe0f 会被 WKWebView 渲染成灰色 emoji 字形
+        first.text = first.text + '\u2716' + count;
       }
       out.push(first);
       i = j;
