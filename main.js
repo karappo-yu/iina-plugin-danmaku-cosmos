@@ -770,31 +770,28 @@ function dedupeContent(encodedContent, ft) {
   var re = ft === 'nico-xml'
     ? /(<chat\b[^>]*>)([\s\S]*?)(<\/chat>)/g
     : /(<d\s+p="[^"]*"[^>]*>)([\s\S]*?)(<\/d>)/g;
-  var lines = []; // {t, text, head, tail, full}
+  var lines = []; // {t, text, head, tail, full, start}
   var m;
   while ((m = re.exec(rawStr)) !== null) {
     var t = m[1].indexOf('vpos="') !== -1
       ? parseInt((m[1].match(/vpos="(\d+)"/) || [0, 0])[1], 10) || 0
       : Math.round((parseFloat((m[1].match(/p="([^"]*)"/) || [0, '0'])[1].split(',')[0]) || 0) * 100);
-    lines.push({ t: t, text: decodeXmlText(m[2]), head: m[1], tail: m[3], full: m[0] });
+    // start = 本行在原始串中的位置: 重建时按序推进,无需重扫/线性查找(O(n))
+    lines.push({ t: t, text: decodeXmlText(m[2]), head: m[1], tail: m[3], full: m[0], start: m.index });
   }
   if (lines.length === 0) return encodedContent;
   var merged = mergeDuplicateItems(lines, windowMs);
   var kept = new Set();
   for (var i2 = 0; i2 < merged.length; i2++) kept.add(merged[i2]);
   if (kept.size === lines.length) return encodedContent;
+  // 重建: 按原始顺序推进——每行输出它前面那段原始内容(头部等非弹幕内容),
+  // 保留的行重建(合并标色/文本),被合并掉的行自然跳过。O(n)。
   var parts = [];
   var last = 0;
-  var reFind = new RegExp(re.source, 'g');
-  var mm;
-  while ((mm = reFind.exec(rawStr)) !== null) {
-    // 找到对应的 lines 项(按位置匹配)
-    var line = null;
-    for (var li = 0; li < lines.length; li++) {
-      if (lines[li].full === mm[0] && lines[li]._used !== true) { line = lines[li]; lines[li]._used = true; break; }
-    }
-    parts.push(rawStr.slice(last, mm.index));
-    if (line && kept.has(line)) {
+  for (var li = 0; li < lines.length; li++) {
+    var line = lines[li];
+    parts.push(rawStr.slice(last, line.start));
+    if (kept.has(line)) {
       var head = line.head;
       if (line._mergeCount > 1) {
         // 合并出的新弹幕: p 属性第 4 段(颜色)替换为随机颜色
@@ -809,7 +806,7 @@ function dedupeContent(encodedContent, ft) {
       }
       parts.push(head + encodeXmlText(line.text) + line.tail);
     }
-    last = mm.index + mm[0].length;
+    last = line.start + line.full.length;
   }
   parts.push(rawStr.slice(last));
   return encodeContent(parts.join(''));
