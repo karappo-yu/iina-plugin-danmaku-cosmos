@@ -1582,8 +1582,6 @@ var blocklistToggle = document.getElementById("danmaku-blocklist-toggle");
 var blocklistPanel = document.getElementById("danmaku-blocklist-panel");
 var blocklistList = document.getElementById("danmaku-blocklist-list");
 var blocklistEmpty = document.getElementById("danmaku-blocklist-empty");
-var blocklistInput = document.getElementById("danmaku-blocklist-input");
-var blocklistAddBtn = document.getElementById("danmaku-blocklist-add-btn");
 var blocklistWords = [];
 
 function renderBlocklist() {
@@ -1610,6 +1608,43 @@ function renderBlocklist() {
     item.appendChild(x);
     blocklistList.appendChild(item);
   }
+  // 添加行: + 号,点击进入内联编辑(替代独立添加按钮)
+  var addItem = document.createElement("div");
+  addItem.className = "danmaku-blocklist-item danmaku-blocklist-add-item";
+  addItem.textContent = "+ " + t('blocklist_add');
+  addItem.setAttribute("data-clickable", "");
+  addItem.addEventListener("click", blocklistStartAdd);
+  blocklistList.appendChild(addItem);
+}
+
+// 点击 + 行: 该行变为内联输入框;回车提交、Esc 取消、失焦提交(空内容忽略)
+function blocklistStartAdd() {
+  var item = this;
+  item.classList.add("editing");
+  item.innerHTML = "";
+  var inp = document.createElement("input");
+  inp.type = "text";
+  inp.className = "danmaku-blocklist-input";
+  inp.placeholder = t('blocklist_placeholder');
+  item.appendChild(inp);
+  var committing = false;
+  var done = function () {
+    if (committing) return;
+    committing = true;
+    var w = inp.value.trim();
+    if (w) iina.postMessage("danmaku-blocklist-add", { word: w });
+    renderBlocklist();
+  };
+  inp.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      done();
+    } else if (e.key === "Escape") {
+      committing = true; // 阻止 blur 触发提交
+      renderBlocklist();
+    }
+  });
+  inp.addEventListener("blur", done);
+  inp.focus();
 }
 
 function applyBlocklistState(state) {
@@ -1633,31 +1668,6 @@ if (blocklistToggle) {
     var on = blocklistToggle.checked;
     if (blocklistPanel) blocklistPanel.style.display = on ? "" : "none";
     iina.postMessage("danmaku-blocklist-set-enabled", { enabled: on });
-  });
-}
-
-if (blocklistAddBtn && blocklistInput) {
-  blocklistAddBtn.addEventListener("click", function () {
-    if (blocklistInput.style.display === "none") {
-      // 第一次点击: 显示输入框
-      blocklistInput.style.display = "";
-      blocklistInput.focus();
-      return;
-    }
-    // 输入框已显示: 提交(空内容不提交)
-    var w = blocklistInput.value.trim();
-    if (!w) return;
-    iina.postMessage("danmaku-blocklist-add", { word: w });
-    blocklistInput.value = "";
-    blocklistInput.style.display = "none";
-  });
-  blocklistInput.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") {
-      blocklistAddBtn.click();
-    } else if (e.key === "Escape") {
-      blocklistInput.value = "";
-      blocklistInput.style.display = "none";
-    }
   });
 }
 

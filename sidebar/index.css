@@ -889,10 +889,6 @@ kbd {
   margin-top: 0;
 }
 /* 面板内行内容(添加按钮/去重区间标签)与开关行 14px 内边距对齐,不贴框边缘 */
-.toggle-group .danmaku-blocklist-add-row {
-  padding-left: 14px;
-  padding-right: 14px;
-}
 .toggle-group #danmaku-dedupe-row {
   padding: 0 14px 6px; /* 底部小留白: 五个选项按钮不贴分组面板底边 */
 }
@@ -965,24 +961,27 @@ kbd {
   color: var(--tertiary-label);
   margin-top: 8px;
 }
-.danmaku-blocklist-add-row {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
+/* + 号添加行: 点击进入内联编辑 */
+.danmaku-blocklist-add-item {
+  color: var(--tertiary-label);
+  cursor: pointer;
 }
-.danmaku-blocklist-input {
+.danmaku-blocklist-add-item:hover {
+  color: var(--label);
+  background: rgba(255, 255, 255, 0.05);
+}
+.danmaku-blocklist-add-item.editing {
+  padding: 0 8px;
+}
+.danmaku-blocklist-add-item .danmaku-blocklist-input {
   flex: 1;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 6px;
+  background: none;
+  border: none;
+  outline: none;
   color: var(--label);
   font-size: 12px;
-  padding: 4px 8px;
-}
-.danmaku-blocklist-input:focus {
-  outline: none;
-  border-color: var(--accent);
+  padding: 0;
 }
 /* 诊断状态行: 数据异常时显示消息计数器,用于定位断点;正常时只显示版本 */
 .danmaku-browser-status {
