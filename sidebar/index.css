@@ -832,6 +832,70 @@ kbd {
   color: var(--secondary-label);
   font-variant-numeric: tabular-nums;
 }
+
+/* ── 屏蔽词 tag 列表 ── */
+.danmaku-blocklist-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.danmaku-blocklist-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 2px 6px 2px 9px;
+  font-size: 11px;
+  max-width: 100%;
+}
+.danmaku-blocklist-tag-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--label);
+}
+.danmaku-blocklist-tag-x {
+  background: none;
+  border: none;
+  color: var(--tertiary-label);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.danmaku-blocklist-tag-x:hover {
+  color: var(--label);
+  background: rgba(255, 255, 255, 0.15);
+}
+.danmaku-blocklist-empty {
+  font-size: 11px;
+  color: var(--tertiary-label);
+  margin-top: 8px;
+}
+.danmaku-blocklist-add-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.danmaku-blocklist-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: var(--label);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+.danmaku-blocklist-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
 /* 诊断状态行: 数据异常时显示消息计数器,用于定位断点;正常时只显示版本 */
 .danmaku-browser-status {
   margin-top: 6px;

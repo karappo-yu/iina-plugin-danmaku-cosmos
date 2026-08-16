@@ -237,7 +237,12 @@ var i18n = {
     tab_filter: "Filter",
     filter_title: "Danmaku List",
     filter_back_live: "Back to Live",
-    filter_empty: "No danmaku loaded"
+    filter_empty: "No danmaku loaded",
+    blocklist_title: "Block Words",
+    blocklist_add: "Add",
+    blocklist_empty: "No block words yet",
+    blocklist_placeholder: "word or regex...",
+    blocklist_remove: "Remove"
   },
   ja: {
     danmaku_visible: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a",
@@ -280,7 +285,12 @@ var i18n = {
     tab_filter: "\u30d5\u30a3\u30eb\u30bf\u30fc",
     filter_title: "\u30b3\u30e1\u30f3\u30c8\u4e00\u89a7",
     filter_back_live: "\u6700\u65b0\u3078",
-    filter_empty: "\u30b3\u30e1\u30f3\u30c8\u672a\u8aad\u8fbc"
+    filter_empty: "\u30b3\u30e1\u30f3\u30c8\u672a\u8aad\u8fbc",
+    blocklist_title: "\u30d6\u30ed\u30c3\u30af\u8a9e",
+    blocklist_add: "\u8ffd\u52a0",
+    blocklist_empty: "\u307e\u3060\u30d6\u30ed\u30c3\u30af\u8a9e\u306f\u3042\u308a\u307e\u305b\u3093",
+    blocklist_placeholder: "\u5358\u8a9e\u307e\u305f\u306f\u6b63\u898f\u8868\u73fe...",
+    blocklist_remove: "\u524a\u9664"
   },
   zh: {
     danmaku_visible: "\u5f39\u5e55\u663e\u793a",
@@ -323,7 +333,12 @@ var i18n = {
     tab_filter: "\u8fc7\u6ee4",
     filter_title: "\u5f39\u5e55\u5217\u8868",
     filter_back_live: "\u56de\u5230\u5b9e\u65f6",
-    filter_empty: "\u672a\u52a0\u8f7d\u5f39\u5e55"
+    filter_empty: "\u672a\u52a0\u8f7d\u5f39\u5e55",
+    blocklist_title: "\u5c4f\u853d\u8bcd",
+    blocklist_add: "\u6dfb\u52a0",
+    blocklist_empty: "\u6682\u65e0\u5c4f\u853d\u8bcd",
+    blocklist_placeholder: "\u5c4f\u853d\u8bcd\u6216\u6b63\u5219...",
+    blocklist_remove: "\u5220\u9664"
   }
 };
 
@@ -554,6 +569,7 @@ if (tabButtons.length) {
           // 带上插件根目录(file:// 定位),供 main 读取 overlay/lib/opencc.min.js(简繁转换)
           iina.postMessage("danmaku-browser-request", { pluginRoot: browserPluginRoot() });
           iina.postMessage("danmaku-browser-watch", { watch: true });
+          iina.postMessage("danmaku-blocklist-request");
         } else {
           iina.postMessage("danmaku-browser-watch", { watch: false });
         }
@@ -1321,12 +1337,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v6';
+    el.textContent = 'browser v7';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v6 watch→' + browserDiag.watchSent
+  el.textContent = 'v7 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
@@ -1490,3 +1506,87 @@ if (browserFollowBtn) {
 iina.postMessage("danmaku-browser-watch", { watch: false });
 browserCountWatchSend();
 browserUpdateDiag();
+
+/* ========== 屏蔽词(tag 列表 + 开关 + 添加/删除) ========== */
+var blocklistToggle = document.getElementById("danmaku-blocklist-toggle");
+var blocklistPanel = document.getElementById("danmaku-blocklist-panel");
+var blocklistTags = document.getElementById("danmaku-blocklist-tags");
+var blocklistEmpty = document.getElementById("danmaku-blocklist-empty");
+var blocklistInput = document.getElementById("danmaku-blocklist-input");
+var blocklistAddBtn = document.getElementById("danmaku-blocklist-add-btn");
+var blocklistWords = [];
+
+function renderBlocklist() {
+  if (!blocklistTags) return;
+  blocklistTags.innerHTML = '';
+  if (blocklistEmpty) blocklistEmpty.style.display = blocklistWords.length === 0 ? "" : "none";
+  for (var i = 0; i < blocklistWords.length; i++) {
+    var chip = document.createElement("span");
+    chip.className = "danmaku-blocklist-tag";
+    var label = document.createElement("span");
+    label.className = "danmaku-blocklist-tag-text";
+    label.textContent = blocklistWords[i];
+    var x = document.createElement("button");
+    x.className = "danmaku-blocklist-tag-x";
+    x.textContent = "\u00d7";
+    x.title = t('blocklist_remove');
+    x.setAttribute("data-clickable", "");
+    (function (idx) {
+      x.addEventListener("click", function () {
+        iina.postMessage("danmaku-blocklist-remove", { index: idx });
+      });
+    })(i);
+    chip.appendChild(label);
+    chip.appendChild(x);
+    blocklistTags.appendChild(chip);
+  }
+}
+
+function applyBlocklistState(state) {
+  if (!state) return;
+  if (typeof state.enabled === 'boolean') {
+    if (blocklistToggle) blocklistToggle.checked = state.enabled;
+    if (blocklistPanel) blocklistPanel.style.display = state.enabled ? "" : "none";
+  }
+  if (Array.isArray(state.words)) {
+    blocklistWords = state.words.slice();
+    renderBlocklist();
+  }
+}
+
+iina.onMessage("danmaku-blocklist-state", function (data) {
+  applyBlocklistState(data);
+});
+
+if (blocklistToggle) {
+  blocklistToggle.addEventListener("change", function () {
+    var on = blocklistToggle.checked;
+    if (blocklistPanel) blocklistPanel.style.display = on ? "" : "none";
+    iina.postMessage("danmaku-blocklist-set-enabled", { enabled: on });
+  });
+}
+
+if (blocklistAddBtn && blocklistInput) {
+  blocklistAddBtn.addEventListener("click", function () {
+    if (blocklistInput.style.display === "none") {
+      // 第一次点击: 显示输入框
+      blocklistInput.style.display = "";
+      blocklistInput.focus();
+      return;
+    }
+    // 输入框已显示: 提交(空内容不提交)
+    var w = blocklistInput.value.trim();
+    if (!w) return;
+    iina.postMessage("danmaku-blocklist-add", { word: w });
+    blocklistInput.value = "";
+    blocklistInput.style.display = "none";
+  });
+  blocklistInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      blocklistAddBtn.click();
+    } else if (e.key === "Escape") {
+      blocklistInput.value = "";
+      blocklistInput.style.display = "none";
+    }
+  });
+}
