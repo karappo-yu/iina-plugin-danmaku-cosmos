@@ -1083,9 +1083,15 @@ function pushBrowserTime(timeSec, force) {
   sidebar.postMessage("danmaku-visible-time", { time: timeSec, offset: danmakuTimeOffsetSec });
 }
 
+var browserDataPending = false; // 列表开关关闭期间数据变化: 不构建不发送,打开时补发一次
+
 // 弹幕加载/切换/清空后,若 sidebar 正在监听则推送刷新列表
 function notifyBrowserDataChanged() {
   if (!danmakuBrowserWatch) return;
+  if (!danmakuBrowserVisible) {
+    browserDataPending = true; // 列表隐藏: 跳过构建与分块传输(省性能),打开时补发
+    return;
+  }
   sendDanmakuBrowserData(buildDanmakuBrowserList());
 }
 
@@ -2170,6 +2176,10 @@ function registerSidebarHandlers() {
       preferences.set("danmakuBrowserVisible", danmakuBrowserVisible);
       syncPreferencesSoon();
       sidebar.postMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible });
+      if (danmakuBrowserVisible && browserDataPending) {
+        browserDataPending = false; // 关闭期间数据有变化: 打开时补发一次
+        sendDanmakuBrowserData(buildDanmakuBrowserList());
+      }
     }
   });
 
@@ -2415,7 +2425,11 @@ function registerSidebarHandlers() {
     // sidebar 上报插件根目录(file:// 定位),供 main 读 overlay/lib/opencc.min.js
     if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
     sidebar.postMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible }); // 列表开关回显
-    sendDanmakuBrowserData(buildDanmakuBrowserList());
+    if (danmakuBrowserVisible) {
+      sendDanmakuBrowserData(buildDanmakuBrowserList());
+    } else {
+      browserDataPending = true; // 列表关闭: 跳过传输,打开时补发
+    }
   });
 
   sidebar.onMessage("danmaku-browser-watch", function (data) {
