@@ -2371,6 +2371,11 @@ function registerSidebarHandlers() {
     }
   });
 
+  // sidebar 加载即上报插件根目录: 简繁转换器(OpenCC)初始化不依赖过滤 tab 打开
+  sidebar.onMessage("danmaku-sidebar-ready", function (data) {
+    if (data && data.pluginRoot) pluginRootPath = sanitizePluginRoot(data.pluginRoot);
+  });
+
   // 过滤 tab: sidebar 懒加载,只能由 sidebar 主动拉取弹幕列表;watch 控制播放时间推送
   sidebar.onMessage("danmaku-browser-request", function (data) {
     // sidebar 上报插件根目录(file:// 定位),供 main 读 overlay/lib/opencc.min.js

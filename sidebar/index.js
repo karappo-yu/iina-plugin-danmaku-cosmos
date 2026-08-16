@@ -1613,6 +1613,9 @@ iina.postMessage("danmaku-browser-watch", { watch: false });
 browserCountWatchSend();
 browserUpdateDiag();
 
+// 加载即上报插件根目录(main 的简繁转换器初始化不依赖过滤 tab 打开)
+iina.postMessage("danmaku-sidebar-ready", { pluginRoot: browserPluginRoot() });
+
 // 弹幕列表视图下拉(原生 select,样式与字体选择器一致)
 var browserViewSelect = document.getElementById("danmaku-browser-view-select");
 if (browserViewSelect) {
