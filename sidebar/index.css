@@ -766,12 +766,15 @@ kbd {
 }
 
 /* ========== Filter tab: danmaku browser list ========== */
+.browser-total,
+.danmaku-browser-live {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--secondary-label);
+}
 .browser-total {
-  opacity: 0.6;
   font-weight: normal;
   margin-left: 4px;
-  font-size: 11px; /* 与播放时间一致 */
-  font-variant-numeric: tabular-nums;
 }
 .danmaku-browser-list-wrap {
   position: relative;
@@ -854,11 +857,6 @@ kbd {
   font-size: 11px;
   color: var(--tertiary-label);
   pointer-events: none;
-}
-.danmaku-browser-live {
-  font-size: 11px;
-  color: var(--secondary-label);
-  font-variant-numeric: tabular-nums;
 }
 
 /* ── 屏蔽词列表: 与弹幕列表同款样式(共用规则,仅容器定位不同) ── */
