@@ -720,14 +720,10 @@ kbd {
 }
 /* ========== Tab bar (IINA style: icon + text, active brightens) ========== */
 .tabbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
   display: flex;
   align-items: center;
   margin: -14px -16px 12px;
   padding: 0 16px;
-  background: var(--bg); /* sticky 时遮住下方滚过的内容,保持 tab 栏在前 */
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 .tab {
