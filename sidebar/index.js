@@ -1649,7 +1649,9 @@ if (blocklistAddBtn && blocklistInput) {
 /* ========== 弹幕去重(开关 + 区间输入) ========== */
 var dedupeToggle = document.getElementById("danmaku-dedupe-toggle");
 var dedupeRow = document.getElementById("danmaku-dedupe-row");
-var dedupeInput = document.getElementById("danmaku-dedupe-input");
+var dedupeSegmented = document.getElementById("danmaku-dedupe-segmented");
+var dedupeSegItems = dedupeSegmented ? dedupeSegmented.querySelectorAll(".seg-item") : [];
+var dedupeWindowTimer = null; // 去重区间防抖(300ms): 连续点选只应用最后一次,避免每次触发全量重算/重放
 
 function applyDedupeState(state) {
   if (!state) return;
@@ -1657,8 +1659,10 @@ function applyDedupeState(state) {
     if (dedupeToggle) dedupeToggle.checked = state.enabled;
     if (dedupeRow) dedupeRow.style.display = state.enabled ? "" : "none";
   }
-  if (typeof state.window === 'number' && dedupeInput) {
-    dedupeInput.value = String(state.window);
+  if (typeof state.window === 'number') {
+    for (var i = 0; i < dedupeSegItems.length; i++) {
+      dedupeSegItems[i].classList.toggle("active", dedupeSegItems[i].dataset.window === String(state.window));
+    }
   }
 }
 
@@ -1666,21 +1670,27 @@ iina.onMessage("danmaku-dedupe-state", function (data) {
   applyDedupeState(data);
 });
 
-if (dedupeToggle && dedupeInput) {
+if (dedupeToggle && dedupeSegmented) {
   dedupeToggle.addEventListener("change", function () {
     var on = dedupeToggle.checked;
     if (dedupeRow) dedupeRow.style.display = on ? "" : "none";
     iina.postMessage("danmaku-dedupe-set", { enabled: on });
   });
-  dedupeInput.addEventListener("change", function () {
-    var w = parseFloat(dedupeInput.value);
-    if (!isFinite(w)) {
-      dedupeInput.value = "2";
-      return;
-    }
-    if (w < 1) w = 1;
-    if (w > 5) w = 5;
-    dedupeInput.value = String(w);
-    iina.postMessage("danmaku-dedupe-set", { window: w });
-  });
+  // 去重区间: 5 档分段按钮;防抖 300ms 后应用(main 全量重算+overlay 重放开销大)
+  for (var i = 0; i < dedupeSegItems.length; i++) {
+    (function (btn) {
+      btn.addEventListener("click", function () {
+        var w = parseFloat(btn.dataset.window);
+        if (!isFinite(w)) return;
+        for (var j = 0; j < dedupeSegItems.length; j++) {
+          dedupeSegItems[j].classList.toggle("active", dedupeSegItems[j] === btn);
+        }
+        if (dedupeWindowTimer) clearTimeout(dedupeWindowTimer);
+        dedupeWindowTimer = setTimeout(function () {
+          dedupeWindowTimer = null;
+          iina.postMessage("danmaku-dedupe-set", { window: w });
+        }, 300);
+      });
+    })(dedupeSegItems[i]);
+  }
 }
