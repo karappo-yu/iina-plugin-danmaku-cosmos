@@ -1355,11 +1355,11 @@ function browserRenderList(list) {
   }
 }
 
-// 列表条数显示
+// 列表条数显示(格式: (12,345) 紧贴标题)
 function browserUpdateTotal() {
   if (!totalEl) return;
   var n = browserList.items.length;
-  totalEl.textContent = n > 0 ? n.toLocaleString() : "";
+  totalEl.textContent = n > 0 ? "(" + n.toLocaleString() + ")" : "";
 }
 
 function browserUpdateLiveUI() {

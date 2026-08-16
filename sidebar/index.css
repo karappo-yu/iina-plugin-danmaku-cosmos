@@ -773,8 +773,7 @@ kbd {
   color: var(--secondary-label);
 }
 .browser-total {
-  font-weight: normal;
-  margin-left: 4px;
+  /* 数量并入标题: 弹幕列表(12,345),紧贴无间距 */
 }
 .danmaku-browser-list-wrap {
   position: relative;
