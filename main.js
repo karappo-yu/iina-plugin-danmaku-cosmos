@@ -194,6 +194,7 @@ var danmakuFilterOffset = 0;
 var danmakuFilterLimit = 0;
 var danmakuFilterDensity = 0;
 var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听实时弹幕
+var pendingBrowserWatch = null;  // overlay 未就绪时暂存的 watch 消息(就绪后补发)
 
 function sanitizeIPCString(value) {
   return String(value || '').replace(/[`\u2018\u2019]/g, "'");
@@ -1221,6 +1222,12 @@ function markOverlayReady() {
   overlay.show();
   overlay.postMessage("ack", {});
 
+  if (pendingBrowserWatch) {
+    // 过滤 tab 的 watch 消息在 overlay 就绪前到达过: 补发
+    overlay.postMessage("danmaku-browser-watch", pendingBrowserWatch);
+    pendingBrowserWatch = null;
+  }
+
   overlay.postMessage("apply-settings", {
     opacity: canvasOpacity,
     canvasFontScale: canvasFontScale,
@@ -1710,7 +1717,12 @@ function registerSidebarHandlers() {
 
   sidebar.onMessage("danmaku-browser-watch", function (data) {
     danmakuBrowserWatch = !!data.watch;
-    overlay.postMessage("danmaku-browser-watch", { watch: danmakuBrowserWatch, refresh: !!data.refresh });
+    var msg = { watch: danmakuBrowserWatch, refresh: !!data.refresh };
+    if (overlayReady) {
+      overlay.postMessage("danmaku-browser-watch", msg);
+    } else {
+      pendingBrowserWatch = msg; // overlay 尚未就绪: 暂存,就绪后补发,避免消息被丢弃
+    }
   });
 }
 

@@ -554,6 +554,7 @@ if (tabButtons.length) {
         tabFilter.style.display = showFilter ? "" : "none";
         // 过滤 tab 激活时开启实时弹幕推送并请求全量列表;离开时停止推送
         iina.postMessage("danmaku-browser-watch", { watch: showFilter, refresh: showFilter });
+        browserCountWatchSend();
       }
     });
   });
@@ -1299,6 +1300,30 @@ function browserFollowToLive() {
 var browserNextChunk = 0;
 var browserLastRefreshRequest = 0;
 
+// ── 诊断计数器(过滤 tab 状态行,数据异常时展示) ──
+var browserDiag = { watchSent: 0, dataMsgs: 0, visibleMsgs: 0, decodeErrs: 0 };
+
+function browserUpdateDiag() {
+  var el = document.getElementById("danmaku-browser-status");
+  if (!el) return;
+  if (browserItems.length > 0) {
+    el.textContent = 'browser v3';
+    el.classList.remove('broken');
+    return;
+  }
+  el.classList.add('broken');
+  el.textContent = 'v3 watch→' + browserDiag.watchSent
+    + ' data←' + browserDiag.dataMsgs
+    + ' vis←' + browserDiag.visibleMsgs
+    + ' items=' + browserItems.length
+    + ' err=' + browserDiag.decodeErrs;
+}
+
+function browserCountWatchSend() {
+  browserDiag.watchSent++;
+  browserUpdateDiag();
+}
+
 // 数据消息丢失时(如 IPC 丢弃了某条分块)请求 overlay 重发,限流避免循环
 function requestBrowserDataRefresh() {
   var now = Date.now();
@@ -1306,6 +1331,7 @@ function requestBrowserDataRefresh() {
   browserLastRefreshRequest = now;
   debugLog('danmaku-browser: data missing, requesting refresh');
   iina.postMessage("danmaku-browser-watch", { watch: true, refresh: true });
+  browserCountWatchSend();
 }
 
 // main.js 以 base64 编码投递(绕开 IINA 桥的模板字符串注入);解码失败返回 null
@@ -1321,18 +1347,27 @@ function browserDecodePayload(payload) {
 
 iina.onMessage("danmaku-browser-data", function (data) {
   if (!data) return;
+  browserDiag.dataMsgs++;
   var items = null;
   if (typeof data.payload === 'string') {
     items = browserDecodePayload(data.payload);
     if (items === null) {
+      browserDiag.decodeErrs++;
+      browserUpdateDiag();
       requestBrowserDataRefresh(); // 解码失败: 请求重发
       return;
     }
   } else if (Array.isArray(data.items)) {
     items = data.items;
   }
-  if (items === null) return;
-  if (data.chunkIndex === 0) {
+  if (items === null) {
+    browserUpdateDiag();
+    return;
+  }
+  // 兼容旧格式(无 chunkIndex/done 的单条消息)
+  var chunkIndex = data.chunkIndex === undefined ? 0 : data.chunkIndex;
+  var isDone = data.done !== false;
+  if (chunkIndex === 0) {
     // 新数据或 refresh 重发: 重置状态
     browserItems = [];
     browserRowOfIndex = new Map();
@@ -1342,10 +1377,11 @@ iina.onMessage("danmaku-browser-data", function (data) {
     browserNextChunk = 1;
     browserRowNodes.forEach(function (el) { el.remove(); });
     browserRowNodes.clear();
-  } else if (data.chunkIndex === browserNextChunk) {
-    browserNextChunk = data.chunkIndex + 1;
+  } else if (chunkIndex === browserNextChunk) {
+    browserNextChunk = chunkIndex + 1;
   } else {
     requestBrowserDataRefresh(); // 丢块/乱序: 丢弃不完整数据并请求重发
+    browserUpdateDiag();
     return;
   }
   // 追加本块并增量建立 index→行号 映射
@@ -1356,13 +1392,14 @@ iina.onMessage("danmaku-browser-data", function (data) {
     browserItems.push(item);
     if (item.index !== undefined) browserRowOfIndex.set(item.index, base + i);
   }
-  if (!data.done) {
+  if (!isDone) {
     browserUpdateLiveUI();
+    browserUpdateDiag();
     browserRenderWindow();
     return;
   }
   // 全部收齐: 更新汇总与空状态,数据未变(如 refresh)时保留滚动位置
-  debugLog('danmaku-browser: data complete, total=' + browserItems.length + ', chunks=' + (data.chunkIndex + 1));
+  debugLog('danmaku-browser: data complete, total=' + browserItems.length + ', chunks=' + (chunkIndex + 1));
   var totalEl = document.getElementById("danmaku-browser-total");
   if (totalEl) totalEl.textContent = browserItems.length > 0 ? browserItems.length.toLocaleString() : "";
   var emptyEl = document.getElementById("danmaku-browser-empty");
@@ -1374,11 +1411,13 @@ iina.onMessage("danmaku-browser-data", function (data) {
     if (browserListEl) browserListEl.scrollTop = 0;
   }
   browserUpdateLiveUI();
+  browserUpdateDiag();
   browserRenderWindow();
 });
 
 iina.onMessage("danmaku-visible", function (data) {
   if (!data || !data.indices) return;
+  browserDiag.visibleMsgs++;
   if (data.vpos !== undefined) browserVpos = data.vpos;
   // 自愈: 有在屏弹幕但本地无列表数据(数据消息可能被 IPC 丢弃)→ 请求重发
   if (browserItems.length === 0 && data.indices.length > 0) requestBrowserDataRefresh();
@@ -1395,6 +1434,7 @@ iina.onMessage("danmaku-visible", function (data) {
   }
   browserLiveRows.sort(function (a, b) { return a - b; });
   browserUpdateLiveUI();
+  browserUpdateDiag();
   browserRenderWindow();
   if (browserFollowLive) browserFollowToLive();
 });
@@ -1426,3 +1466,5 @@ if (browserFollowBtn) {
 
 // 侧栏初始在基础 tab: 显式关掉监听,清除 main.js 侧可能残留的 watch 状态
 iina.postMessage("danmaku-browser-watch", { watch: false });
+browserCountWatchSend();
+browserUpdateDiag();

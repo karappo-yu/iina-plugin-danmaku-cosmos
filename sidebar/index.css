@@ -840,3 +840,14 @@ kbd {
   color: var(--secondary-label);
   font-variant-numeric: tabular-nums;
 }
+/* 诊断状态行: 数据异常时显示消息计数器,用于定位断点;正常时只显示版本 */
+.danmaku-browser-status {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--tertiary-label);
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+.danmaku-browser-status.broken {
+  color: var(--danger);
+}
