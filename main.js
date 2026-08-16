@@ -2493,6 +2493,8 @@ event.on("iina.plugin-overlay-loaded", function () {
 
 event.on("iina.file-loaded", function (url) {
   currentVideoUrl = url;
+  // 偏移量因视频/弹幕文件而异(且不持久化),切换视频时归零并同步 overlay/sidebar
+  applyDanmakuOffset(0);
   if (danmakuEnabled) loadDanmakuForVideo(url);
 });
 
