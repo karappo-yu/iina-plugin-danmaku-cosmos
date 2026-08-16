@@ -453,12 +453,10 @@ function applyDanmakuFilter(offset, limit) {
 
   var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
   if (!selectedPath) return;
-  var encodedContent = danmakuCache[selectedPath];
-  if (!encodedContent) return;
+  if (!danmakuCache[selectedPath]) return;
 
-  var filteredEncoded = applyNicoJsonFilters(encodedContent);
   overlay.postMessage("load-danmaku", {
-    xmlContent: filteredEncoded,
+    xmlContent: getEffectiveContent(selectedPath),
     path: selectedPath,
     danmakuType: 'nico-json',
     opacity: canvasOpacity,
@@ -555,31 +553,38 @@ function ensureBrowserSimplifier() {
   }
 }
 
-function browserSimplifyText(text) {
-  // 转换器构建后缓存复用,但必须同时检查开关当前状态——关闭后不再转换(原文)
-  if (!text || !openccSimplifier || !danmakuForceSimplified) return text;
-  return openccSimplifier(text);
+// 单源内容出口: 按当前设置返回"最终内容"(URI 编码形式)。
+// overlay 的 load-danmaku 与 sidebar 过滤列表都从这里取数,保证两边拿到
+// 完全同一份数据——nico-json 应用 offset/limit/密度切片;其他格式应用强制简体转换。
+function getEffectiveContent(path) {
+  var encodedContent = danmakuCache[path];
+  if (!encodedContent) return null;
+  var ft = currentDanmakuStatus.fileType;
+  if (ft === 'nico-json') {
+    return applyNicoJsonFilters(encodedContent); // 切片/密度(无过滤时原样返回)
+  }
+  if (danmakuForceSimplified && ensureBrowserSimplifier()) {
+    try {
+      return encodeContent(openccSimplifier(decodeURIComponent(encodedContent)));
+    } catch (e) {
+      return encodedContent;
+    }
+  }
+  return encodedContent;
 }
 
-// 从 danmakuCache 构建 [{t, text}] 时间线(vpos 升序)。格式字段与 overlay 解析一致:
-// nico-json v1(vposMs/body)与 legacy(vpos/content);dandanplay 缓存已是 {t,text};
-// nico/bilibili XML 轻量正则提取。
-// 与 overlay 渲染保持一致: nico-json 先应用 offset/limit/密度切片(applyNicoJsonFilters,
-// 与发往 overlay 的 load-danmaku 内容相同);其他格式文本过强制简体转换(同库同参数)。
+// 从 getEffectiveContent(单源出口)构建 [{t, text}] 时间线(vpos 升序)。
+// 格式字段与 overlay 解析一致: nico-json v1(vposMs/body)与 legacy(vpos/content);
+// dandanplay 缓存已是 {t,text}; nico/bilibili XML 轻量正则提取。
+// 所有过滤/转换已在 getEffectiveContent 完成(与 overlay 收到的 load-danmaku 同一份)。
 function buildDanmakuBrowserList() {
   var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
   if (!selectedPath) return [];
-  var encodedContent = danmakuCache[selectedPath];
+  var encodedContent = getEffectiveContent(selectedPath);
   if (!encodedContent) return [];
   var rawStr;
+  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return []; }
   var ft = currentDanmakuStatus.fileType;
-  try {
-    if (ft === 'nico-json') {
-      rawStr = decodeURIComponent(applyNicoJsonFilters(encodedContent));
-    } else {
-      rawStr = decodeURIComponent(encodedContent);
-    }
-  } catch (e) { return []; }
   var items = [];
   try {
     if (ft === 'nico-json') {
@@ -607,7 +612,7 @@ function buildDanmakuBrowserList() {
         for (var k = 0; k < list.length; k++) {
           var d = list[k];
           if (!d || typeof d.t !== 'number' || !isFinite(d.t) || !d.text) continue;
-          items.push({ t: Math.round(d.t), text: browserSimplifyText(d.text) });
+          items.push({ t: Math.round(d.t), text: d.text });
         }
       }
     } else {
@@ -616,7 +621,7 @@ function buildDanmakuBrowserList() {
         var m;
         while ((m = reChat.exec(rawStr)) !== null) {
           if (!m[2]) continue;
-          items.push({ t: parseInt(m[1], 10) || 0, text: browserSimplifyText(decodeXmlText(m[2])) });
+          items.push({ t: parseInt(m[1], 10) || 0, text: decodeXmlText(m[2]) });
         }
       } else {
         var reD = /<d\s+p="([^"]*)"[^>]*>([\s\S]*?)<\/d>/g;
@@ -625,7 +630,7 @@ function buildDanmakuBrowserList() {
           var parts = m2[1].split(',');
           var sec = parseFloat(parts[0]);
           if (!isFinite(sec) || !m2[2]) continue;
-          items.push({ t: Math.round(sec * 100), text: browserSimplifyText(decodeXmlText(m2[2])) });
+          items.push({ t: Math.round(sec * 100), text: decodeXmlText(m2[2]) });
         }
       }
     }
@@ -1157,7 +1162,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
     notifyBrowserDataChanged();
 
     var payload = {
-      xmlContent: danmakuCache[virtualPath],
+      xmlContent: getEffectiveContent(virtualPath),
       path: virtualPath,
       danmakuType: 'dandanplay',
       opacity: canvasOpacity,
@@ -1379,7 +1384,7 @@ function loadLocalDanmaku(fileInfo) {
   notifyBrowserDataChanged();
 
   var payload = {
-    xmlContent: encodedContent,
+    xmlContent: getEffectiveContent(fileInfo.path),
     path: fileInfo.path,
     danmakuType: fileType,
     opacity: canvasOpacity,
@@ -1514,7 +1519,7 @@ function loadManualDanmakuFile(path) {
   notifyBrowserDataChanged();
 
   var manualPayload = {
-    xmlContent: encodedContent,
+    xmlContent: getEffectiveContent(path),
     path: path,
     danmakuType: manualFileType,
     opacity: canvasOpacity,
@@ -1567,43 +1572,36 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("set-danmaku-force-simplified", function (data) {
-  // 更新 main.js 内部的全局变量
-  danmakuForceSimplified = !!data.value;
-  
-  // 将此偏好持久化同步到 IINA 系统配置中
-  preferences.set("danmakuForceSimplified", danmakuForceSimplified);
-  syncPreferencesSoon();
-  
-  // 通知 overlay.js 实时变更设置并触发重新渲染清洗
-  if (overlayReady) {
-    overlay.postMessage("apply-settings", {
-      danmakuForceSimplified: danmakuForceSimplified
-    });
-    
-    // 如果当前已经加载了弹幕文件，重新驱动加载管道，让 OpenCC 重新清洗文本
-    // nico-json 只可能是日语弹幕，繁简转换对其无意义（overlay 也从不转换该格式），跳过重建
-    var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
-    if (selectedPath && currentDanmakuStatus.fileType !== 'nico-json') {
-      overlay.postMessage("load-danmaku", {
-        xmlContent: danmakuCache[selectedPath],
-        path: selectedPath,
-        danmakuType: currentDanmakuStatus.fileType === 'dandanplay' ? 'dandanplay' : 'bilibili-xml',
-        opacity: canvasOpacity,
-        canvasFontScale: canvasFontScale,
-        strokeColor: strokeColor,
-        strokeInversionColor: strokeInversionColor,
-        strokeOpacity: strokeOpacity,
-        strokeWidth: strokeWidth,
-        commentLimit: commentLimit,
-        scrollSpeed: scrollSpeed,
-        preservePosition: true,
-        danmakuForceSimplified: danmakuForceSimplified
-      });
+    // 更新 main.js 内部的全局变量
+    danmakuForceSimplified = !!data.value;
+
+    // 将此偏好持久化同步到 IINA 系统配置中
+    preferences.set("danmakuForceSimplified", danmakuForceSimplified);
+    syncPreferencesSoon();
+
+    // 当前已加载弹幕时重新驱动加载管道（内容经 getEffectiveContent 单源转换）
+    // nico-json 只可能是日语弹幕，繁简转换对其无意义（getEffectiveContent 也不转换该格式），跳过重建
+    if (overlayReady) {
+      var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+      if (selectedPath && currentDanmakuStatus.fileType !== 'nico-json') {
+        overlay.postMessage("load-danmaku", {
+          xmlContent: getEffectiveContent(selectedPath),
+          path: selectedPath,
+          danmakuType: currentDanmakuStatus.fileType === 'dandanplay' ? 'dandanplay' : 'bilibili-xml',
+          opacity: canvasOpacity,
+          canvasFontScale: canvasFontScale,
+          strokeColor: strokeColor,
+          strokeInversionColor: strokeInversionColor,
+          strokeOpacity: strokeOpacity,
+          strokeWidth: strokeWidth,
+          commentLimit: commentLimit,
+          scrollSpeed: scrollSpeed,
+          preservePosition: true
+        });
+      }
     }
-  }
-  // 过滤 tab 列表与 overlay 同源: 简体开关变化 → 重新构建并推送
-  ensureBrowserSimplifier();
-  notifyBrowserDataChanged();
+    // 过滤 tab 列表与 overlay 同源: 简体开关变化 → 重新构建并推送
+    notifyBrowserDataChanged();
   });
 
   sidebar.onMessage("set-stroke-opacity", function (data) {
@@ -1787,7 +1785,7 @@ function registerSidebarHandlers() {
     notifyBrowserDataChanged();
 
     var selectPayload = {
-      xmlContent: encodedContent,
+      xmlContent: getEffectiveContent(filePath),
       path: filePath,
       danmakuType: fileType,
       opacity: canvasOpacity,
@@ -1912,7 +1910,6 @@ function registerSidebarHandlers() {
   sidebar.onMessage("danmaku-browser-request", function (data) {
     // sidebar 上报插件根目录(file:// 定位),供 main 读 overlay/lib/opencc.min.js
     if (data && data.pluginRoot) pluginRootPath = data.pluginRoot;
-    ensureBrowserSimplifier();
     sendDanmakuBrowserData(buildDanmakuBrowserList());
   });
 
