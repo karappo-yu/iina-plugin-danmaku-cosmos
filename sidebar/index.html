@@ -295,8 +295,25 @@
     </div>
 
     <!-- ==================== Filter tab ==================== -->
+    <!-- 弹幕列表在上(固定位置,不被下方屏蔽词面板展开挤动);屏蔽词在列表下方 -->
     <div id="tab-filter" style="display:none">
       <div class="section" style="margin-top:12px">
+        <div class="section-title">
+          <span data-i18n="filter_title">弹幕列表</span>
+          <span id="danmaku-browser-total" class="browser-total"></span>
+        </div>
+        <div id="danmaku-browser-list" class="danmaku-browser-list" data-clickable>
+          <div id="danmaku-browser-spacer" class="danmaku-browser-spacer"></div>
+          <div id="danmaku-browser-empty" class="danmaku-browser-empty" data-i18n="filter_empty" style="display:none">未加载弹幕</div>
+        </div>
+        <div class="danmaku-file-list-footer" style="margin-top:6px;padding-top:4px">
+          <span id="danmaku-browser-live" class="danmaku-browser-live"></span>
+          <button id="danmaku-browser-follow-btn" class="danmaku-file-action-btn" data-i18n="filter_back_live" style="display:none">回到实时</button>
+        </div>
+        <div id="danmaku-browser-status" class="danmaku-browser-status">browser v8</div>
+      </div>
+      <div class="adv-separator"></div>
+      <div class="section">
         <div class="toggle-row">
           <span class="toggle-label" data-i18n="blocklist_title">屏蔽词</span>
           <label class="switch" data-clickable>
@@ -312,22 +329,6 @@
             <button id="danmaku-blocklist-add-btn" class="danmaku-file-action-btn" data-i18n="blocklist_add">添加</button>
           </div>
         </div>
-      </div>
-      <div class="adv-separator"></div>
-      <div class="section">
-        <div class="section-title">
-          <span data-i18n="filter_title">弹幕列表</span>
-          <span id="danmaku-browser-total" class="browser-total"></span>
-        </div>
-        <div id="danmaku-browser-list" class="danmaku-browser-list" data-clickable>
-          <div id="danmaku-browser-spacer" class="danmaku-browser-spacer"></div>
-          <div id="danmaku-browser-empty" class="danmaku-browser-empty" data-i18n="filter_empty" style="display:none">未加载弹幕</div>
-        </div>
-        <div class="danmaku-file-list-footer" style="margin-top:6px;padding-top:4px">
-          <span id="danmaku-browser-live" class="danmaku-browser-live"></span>
-          <button id="danmaku-browser-follow-btn" class="danmaku-file-action-btn" data-i18n="filter_back_live" style="display:none">回到实时</button>
-        </div>
-        <div id="danmaku-browser-status" class="danmaku-browser-status">browser v8</div>
       </div>
     </div>
 
