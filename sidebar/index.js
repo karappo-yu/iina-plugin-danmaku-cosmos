@@ -242,7 +242,9 @@ var i18n = {
     blocklist_add: "Add",
     blocklist_empty: "No block words yet",
     blocklist_placeholder: "word or regex...",
-    blocklist_remove: "Remove"
+    blocklist_remove: "Remove",
+    dedupe_title: "Deduplicate",
+    dedupe_window: "Window (sec)"
   },
   ja: {
     danmaku_visible: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a",
@@ -290,7 +292,9 @@ var i18n = {
     blocklist_add: "\u8ffd\u52a0",
     blocklist_empty: "\u307e\u3060\u30d6\u30ed\u30c3\u30af\u8a9e\u306f\u3042\u308a\u307e\u305b\u3093",
     blocklist_placeholder: "\u5358\u8a9e\u307e\u305f\u306f\u6b63\u898f\u8868\u73fe...",
-    blocklist_remove: "\u524a\u9664"
+    blocklist_remove: "\u524a\u9664",
+    dedupe_title: "\u91cd\u8907\u30b3\u30e1\u30f3\u30c8\u5408\u4f75",
+    dedupe_window: "\u5408\u4f75\u7bc4\u56f2 (\u79d2)"
   },
   zh: {
     danmaku_visible: "\u5f39\u5e55\u663e\u793a",
@@ -338,7 +342,9 @@ var i18n = {
     blocklist_add: "\u6dfb\u52a0",
     blocklist_empty: "\u6682\u65e0\u5c4f\u853d\u8bcd",
     blocklist_placeholder: "\u5c4f\u853d\u8bcd\u6216\u6b63\u5219...",
-    blocklist_remove: "\u5220\u9664"
+    blocklist_remove: "\u5220\u9664",
+    dedupe_title: "\u5f39\u5e55\u53bb\u91cd",
+    dedupe_window: "\u53bb\u91cd\u533a\u95f4 (\u79d2)"
   }
 };
 
@@ -570,6 +576,7 @@ if (tabButtons.length) {
           iina.postMessage("danmaku-browser-request", { pluginRoot: browserPluginRoot() });
           iina.postMessage("danmaku-browser-watch", { watch: true });
           iina.postMessage("danmaku-blocklist-request");
+          iina.postMessage("danmaku-dedupe-request");
         } else {
           iina.postMessage("danmaku-browser-watch", { watch: false });
         }
@@ -1337,12 +1344,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v8';
+    el.textContent = 'browser v9';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v8 watch→' + browserDiag.watchSent
+  el.textContent = 'v9 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
@@ -1588,5 +1595,44 @@ if (blocklistAddBtn && blocklistInput) {
       blocklistInput.value = "";
       blocklistInput.style.display = "none";
     }
+  });
+}
+
+/* ========== 弹幕去重(开关 + 区间输入) ========== */
+var dedupeToggle = document.getElementById("danmaku-dedupe-toggle");
+var dedupeRow = document.getElementById("danmaku-dedupe-row");
+var dedupeInput = document.getElementById("danmaku-dedupe-input");
+
+function applyDedupeState(state) {
+  if (!state) return;
+  if (typeof state.enabled === 'boolean') {
+    if (dedupeToggle) dedupeToggle.checked = state.enabled;
+    if (dedupeRow) dedupeRow.style.display = state.enabled ? "" : "none";
+  }
+  if (typeof state.window === 'number' && dedupeInput) {
+    dedupeInput.value = String(state.window);
+  }
+}
+
+iina.onMessage("danmaku-dedupe-state", function (data) {
+  applyDedupeState(data);
+});
+
+if (dedupeToggle && dedupeInput) {
+  dedupeToggle.addEventListener("change", function () {
+    var on = dedupeToggle.checked;
+    if (dedupeRow) dedupeRow.style.display = on ? "" : "none";
+    iina.postMessage("danmaku-dedupe-set", { enabled: on });
+  });
+  dedupeInput.addEventListener("change", function () {
+    var w = parseFloat(dedupeInput.value);
+    if (!isFinite(w)) {
+      dedupeInput.value = "2";
+      return;
+    }
+    if (w < 1) w = 1;
+    if (w > 5) w = 5;
+    dedupeInput.value = String(w);
+    iina.postMessage("danmaku-dedupe-set", { window: w });
   });
 }

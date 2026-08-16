@@ -17,6 +17,10 @@ if (!Array.isArray(danmakuBlocklist)) danmakuBlocklist = [];
 var danmakuBlocklistEnabled = !!preferences.get("danmakuBlocklistEnabled");
 var blockRegexes = []; // 编译缓存(列表变化时重建)
 rebuildBlockRegexes();
+// 弹幕去重: 开关 + 区间(秒,1-5)。窗口内重复文本合并为 "原文✖️N",时间取组内最早。
+var danmakuDedupeEnabled = !!preferences.get("danmakuDedupeEnabled");
+var danmakuDedupeWindow = parseFloat(preferences.get("danmakuDedupeWindow"));
+if (!isFinite(danmakuDedupeWindow) || danmakuDedupeWindow < 1 || danmakuDedupeWindow > 5) danmakuDedupeWindow = 2;
 var canvasOpacity = preferences.get("danmakuCanvasOpacity") || 0.8;
 var canvasFontScale = preferences.get("niconicommentsFontScale") || 1.0;
 var currentCanvasMode = preferences.get("canvasMode") || 'css';
@@ -591,6 +595,166 @@ function isBlockedText(text) {
   return false;
 }
 
+// ── 弹幕去重(时间窗内重复文本合并) ───────────────────────────────────
+// 输入为已含 .t(1/100s) 与 .text 的对象数组(时间无需有序,内部按 t 排序);
+// 窗口 windowMs 内文本相同的弹幕合并为一条——保留组内最早对象(时间=t),
+// 其 .text 原地改为 "原文✖️N";被合并对象从输出消失。调用方通过对象引用
+// 判断保留/删除。与屏蔽词/简繁共用同一变换序列,保证 overlay 与列表一致。
+function mergeDuplicateItems(items, windowMs) {
+  if (!items || items.length === 0) return items;
+  if (!(windowMs > 0)) return items;
+  var buckets = new Map();
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    if (!it || typeof it.t !== 'number' || !isFinite(it.t) || !it.text) continue;
+    var bucket = buckets.get(it.text);
+    if (!bucket) { bucket = []; buckets.set(it.text, bucket); }
+    bucket.push(it);
+  }
+  var out = [];
+  buckets.forEach(function (bucket) {
+    bucket.sort(function (a, b) { return a.t - b.t; });
+    var i = 0;
+    while (i < bucket.length) {
+      var first = bucket[i];
+      var count = 1;
+      var j = i + 1;
+      while (j < bucket.length && bucket[j].t - first.t <= windowMs) {
+        count++;
+        j++;
+      }
+      if (count > 1) {
+        first.text = first.text + '\u2716\ufe0f' + count; // ✖️
+      }
+      out.push(first);
+      i = j;
+    }
+  });
+  out.sort(function (a, b) { return a.t - b.t; });
+  return out;
+}
+
+// XML 文本转义(合并文本重建行时用;与 decodeXmlText 互逆)
+function encodeXmlText(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+// nico-json 去重: 每个 thread 的 comments 内合并(保留组内最早 comment 的全部字段)
+function dedupeNicoJson(encodedContent) {
+  if (!(danmakuDedupeWindow > 0)) return encodedContent;
+  var rawStr;
+  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return encodedContent; }
+  var data;
+  try { data = JSON.parse(rawStr); } catch (e) { return encodedContent; }
+  if (!Array.isArray(data)) return encodedContent;
+  var windowMs = danmakuDedupeWindow * 100;
+  var changed = false;
+  var filteredData = [];
+  for (var i = 0; i < data.length; i++) {
+    var thread = data[i];
+    if (!thread || !Array.isArray(thread.comments)) { filteredData.push(thread); continue; }
+    var entries = [];
+    for (var j = 0; j < thread.comments.length; j++) {
+      var c = thread.comments[j];
+      if (!c) { entries.push({ t: 0, text: '', _c: c, _skip: true }); continue; }
+      var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
+      var text = c.body !== undefined ? c.body : c.content;
+      if (!isFinite(t) || !text) { entries.push({ t: 0, text: '', _c: c, _skip: true }); continue; }
+      entries.push({ t: t, text: text, _c: c });
+    }
+    var merged = mergeDuplicateItems(entries, windowMs);
+    var newComments = [];
+    for (var k = 0; k < merged.length; k++) {
+      var e = merged[k];
+      if (e._skip) { newComments.push(e._c); continue; }
+      if (e._c.body !== undefined) e._c.body = e.text;
+      else e._c.content = e.text;
+      newComments.push(e._c);
+    }
+    if (newComments.length !== thread.comments.length) {
+      changed = true;
+      var newObj = {};
+      for (var p in thread) { if (thread.hasOwnProperty(p)) newObj[p] = thread[p]; }
+      newObj.comments = newComments;
+      newObj.commentCount = newComments.length;
+      filteredData.push(newObj);
+    } else {
+      filteredData.push(thread);
+    }
+  }
+  if (!changed) return encodedContent;
+  return encodeContent(JSON.stringify(filteredData));
+}
+
+// 非 nico-json 去重: dandanplay 解析合并;XML(bilibili <d> / nico <chat>)行级合并
+function dedupeContent(encodedContent, ft) {
+  if (!(danmakuDedupeWindow > 0)) return encodedContent;
+  var rawStr;
+  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return encodedContent; }
+  var windowMs = danmakuDedupeWindow * 100;
+  if (ft === 'dandanplay') {
+    var list;
+    try { list = JSON.parse(rawStr); } catch (e) { return encodedContent; }
+    if (!Array.isArray(list)) return encodedContent;
+    var entries = [];
+    for (var i = 0; i < list.length; i++) {
+      var d = list[i];
+      if (!d || typeof d.t !== 'number' || !isFinite(d.t) || !d.text) { entries.push({ t: 0, text: '', _d: d, _skip: true }); continue; }
+      entries.push({ t: Math.round(d.t), text: d.text, _d: d });
+    }
+    var merged = mergeDuplicateItems(entries, windowMs);
+    var out = [];
+    for (var k = 0; k < merged.length; k++) {
+      var e = merged[k];
+      if (e._skip) { out.push(e._d); continue; }
+      e._d.text = e.text;
+      out.push(e._d);
+    }
+    if (out.length === list.length) return encodedContent;
+    return encodeContent(JSON.stringify(out));
+  }
+  // 用 ft 判断格式(内容嗅探 '<chat' 会误判含 <chatserver> 头部的 bilibili XML)
+  var re = ft === 'nico-xml'
+    ? /(<chat\b[^>]*>)([\s\S]*?)(<\/chat>)/g
+    : /(<d\s+p="[^"]*"[^>]*>)([\s\S]*?)(<\/d>)/g;
+  var lines = []; // {t, text, head, tail, full}
+  var m;
+  while ((m = re.exec(rawStr)) !== null) {
+    var t = m[1].indexOf('vpos="') !== -1
+      ? parseInt((m[1].match(/vpos="(\d+)"/) || [0, 0])[1], 10) || 0
+      : Math.round((parseFloat((m[1].match(/p="([^"]*)"/) || [0, '0'])[1].split(',')[0]) || 0) * 100);
+    lines.push({ t: t, text: decodeXmlText(m[2]), head: m[1], tail: m[3], full: m[0] });
+  }
+  if (lines.length === 0) return encodedContent;
+  var merged = mergeDuplicateItems(lines, windowMs);
+  var kept = new Set();
+  for (var i2 = 0; i2 < merged.length; i2++) kept.add(merged[i2]);
+  if (kept.size === lines.length) return encodedContent;
+  var parts = [];
+  var last = 0;
+  var reFind = new RegExp(re.source, 'g');
+  var mm;
+  while ((mm = reFind.exec(rawStr)) !== null) {
+    // 找到对应的 lines 项(按位置匹配)
+    var line = null;
+    for (var li = 0; li < lines.length; li++) {
+      if (lines[li].full === mm[0] && lines[li]._used !== true) { line = lines[li]; lines[li]._used = true; break; }
+    }
+    parts.push(rawStr.slice(last, mm.index));
+    if (line && kept.has(line)) {
+      parts.push(line.head + encodeXmlText(line.text) + line.tail);
+    }
+    last = mm.index + mm[0].length;
+  }
+  parts.push(rawStr.slice(last));
+  return encodeContent(parts.join(''));
+}
+
 // nico-json: 过滤所有 thread 的 comments(含 owner/easy——屏蔽词对渲染的全部弹幕生效)
 function filterBlockedNicoJson(encodedContent) {
   if (blockRegexes.length === 0) return encodedContent;
@@ -646,7 +810,8 @@ function filterBlockedContent(encodedContent, ft) {
     if (!changed) return encodedContent;
     return encodeContent(JSON.stringify(kept));
   }
-  var re = rawStr.indexOf('<chat') !== -1
+  // 用 ft 判断格式(内容嗅探 '<chat' 会误判含 <chatserver> 头部的 bilibili XML)
+  var re = ft === 'nico-xml'
     ? /<chat\b[^>]*>([\s\S]*?)<\/chat>/g
     : /<d\s+p="[^"]*"[^>]*>([\s\S]*?)<\/d>/g;
   var out = [];
@@ -670,7 +835,7 @@ function filterBlockedContent(encodedContent, ft) {
 // 单源内容出口: 按当前设置返回"最终内容"(URI 编码形式)。
 // overlay 的 load-danmaku 与 sidebar 过滤列表都从这里取数,保证两边拿到
 // 完全同一份数据——nico-json 应用 offset/limit/密度切片;其他格式应用强制简体转换;
-// 屏蔽词开启时两者都再经过屏蔽词过滤。
+// 屏蔽词开启时两者都再经过屏蔽词过滤;去重开启时最后合并重复弹幕。
 function getEffectiveContent(path) {
   var encodedContent = danmakuCache[path];
   if (!encodedContent) return null;
@@ -679,6 +844,7 @@ function getEffectiveContent(path) {
   if (ft === 'nico-json') {
     out = applyNicoJsonFilters(encodedContent); // 切片/密度(无过滤时原样返回)
     if (danmakuBlocklistEnabled) out = filterBlockedNicoJson(out);
+    if (danmakuDedupeEnabled) out = dedupeNicoJson(out);
     return out;
   }
   if (danmakuForceSimplified && ensureBrowserSimplifier()) {
@@ -691,6 +857,7 @@ function getEffectiveContent(path) {
     out = encodedContent;
   }
   if (danmakuBlocklistEnabled) out = filterBlockedContent(out, ft);
+  if (danmakuDedupeEnabled) out = dedupeContent(out, ft);
   return out;
 }
 
@@ -771,6 +938,17 @@ function buildDanmakuBrowserList() {
     }
   } catch (e) {
     return [];
+  }
+  // 去重: 仅对未屏蔽弹幕合并(与 overlay 相同合并规则——屏蔽先于去重),
+  // 被屏蔽弹幕保持原样划线;合并后可见集合与 overlay 渲染内容一致。
+  if (danmakuDedupeEnabled && danmakuDedupeWindow > 0) {
+    var visible = [];
+    var blockedItems = [];
+    for (var di = 0; di < items.length; di++) {
+      if (items[di].blocked) blockedItems.push(items[di]);
+      else visible.push(items[di]);
+    }
+    items = blockedItems.concat(mergeDuplicateItems(visible, danmakuDedupeWindow * 100));
   }
   items.sort(function (a, b) { return a.t - b.t; });
   return items;
@@ -1856,6 +2034,25 @@ function registerSidebarHandlers() {
     notifyBrowserDataChanged();
     resendDanmakuToOverlay();
     sidebar.postMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
+  });
+
+  // ── 弹幕去重 ──
+  sidebar.onMessage("danmaku-dedupe-request", function () {
+    sidebar.postMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
+  });
+
+  sidebar.onMessage("danmaku-dedupe-set", function (data) {
+    if (data.enabled !== undefined) danmakuDedupeEnabled = !!data.enabled;
+    if (data.window !== undefined) {
+      var w = parseFloat(data.window);
+      if (isFinite(w) && w >= 1 && w <= 5) danmakuDedupeWindow = w;
+    }
+    preferences.set("danmakuDedupeEnabled", danmakuDedupeEnabled);
+    preferences.set("danmakuDedupeWindow", danmakuDedupeWindow);
+    syncPreferencesSoon();
+    notifyBrowserDataChanged();
+    resendDanmakuToOverlay();
+    sidebar.postMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
   });
 
   sidebar.onMessage("request-state", function () {
