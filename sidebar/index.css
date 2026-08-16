@@ -803,20 +803,12 @@ kbd {
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
-.danmaku-browser-row.live {
-  background: var(--bg-selected);
-  border-left: 2px solid var(--accent);
-  padding-left: 8px;
-}
 .danmaku-browser-time {
   flex-shrink: 0;
   min-width: 40px;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   color: var(--tertiary-label);
-}
-.danmaku-browser-row.live .danmaku-browser-time {
-  color: var(--accent);
 }
 .danmaku-browser-text {
   flex: 1;

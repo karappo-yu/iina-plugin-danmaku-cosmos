@@ -236,7 +236,6 @@ var i18n = {
     match_type_filename_title: "Hash match failed; showing filename-related matches",
     tab_filter: "Filter",
     filter_title: "Danmaku List",
-    filter_live: "Live {n}",
     filter_back_live: "Back to Live",
     filter_empty: "No danmaku loaded"
   },
@@ -280,7 +279,6 @@ var i18n = {
     match_type_filename_title: "hash \u30de\u30c3\u30c1\u5931\u6557\u3001\u30d5\u30a1\u30a4\u30eb\u540d\u95a2\u9023\u30ea\u30b9\u30c8\u3092\u8868\u793a",
     tab_filter: "\u30d5\u30a3\u30eb\u30bf\u30fc",
     filter_title: "\u30b3\u30e1\u30f3\u30c8\u4e00\u89a7",
-    filter_live: "\u30ea\u30a2\u30eb\u30bf\u30a4\u30e0 {n}",
     filter_back_live: "\u6700\u65b0\u3078",
     filter_empty: "\u30b3\u30e1\u30f3\u30c8\u672a\u8aad\u8fbc"
   },
@@ -324,7 +322,6 @@ var i18n = {
     match_type_filename_title: "hash \u672a\u5339\u914d\u5230\u7f51\u7edc\u5f39\u5e55\uff0c\u663e\u793a\u6587\u4ef6\u540d\u5173\u8054\u5217\u8868",
     tab_filter: "\u8fc7\u6ee4",
     filter_title: "\u5f39\u5e55\u5217\u8868",
-    filter_live: "\u5b9e\u65f6 {n}",
     filter_back_live: "\u56de\u5230\u5b9e\u65f6",
     filter_empty: "\u672a\u52a0\u8f7d\u5f39\u5e55"
   }
@@ -554,7 +551,8 @@ if (tabButtons.length) {
         tabFilter.style.display = showFilter ? "" : "none";
         if (showFilter) {
           // sidebar 懒加载: 主动拉取弹幕列表 + 开启播放时间推送
-          iina.postMessage("danmaku-browser-request");
+          // 带上插件根目录(file:// 定位),供 main 读取 overlay/lib/opencc.min.js(简繁转换)
+          iina.postMessage("danmaku-browser-request", { pluginRoot: browserPluginRoot() });
           iina.postMessage("danmaku-browser-watch", { watch: true });
         } else {
           iina.postMessage("danmaku-browser-watch", { watch: false });
@@ -1203,22 +1201,32 @@ iina.onMessage("dandanplay-bangumi-result", function (data) {
 });
 
 /* ========== Filter tab: danmaku browser list ==========
-   全量时间线列表(按 vpos 排序)+ 实时在屏高亮。列表是虚拟滚动:
-   只渲染视口附近的 ~几十行,滚动时重算,因此几万条弹幕也不卡。
+   全量时间线列表(按 vpos 排序),直播聊天栏式实时跟随: 播放推进时列表锚定
+   vpos 对应行并保持其在可视区底部,新出现的弹幕在底部"推出"。
+   列表是虚拟滚动: 只渲染视口附近的 ~几十行,滚动时重算,几万条也不卡。
    数据由 sidebar 主动向 main.js 拉取(danmaku-browser-request,懒加载约束);
-   在屏弹幕按播放时间窗口计算: [当前vpos - 5s, 当前vpos] 为近似显示时长。 */
+   main 侧按与 overlay 相同的过滤(切片/密度/强制简体)构建,保证列表与渲染一致。 */
 var BROWSER_ROW_H = 26;
-var BROWSER_LIVE_WINDOW = 500; // 在屏窗口(vpos, 1/100s): 滚动/固定弹幕的近似显示时长(5s)
 var browserItems = [];         // [{t, text}] 按 t 升序
-var browserLiveLo = -1;        // 在屏弹幕行号区间 [lo, hi](-1 = 无)
-var browserLiveHi = -1;
 var browserVpos = -1;          // 最近一次时间消息的 vpos(1/100s)
-var browserFollowLive = true;
+var browserFollowLive = true;  // 跟随模式: 锚定 vpos 行滚动(用户手动翻阅时退出)
 var browserDataKey = '';
 var browserListEl = document.getElementById("danmaku-browser-list");
 var browserSpacerEl = document.getElementById("danmaku-browser-spacer");
 var browserRowNodes = new Map(); // 行号 -> 已渲染节点
 var browserExpectedScrollTop = -1;
+
+// sidebar 自身的 file:// 根目录,上报给 main 用于读 overlay/lib/opencc.min.js
+function browserPluginRoot() {
+  try {
+    var u = new URL('../', window.location.href);
+    var p = decodeURIComponent(u.pathname);
+    if (p.length > 1 && p.charAt(p.length - 1) === '/') p = p.slice(0, -1);
+    return p;
+  } catch (e) {
+    return '';
+  }
+}
 
 function browserFmtTime(vpos) {
   var sec = Math.floor((vpos || 0) / 100);
@@ -1258,14 +1266,10 @@ function browserRenderWindow() {
   });
   for (var row = first; row <= last; row++) {
     var node = browserRowNodes.get(row);
-    var isLive = browserLiveLo >= 0 && row >= browserLiveLo && row <= browserLiveHi;
-    if (node) {
-      node.classList.toggle("live", isLive);
-      continue;
-    }
+    if (node) continue;
     var item = browserItems[row];
     var div = document.createElement("div");
-    div.className = "danmaku-browser-row" + (isLive ? " live" : "");
+    div.className = "danmaku-browser-row";
     div.style.top = (row * BROWSER_ROW_H) + "px";
     var time = document.createElement("span");
     time.className = "danmaku-browser-time";
@@ -1281,11 +1285,10 @@ function browserRenderWindow() {
 }
 
 function browserUpdateLiveUI() {
-  var liveCount = (browserLiveLo >= 0 && browserLiveHi >= browserLiveLo) ? (browserLiveHi - browserLiveLo + 1) : 0;
   var liveEl = document.getElementById("danmaku-browser-live");
   if (liveEl) {
     liveEl.textContent = browserVpos >= 0 && browserItems.length > 0
-      ? browserFmtTime(browserVpos) + " \u00b7 " + t('filter_live').replace('{n}', liveCount)
+      ? browserFmtTime(browserVpos)
       : '';
   }
   var btn = document.getElementById("danmaku-browser-follow-btn");
@@ -1299,11 +1302,13 @@ function browserScrollTo(top) {
   browserRenderWindow(); // 立即按新位置渲染,不等浏览器派发 scroll 事件
 }
 
+// 聊天栏式跟随: 锚定 vpos 对应行并保持其在可视区底部,新弹幕到点在底部"推出"
 function browserFollowToLive() {
   if (!browserListEl || browserItems.length === 0) return;
-  var anchorRow = browserLiveLo >= 0 ? browserLiveLo : browserRowForVpos(browserVpos);
+  var anchorRow = browserRowForVpos(browserVpos);
   if (anchorRow < 0) return;
-  browserScrollTo(Math.max(0, anchorRow * BROWSER_ROW_H - 48));
+  var viewH = browserListEl.clientHeight;
+  browserScrollTo(Math.max(0, (anchorRow + 1) * BROWSER_ROW_H - viewH));
 }
 
 var browserNextChunk = 0;
@@ -1316,12 +1321,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v5';
+    el.textContent = 'browser v6';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v5 watch→' + browserDiag.watchSent
+  el.textContent = 'v6 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
@@ -1339,7 +1344,7 @@ function requestBrowserDataRefresh() {
   if (now - browserLastRefreshRequest < 1500) return;
   browserLastRefreshRequest = now;
   debugLog('danmaku-browser: data missing, re-requesting');
-  iina.postMessage("danmaku-browser-request");
+  iina.postMessage("danmaku-browser-request", { pluginRoot: browserPluginRoot() });
   iina.postMessage("danmaku-browser-watch", { watch: true });
   browserCountWatchSend();
 }
@@ -1403,8 +1408,6 @@ iina.onMessage("danmaku-browser-data", function (data) {
   if (chunkIndex === 0) {
     // 新数据或重发: 重置状态
     browserItems = [];
-    browserLiveLo = -1;
-    browserLiveHi = -1;
     browserVpos = -1;
     browserNextChunk = 1;
     browserRowNodes.forEach(function (el) { el.remove(); });
@@ -1445,7 +1448,7 @@ iina.onMessage("danmaku-browser-data", function (data) {
   browserRenderWindow();
 });
 
-// 播放时间推送(main.js 300ms 节流): 据此计算在屏弹幕窗口 [vpos-5s, vpos]
+// 播放时间推送(main.js 300ms 节流): 更新锚点;跟随模式下滚动到 vpos 行(聊天栏式)
 iina.onMessage("danmaku-visible-time", function (data) {
   if (!data || typeof data.time !== 'number') return;
   browserDiag.timeMsgs++;
@@ -1453,17 +1456,8 @@ iina.onMessage("danmaku-visible-time", function (data) {
   browserVpos = vpos;
   // 自愈: 时间信号在流动但本地无列表数据 → 重新拉取
   if (browserItems.length === 0) requestBrowserDataRefresh();
-  var lo = browserRowForVpos(vpos - BROWSER_LIVE_WINDOW) + 1;
-  var hi = browserRowForVpos(vpos);
-  browserLiveLo = lo < 0 ? 0 : lo;
-  browserLiveHi = hi;
-  if (browserLiveLo > browserLiveHi) {
-    browserLiveLo = -1;
-    browserLiveHi = -1; // 窗口内没有弹幕
-  }
   browserUpdateLiveUI();
   browserUpdateDiag();
-  browserRenderWindow();
   if (browserFollowLive) browserFollowToLive();
 });
 

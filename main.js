@@ -195,6 +195,8 @@ var danmakuFilterLimit = 0;
 var danmakuFilterDensity = 0;
 var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听(控制播放时间推送)
 var lastBrowserTimeSent = 0;     // 时间推送节流标记
+var pluginRootPath = '';         // sidebar 上报的插件根目录(用于读 overlay/lib/opencc.min.js)
+var openccSimplifier = null;     // 简繁转换器(hk→cn,懒加载;仅强制简体开启且列表被监听时构建)
 
 function sanitizeIPCString(value) {
   return String(value || '').replace(/[`\u2018\u2019]/g, "'");
@@ -486,7 +488,9 @@ function applyDanmakuFilterDensity(density) {
 // ── 过滤 tab: 弹幕时间线列表 ──────────────────────────────────────────
 // 数据源为 danmakuCache(main.js 本就持有已加载的弹幕内容,发给 overlay 渲染的同一份),
 // 不经 overlay。sidebar 懒加载,只能由 sidebar 主动拉取(danmaku-browser-request);
-// 播放时间以 danmaku-visible-time 节流推送,sidebar 按时间窗口自行计算在屏弹幕。
+// 播放时间以 danmaku-visible-time 节流推送,sidebar 按时间线锚定跟随。
+// 列表与 overlay 渲染内容保持一致: nico-json 应用与 overlay 相同的 offset/limit/密度
+// 切片(applyNicoJsonFilters);其他格式文本过强制简体转换(OpenCC,与 overlay 同一库同参数)。
 
 // 纯 JS base64(UTF-8)——main.js 运行在 IINA 的 JavaScriptCore 环境,不保证有 btoa/unescape
 var B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -532,17 +536,49 @@ function decodeXmlText(text) {
     .replace(/&apos;/g, "'");
 }
 
+// 简繁转换器(OpenCC hk→cn,与 overlay/lib/opencc.min.js 同一库同参数)。
+// opencc.min.js 是 UMD bundle,无 DOM 依赖,file.read + eval 即可在 JavaScriptCore 运行;
+// 失败则返回 false(列表退化为原文,不影响渲染主链路)。首次构建 ~几百 ms,缓存复用。
+function ensureBrowserSimplifier() {
+  if (openccSimplifier) return true;
+  if (!danmakuForceSimplified) return false;
+  if (!pluginRootPath) return false;
+  try {
+    var code = file.read(pluginRootPath + '/overlay/lib/opencc.min.js');
+    if (!code) return false;
+    eval(code); // UMD 挂到全局(globalThis.OpenCC)
+    if (!globalThis.OpenCC) return false;
+    openccSimplifier = globalThis.OpenCC.Converter({ from: 'hk', to: 'cn' });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function browserSimplifyText(text) {
+  if (!text || !openccSimplifier) return text;
+  return openccSimplifier(text);
+}
+
 // 从 danmakuCache 构建 [{t, text}] 时间线(vpos 升序)。格式字段与 overlay 解析一致:
 // nico-json v1(vposMs/body)与 legacy(vpos/content);dandanplay 缓存已是 {t,text};
-// nico/bilibili XML 轻量正则提取
+// nico/bilibili XML 轻量正则提取。
+// 与 overlay 渲染保持一致: nico-json 先应用 offset/limit/密度切片(applyNicoJsonFilters,
+// 与发往 overlay 的 load-danmaku 内容相同);其他格式文本过强制简体转换(同库同参数)。
 function buildDanmakuBrowserList() {
   var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
   if (!selectedPath) return [];
   var encodedContent = danmakuCache[selectedPath];
   if (!encodedContent) return [];
   var rawStr;
-  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return []; }
   var ft = currentDanmakuStatus.fileType;
+  try {
+    if (ft === 'nico-json') {
+      rawStr = decodeURIComponent(applyNicoJsonFilters(encodedContent));
+    } else {
+      rawStr = decodeURIComponent(encodedContent);
+    }
+  } catch (e) { return []; }
   var items = [];
   try {
     if (ft === 'nico-json') {
@@ -570,7 +606,7 @@ function buildDanmakuBrowserList() {
         for (var k = 0; k < list.length; k++) {
           var d = list[k];
           if (!d || typeof d.t !== 'number' || !isFinite(d.t) || !d.text) continue;
-          items.push({ t: Math.round(d.t), text: d.text });
+          items.push({ t: Math.round(d.t), text: browserSimplifyText(d.text) });
         }
       }
     } else {
@@ -579,7 +615,7 @@ function buildDanmakuBrowserList() {
         var m;
         while ((m = reChat.exec(rawStr)) !== null) {
           if (!m[2]) continue;
-          items.push({ t: parseInt(m[1], 10) || 0, text: decodeXmlText(m[2]) });
+          items.push({ t: parseInt(m[1], 10) || 0, text: browserSimplifyText(decodeXmlText(m[2])) });
         }
       } else {
         var reD = /<d\s+p="([^"]*)"[^>]*>([\s\S]*?)<\/d>/g;
@@ -588,7 +624,7 @@ function buildDanmakuBrowserList() {
           var parts = m2[1].split(',');
           var sec = parseFloat(parts[0]);
           if (!isFinite(sec) || !m2[2]) continue;
-          items.push({ t: Math.round(sec * 100), text: decodeXmlText(m2[2]) });
+          items.push({ t: Math.round(sec * 100), text: browserSimplifyText(decodeXmlText(m2[2])) });
         }
       }
     }
@@ -1564,6 +1600,9 @@ function registerSidebarHandlers() {
       });
     }
   }
+  // 过滤 tab 列表与 overlay 同源: 简体开关变化 → 重新构建并推送
+  ensureBrowserSimplifier();
+  notifyBrowserDataChanged();
   });
 
   sidebar.onMessage("set-stroke-opacity", function (data) {
@@ -1630,10 +1669,12 @@ function registerSidebarHandlers() {
 
   sidebar.onMessage("set-danmaku-filter", function (data) {
     applyDanmakuFilter(data.offset || 0, data.limit);
+    notifyBrowserDataChanged(); // 范围切片变化 → 列表与 overlay 同步重建
   });
 
   sidebar.onMessage("set-danmaku-filter-density", function (data) {
     applyDanmakuFilterDensity(data.density || 0);
+    notifyBrowserDataChanged(); // 密度过滤变化 → 列表与 overlay 同步重建
   });
 
   sidebar.onMessage("request-state", function () {
@@ -1867,7 +1908,10 @@ function registerSidebarHandlers() {
   });
 
   // 过滤 tab: sidebar 懒加载,只能由 sidebar 主动拉取弹幕列表;watch 控制播放时间推送
-  sidebar.onMessage("danmaku-browser-request", function () {
+  sidebar.onMessage("danmaku-browser-request", function (data) {
+    // sidebar 上报插件根目录(file:// 定位),供 main 读 overlay/lib/opencc.min.js
+    if (data && data.pluginRoot) pluginRootPath = data.pluginRoot;
+    ensureBrowserSimplifier();
     sendDanmakuBrowserData(buildDanmakuBrowserList());
   });
 
