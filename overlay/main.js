@@ -317,7 +317,9 @@ iina.onMessage("time-update", (data) => {
   lastTime = t;
   if (isSeek && niconiComments) {
     niconiComments.clear();
-    drawCanvasAtVpos(t, true);
+    // 必须用偏移后时间: 裸视频时间会在负偏移时把本该延后的弹幕提前生成,
+    // CSS 模式弹幕是 DOM 动画,生成后会完整飘完一遍再出现第二次(重复)
+    drawCanvasAtVpos(canvasGetCurrentTime() * 100, true);
   }
   startCanvasLoop();
 });
