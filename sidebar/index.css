@@ -883,15 +883,7 @@ kbd {
   background: rgba(255, 255, 255, 0.22);
 }
 
-/* toggle-group 内嵌面板: 与开关行 14px 内边距对齐 */
-.toggle-group .danmaku-browser-list-wrap {
-  margin: 0 14px 12px;
-}
-.toggle-group .danmaku-blocklist-list,
-.toggle-group .danmaku-blocklist-add-row {
-  margin-left: 14px;
-  margin-right: 14px;
-}
+/* toggle-group 内嵌面板: 与分组面板同宽(全宽,不缩进不套框) */
 .toggle-group .danmaku-browser-list,
 .toggle-group .danmaku-blocklist-list {
   margin-top: 0;
