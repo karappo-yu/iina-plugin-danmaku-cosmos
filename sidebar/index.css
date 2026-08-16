@@ -770,6 +770,7 @@ kbd {
   opacity: 0.6;
   font-weight: normal;
   margin-left: 4px;
+  font-size: 11px; /* 与播放时间一致 */
   font-variant-numeric: tabular-nums;
 }
 .danmaku-browser-list-wrap {
@@ -867,7 +868,7 @@ kbd {
   overflow-x: hidden;
   background: rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-sm);
-  margin-top: 2px;
+  margin-top: 8px; /* 与标题行(开关)隔开 */
   -webkit-overflow-scrolling: touch;
 }
 .danmaku-browser-list {
