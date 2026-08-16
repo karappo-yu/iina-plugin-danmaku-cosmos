@@ -1309,6 +1309,13 @@ function browserRenderWindow() {
   var viewH = browserListEl.clientHeight;
   var first = Math.max(0, Math.floor(scrollTop / BROWSER_ROW_H) - 8);
   var last = Math.min(total - 1, Math.ceil((scrollTop + viewH) / BROWSER_ROW_H) + 8);
+  // 防空保护: scrollTop 可能仍是旧视图的大值(切换视图瞬间,浏览器异步应用
+  // scrollTop=0),导致 first > last 渲染空窗口——此时渲染顶部窗口,后续
+  // scroll 事件会修正到正确位置。
+  if (first > last) {
+    first = 0;
+    last = Math.min(total - 1, Math.ceil(viewH / BROWSER_ROW_H) + 8);
+  }
   browserRowNodes.forEach(function (el, row) {
     if (row < first || row > last) { el.remove(); browserRowNodes.delete(row); }
   });
@@ -1348,6 +1355,9 @@ function browserSetViewMode(mode) {
   browserUpdateTotal();
   browserUpdateEmpty();
   browserRenderWindow();
+  // scrollTop=0 由浏览器异步应用(尤其滚动动画中): 延迟再渲染一次兜底,
+  // 避免切换瞬间读到旧 scrollTop 渲染出空窗口
+  setTimeout(function () { browserRenderWindow(); }, 0);
   browserUpdateDiag();
 }
 
@@ -1409,12 +1419,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v12';
+    el.textContent = 'browser v13';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v12 watch→' + browserDiag.watchSent
+  el.textContent = 'v13 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
