@@ -772,10 +772,14 @@ kbd {
   margin-left: 4px;
   font-variant-numeric: tabular-nums;
 }
-.danmaku-browser-list {
+.danmaku-browser-list-wrap {
   position: relative;
   height: min(46vh, 460px);
   min-height: 200px;
+}
+.danmaku-browser-list {
+  position: absolute;
+  inset: 0;
   overflow-y: auto;
   overflow-x: hidden;
   background: rgba(255, 255, 255, 0.06);

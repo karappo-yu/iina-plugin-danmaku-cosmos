@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="index.css?v=19" />
+  <link rel="stylesheet" href="index.css?v=20" />
   <title>Danmaku Control</title>
 </head>
 
@@ -308,23 +308,25 @@
           </select>
           <span id="danmaku-browser-total" class="browser-total"></span>
         </div>
-        <div id="danmaku-browser-list-all" class="danmaku-browser-list" data-clickable>
-          <div class="danmaku-browser-spacer"></div>
-          <div class="danmaku-browser-empty" style="display:none">未加载弹幕</div>
-        </div>
-        <div id="danmaku-browser-list-blocked" class="danmaku-browser-list" data-clickable style="display:none">
-          <div class="danmaku-browser-spacer"></div>
-          <div class="danmaku-browser-empty" style="display:none">无已屏蔽弹幕</div>
-        </div>
-        <div id="danmaku-browser-list-merged" class="danmaku-browser-list" data-clickable style="display:none">
-          <div class="danmaku-browser-spacer"></div>
-          <div class="danmaku-browser-empty" style="display:none">无已合并弹幕</div>
+        <div class="danmaku-browser-list-wrap">
+          <div id="danmaku-browser-list-all" class="danmaku-browser-list" data-clickable>
+            <div class="danmaku-browser-spacer"></div>
+            <div class="danmaku-browser-empty" style="display:none">未加载弹幕</div>
+          </div>
+          <div id="danmaku-browser-list-blocked" class="danmaku-browser-list" data-clickable style="display:none">
+            <div class="danmaku-browser-spacer"></div>
+            <div class="danmaku-browser-empty" style="display:none">无已屏蔽弹幕</div>
+          </div>
+          <div id="danmaku-browser-list-merged" class="danmaku-browser-list" data-clickable style="display:none">
+            <div class="danmaku-browser-spacer"></div>
+            <div class="danmaku-browser-empty" style="display:none">无已合并弹幕</div>
+          </div>
         </div>
         <div class="danmaku-file-list-footer" style="margin-top:6px;padding-top:4px">
           <span id="danmaku-browser-live" class="danmaku-browser-live"></span>
           <button id="danmaku-browser-follow-btn" class="danmaku-file-action-btn" data-i18n="filter_back_live" style="display:none">回到实时</button>
         </div>
-        <div id="danmaku-browser-status" class="danmaku-browser-status">browser v19</div>
+        <div id="danmaku-browser-status" class="danmaku-browser-status">browser v20</div>
       </div>
       <div class="adv-separator"></div>
       <div class="section">
@@ -362,7 +364,7 @@
     </div>
 
   </div>
-  <script src="index.js?v=19"></script>
+  <script src="index.js?v=20"></script>
 </body>
 
 </html>
