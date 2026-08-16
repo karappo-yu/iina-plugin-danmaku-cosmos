@@ -506,6 +506,7 @@ function applyDanmakuFilter(offset, limit) {
     danmakuFontFamily: danmakuFontFamily,
     danmakuFontWeight: danmakuFontWeight,
     preservePosition: true,
+    fixedCombo: danmakuDedupeEnabled,
   });
   sendDanmakuFilterInfo();
 }
@@ -697,6 +698,15 @@ function pickMergeColor(text) {
   return MERGE_COLORS[Math.floor(Math.random() * MERGE_COLORS.length)];
 }
 
+// 固定弹幕(ue/shita)识别: 预合并跳过固定弹幕,它们由渲染引擎做渐进合并(combo)
+function isFixedCommentCommands(cmds) {
+  return Array.isArray(cmds) && (cmds.indexOf('ue') !== -1 || cmds.indexOf('shita') !== -1);
+}
+function isFixedCommentMail(mail) {
+  if (typeof mail !== 'string') return false;
+  return /(^|\s)(ue|shita)(\s|$)/.test(mail);
+}
+
 // nico-json 去重: 每个 thread 的 comments 内合并(保留组内最早 comment 的全部字段)
 function dedupeNicoJson(encodedContent) {
   if (!(danmakuDedupeWindow > 0)) return encodedContent;
@@ -722,6 +732,11 @@ function dedupeNicoJson(encodedContent) {
       var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
       var text = c.body !== undefined ? c.body : c.content;
       if (!isFinite(t) || !text) { entries.push({ t: 0, text: '', _c: c, _skip: true }); continue; }
+      // 固定弹幕(ue/shita)跳过预合并: 由渲染引擎做渐进合并(x2→x3),预合并会抢走它的数据
+      if (isFixedCommentCommands(c.commands) || isFixedCommentMail(c.mail)) {
+        entries.push({ t: t, text: text, _c: c, _skip: true });
+        continue;
+      }
       entries.push({ t: t, text: text, _c: c });
     }
     var merged = mergeDuplicateItems(entries, windowMs);
@@ -769,6 +784,8 @@ function dedupeContent(encodedContent, ft) {
     for (var i = 0; i < list.length; i++) {
       var d = list[i];
       if (!d || typeof d.t !== 'number' || !isFinite(d.t) || !d.text) { entries.push({ t: 0, text: '', _d: d, _skip: true }); continue; }
+      // 固定弹幕(ue/shita)跳过预合并: 由渲染引擎做渐进合并
+      if (isFixedCommentCommands(d._commands)) { entries.push({ t: Math.round(d.t), text: d.text, _d: d, _skip: true }); continue; }
       entries.push({ t: Math.round(d.t), text: d.text, _d: d });
     }
     var merged = mergeDuplicateItems(entries, windowMs);
@@ -805,8 +822,12 @@ function dedupeContent(encodedContent, ft) {
     var t = m[1].indexOf('vpos="') !== -1
       ? parseInt((m[1].match(/vpos="(\d+)"/) || [0, 0])[1], 10) || 0
       : Math.round((parseFloat((m[1].match(/p="([^"]*)"/) || [0, '0'])[1].split(',')[0]) || 0) * 100);
+    // 固定弹幕(ue/shita / p mode 4・5)跳过预合并: 由渲染引擎做渐进合并
+    var isFixed = ft === 'nico-xml'
+      ? isFixedCommentMail((m[1].match(/mail="([^"]*)"/) || [0, ''])[1])
+      : [4, 5].indexOf(parseInt((m[1].match(/p="([^"]*)"/) || [0, '0'])[1].split(',')[1], 10)) !== -1;
     // start = 本行在原始串中的位置: 重建时按序推进,无需重扫/线性查找(O(n))
-    lines.push({ t: t, text: decodeXmlText(m[2]), head: m[1], tail: m[3], full: m[0], start: m.index });
+    lines.push({ t: t, text: decodeXmlText(m[2]), head: m[1], tail: m[3], full: m[0], start: m.index, _skip: isFixed || undefined });
   }
   if (lines.length === 0) return encodedContent;
   var merged = mergeDuplicateItems(lines, windowMs);
@@ -991,7 +1012,7 @@ function buildDanmakuBrowserList() {
             var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
             var text = c.body !== undefined ? c.body : c.content;
             if (!isFinite(t) || !text) continue;
-            items.push({ t: t, text: text, blocked: danmakuBlocklistEnabled && isBlockedText(text) });
+            items.push({ t: t, text: text, blocked: danmakuBlocklistEnabled && isBlockedText(text), _fixed: isFixedCommentCommands(c.commands) || isFixedCommentMail(c.mail) });
           }
         }
       }
@@ -1002,7 +1023,7 @@ function buildDanmakuBrowserList() {
           var d = list[k];
           if (!d || typeof d.t !== 'number' || !isFinite(d.t) || !d.text) continue;
           var st = simplifyText(d.text);
-          items.push({ t: Math.round(d.t), text: st, blocked: danmakuBlocklistEnabled && isBlockedText(st) });
+          items.push({ t: Math.round(d.t), text: st, blocked: danmakuBlocklistEnabled && isBlockedText(st), _fixed: isFixedCommentCommands(d._commands) });
         }
       }
     } else {
@@ -1012,7 +1033,7 @@ function buildDanmakuBrowserList() {
         while ((m = reChat.exec(rawStr)) !== null) {
           if (!m[2]) continue;
           var ct = simplifyText(decodeXmlText(m[2]));
-          items.push({ t: parseInt(m[1], 10) || 0, text: ct, blocked: danmakuBlocklistEnabled && isBlockedText(ct) });
+          items.push({ t: parseInt(m[1], 10) || 0, text: ct, blocked: danmakuBlocklistEnabled && isBlockedText(ct), _fixed: isFixedCommentMail((m[0].match(/mail="([^"]*)"/) || [0, ''])[1]) });
         }
       } else {
         var reD = /<d\s+p="([^"]*)"[^>]*>([\s\S]*?)<\/d>/g;
@@ -1022,7 +1043,7 @@ function buildDanmakuBrowserList() {
           var sec = parseFloat(parts[0]);
           if (!isFinite(sec) || !m2[2]) continue;
           var bt = simplifyText(decodeXmlText(m2[2]));
-          items.push({ t: Math.round(sec * 100), text: bt, blocked: danmakuBlocklistEnabled && isBlockedText(bt) });
+          items.push({ t: Math.round(sec * 100), text: bt, blocked: danmakuBlocklistEnabled && isBlockedText(bt), _fixed: [4, 5].indexOf(parseInt(parts[1], 10)) !== -1 });
         }
       }
     }
@@ -1037,8 +1058,10 @@ function buildDanmakuBrowserList() {
   if (danmakuDedupeEnabled && danmakuDedupeWindow > 0) {
     var visible = [];
     var blockedItems = [];
+    var fixedItems = [];
     for (var di = 0; di < items.length; di++) {
       if (items[di].blocked) blockedItems.push(items[di]);
+      else if (items[di]._fixed) fixedItems.push(items[di]); // 固定弹幕不做展示层合并(画面由引擎渐进合并)
       else visible.push(items[di]);
     }
     var mergedOut = mergeDuplicateItems(visible, danmakuDedupeWindow * 100);
@@ -1049,7 +1072,7 @@ function buildDanmakuBrowserList() {
     }
     // 被屏蔽弹幕展示层合并(保持 blocked 标记;时间窗相同)
     var blockedMerged = mergeDuplicateItems(blockedItems, danmakuDedupeWindow * 100);
-    items = blockedMerged.concat(mergedOut);
+    items = blockedMerged.concat(fixedItems).concat(mergedOut);
   }
   items.sort(function (a, b) { return a.t - b.t; });
   return items;
@@ -1116,7 +1139,8 @@ function resendDanmakuToOverlay() {
     danmakuTimeOffsetSec: danmakuTimeOffsetSec,
     danmakuFontFamily: danmakuFontFamily,
     danmakuFontWeight: danmakuFontWeight,
-    preservePosition: true
+    preservePosition: true,
+    fixedCombo: danmakuDedupeEnabled
   });
 }
 
@@ -1619,6 +1643,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
       commentLimit: commentLimit,
       scrollSpeed: scrollSpeed,
       preservePosition: true,
+      fixedCombo: danmakuDedupeEnabled,
     };
     if (overlayReady) {
       overlay.postMessage("load-danmaku", payload);
@@ -1841,6 +1866,7 @@ function loadLocalDanmaku(fileInfo) {
     commentLimit: commentLimit,
     scrollSpeed: scrollSpeed,
     preservePosition: true,
+    fixedCombo: danmakuDedupeEnabled,
   };
 
   if (overlayReady) {
@@ -1872,7 +1898,8 @@ function markOverlayReady() {
     danmakuTimeOffsetSec: danmakuTimeOffsetSec,
     danmakuFontFamily: danmakuFontFamily,
     danmakuFontWeight: danmakuFontWeight,
-    danmakuForceSimplified: danmakuForceSimplified
+    danmakuForceSimplified: danmakuForceSimplified,
+    fixedCombo: danmakuDedupeEnabled
   });
 
   if (pendingDanmaku) {
@@ -1973,6 +2000,7 @@ function loadManualDanmakuFile(path) {
     commentLimit: commentLimit,
     scrollSpeed: scrollSpeed,
     preservePosition: true,
+    fixedCombo: danmakuDedupeEnabled,
   };
 
   if (overlayReady) {
@@ -2305,6 +2333,7 @@ function registerSidebarHandlers() {
       commentLimit: commentLimit,
       scrollSpeed: scrollSpeed,
       preservePosition: true,
+      fixedCombo: danmakuDedupeEnabled,
     };
 
     overlay.postMessage("load-danmaku", selectPayload);
