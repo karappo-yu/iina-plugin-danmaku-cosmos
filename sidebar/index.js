@@ -1296,24 +1296,57 @@ function browserFollowToLive() {
   browserScrollTo(Math.max(0, anchorRow * BROWSER_ROW_H - 48));
 }
 
+var browserNextChunk = 0;
+var browserLastRefreshRequest = 0;
+
+// 数据消息丢失时(如 IPC 丢弃了某条分块)请求 overlay 重发,限流避免循环
+function requestBrowserDataRefresh() {
+  var now = Date.now();
+  if (now - browserLastRefreshRequest < 1500) return;
+  browserLastRefreshRequest = now;
+  debugLog('danmaku-browser: data missing, requesting refresh');
+  iina.postMessage("danmaku-browser-watch", { watch: true, refresh: true });
+}
+
 iina.onMessage("danmaku-browser-data", function (data) {
-  browserItems = (data && data.items) || [];
-  var key = browserItems.length + ':' +
-    (browserItems.length > 0 ? browserItems[0].t + ':' + browserItems[browserItems.length - 1].t : '');
-  browserRowOfIndex = new Map();
-  for (var i = 0; i < browserItems.length; i++) {
-    if (browserItems[i] && browserItems[i].index !== undefined) browserRowOfIndex.set(browserItems[i].index, i);
+  if (!data || !data.items) return;
+  if (data.chunkIndex === 0) {
+    // 新数据或 refresh 重发: 重置状态
+    browserItems = [];
+    browserRowOfIndex = new Map();
+    browserLiveSet = new Set();
+    browserLiveRows = [];
+    browserVpos = -1;
+    browserNextChunk = 1;
+    browserRowNodes.forEach(function (el) { el.remove(); });
+    browserRowNodes.clear();
+  } else if (data.chunkIndex === browserNextChunk) {
+    browserNextChunk = data.chunkIndex + 1;
+  } else {
+    requestBrowserDataRefresh(); // 丢块/乱序: 丢弃不完整数据并请求重发
+    return;
   }
-  browserLiveSet = new Set();
-  browserLiveRows = [];
-  browserVpos = -1;
-  browserRowNodes.forEach(function (el) { el.remove(); });
-  browserRowNodes.clear();
+  // 追加本块并增量建立 index→行号 映射
+  var base = browserItems.length;
+  for (var i = 0; i < data.items.length; i++) {
+    var item = data.items[i];
+    if (!item) continue;
+    browserItems.push(item);
+    if (item.index !== undefined) browserRowOfIndex.set(item.index, base + i);
+  }
+  if (!data.done) {
+    browserUpdateLiveUI();
+    browserRenderWindow();
+    return;
+  }
+  // 全部收齐: 更新汇总与空状态,数据未变(如 refresh)时保留滚动位置
+  debugLog('danmaku-browser: data complete, total=' + browserItems.length + ', chunks=' + (data.chunkIndex + 1));
   var totalEl = document.getElementById("danmaku-browser-total");
   if (totalEl) totalEl.textContent = browserItems.length > 0 ? browserItems.length.toLocaleString() : "";
   var emptyEl = document.getElementById("danmaku-browser-empty");
   if (emptyEl) emptyEl.style.display = browserItems.length > 0 ? "none" : "";
-  // 数据没变(比如切入切出过滤 tab 触发的 refresh)时保留滚动位置
+  var key = browserItems.length + ':' +
+    (browserItems.length > 0 ? browserItems[0].t + ':' + browserItems[browserItems.length - 1].t : '');
   if (key !== browserDataKey) {
     browserDataKey = key;
     if (browserListEl) browserListEl.scrollTop = 0;
@@ -1325,6 +1358,8 @@ iina.onMessage("danmaku-browser-data", function (data) {
 iina.onMessage("danmaku-visible", function (data) {
   if (!data || !data.indices) return;
   if (data.vpos !== undefined) browserVpos = data.vpos;
+  // 自愈: 有在屏弹幕但本地无列表数据(数据消息可能被 IPC 丢弃)→ 请求重发
+  if (browserItems.length === 0 && data.indices.length > 0) requestBrowserDataRefresh();
   browserLiveSet = new Set();
   browserLiveRows = [];
   var seen = {};

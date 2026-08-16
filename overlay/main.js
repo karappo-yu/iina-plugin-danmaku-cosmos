@@ -61,7 +61,23 @@ function buildBrowserData() {
 }
 
 function sendBrowserData() {
-  iina.postMessage("danmaku-browser-data", { items: browserData, total: browserData.length });
+  // 大列表分块发送: IINA IPC 对超大单条消息会静默丢弃(小文件 1 条,大文件多条)。
+  // sidebar 按 chunkIndex 顺序追加,chunkIndex 0 视为新数据重置。
+  const CHUNK = 2000;
+  const total = browserData.length;
+  if (total === 0) {
+    iina.postMessage("danmaku-browser-data", { items: [], total: 0, chunkIndex: 0, done: true });
+    return;
+  }
+  const n = Math.ceil(total / CHUNK);
+  for (let c = 0; c < n; c++) {
+    iina.postMessage("danmaku-browser-data", {
+      items: browserData.slice(c * CHUNK, (c + 1) * CHUNK),
+      total: total,
+      chunkIndex: c,
+      done: c === n - 1
+    });
+  }
 }
 
 // 当前在屏弹幕的 index 集合。CSS 模式直接读渲染器的 activeElements(精确)；
