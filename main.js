@@ -206,15 +206,29 @@ var danmakuFilterLimit = 0;
 var danmakuFilterDensity = 0;
 var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听(控制播放时间推送)
 var lastBrowserTimeSent = 0;     // 时间推送节流标记
-var pluginRootPath = '';         // sidebar 上报的插件根目录(用于读 overlay/lib/opencc.min.js)
+var pluginRootPath = '';         // 插件根目录(读 overlay/lib/opencc.min.js;与其他设置一样持久化)
+// 启动时从 preferences 重读: 重启后不依赖任何 webview 上报即可用
+var storedRoot = preferences.get("pluginRootPath");
+if (typeof storedRoot === 'string' && storedRoot.length > 0) {
+  pluginRootPath = sanitizePluginRoot(storedRoot);
+}
 
-// 校验 sidebar 上报的插件根目录: 只接受绝对路径且拒绝 .. 穿越
+// 校验 sidebar/overlay 上报的插件根目录: 只接受绝对路径且拒绝 .. 穿越
 // (消息源理论上可被篡改;裸路径会被 file.read + eval 执行任意文件)
 function sanitizePluginRoot(p) {
   if (typeof p !== 'string' || p.length === 0) return '';
   if (p.charAt(0) !== '/') return '';   // 必须绝对路径
   if (p.indexOf('..') !== -1) return ''; // 拒绝路径穿越
   return p;
+}
+
+// 路径上报后持久化(与其他设置一致): 重启后 main 直接读 preferences
+function persistPluginRoot(p) {
+  pluginRootPath = sanitizePluginRoot(p);
+  if (pluginRootPath) {
+    preferences.set("pluginRootPath", pluginRootPath);
+    syncPreferencesSoon();
+  }
 }
 var openccSimplifier = null;     // 简繁转换器(hk→cn,懒加载;仅强制简体开启且列表被监听时构建)
 
@@ -2375,15 +2389,15 @@ function registerSidebarHandlers() {
     }
   });
 
-  // sidebar 加载即上报插件根目录: 简繁转换器(OpenCC)初始化不依赖过滤 tab 打开
+  // sidebar 加载即上报插件根目录并持久化(简繁转换器初始化不依赖过滤 tab 打开)
   sidebar.onMessage("danmaku-sidebar-ready", function (data) {
-    if (data && data.pluginRoot) pluginRootPath = sanitizePluginRoot(data.pluginRoot);
+    if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
   });
 
   // 过滤 tab: sidebar 懒加载,只能由 sidebar 主动拉取弹幕列表;watch 控制播放时间推送
   sidebar.onMessage("danmaku-browser-request", function (data) {
     // sidebar 上报插件根目录(file:// 定位),供 main 读 overlay/lib/opencc.min.js
-    if (data && data.pluginRoot) pluginRootPath = sanitizePluginRoot(data.pluginRoot);
+    if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
     sendDanmakuBrowserData(buildDanmakuBrowserList());
   });
 
@@ -2405,8 +2419,8 @@ event.on("iina.window-loaded", function () {
 });
 
 overlay.onMessage("overlay-ready", function (data) {
-  // overlay 启动即上报插件根目录: 简繁转换器不依赖侧栏懒加载
-  if (data && data.pluginRoot) pluginRootPath = sanitizePluginRoot(data.pluginRoot);
+  // overlay 启动即上报插件根目录并持久化(重启后 main 直接读 preferences)
+  if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
   markOverlayReady();
 });
 
