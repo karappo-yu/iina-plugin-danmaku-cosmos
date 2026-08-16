@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="index.css?v=11" />
+  <link rel="stylesheet" href="index.css?v=12" />
   <title>Danmaku Control</title>
 </head>
 
@@ -299,16 +299,14 @@
     <div id="tab-filter" style="display:none">
       <div class="section" style="margin-top:12px">
         <div class="section-title">
-          <span class="danmaku-browser-title" id="danmaku-browser-view-label" data-clickable>
-            <span data-i18n="filter_title">弹幕列表</span>
-            <span class="danmaku-browser-title-caret">▾</span>
-          </span>
+          <span data-i18n="filter_title">弹幕列表</span>
+          <select id="danmaku-browser-view-select" data-clickable
+            style="margin-left:8px;max-width:110px;padding:2px 24px 2px 8px;font-size:11px">
+            <option value="all" data-i18n="filter_view_all">全部</option>
+            <option value="blocked" data-i18n="filter_view_blocked">已屏蔽</option>
+            <option value="merged" data-i18n="filter_view_merged">已合并</option>
+          </select>
           <span id="danmaku-browser-total" class="browser-total"></span>
-        </div>
-        <div class="danmaku-browser-view-menu" id="danmaku-browser-view-menu" style="display:none">
-          <div class="danmaku-browser-view-option active" data-view="all" data-i18n="filter_view_all">全部</div>
-          <div class="danmaku-browser-view-option" data-view="blocked" data-i18n="filter_view_blocked">已屏蔽</div>
-          <div class="danmaku-browser-view-option" data-view="merged" data-i18n="filter_view_merged">已合并</div>
         </div>
         <div id="danmaku-browser-list" class="danmaku-browser-list" data-clickable>
           <div id="danmaku-browser-spacer" class="danmaku-browser-spacer"></div>
@@ -318,7 +316,7 @@
           <span id="danmaku-browser-live" class="danmaku-browser-live"></span>
           <button id="danmaku-browser-follow-btn" class="danmaku-file-action-btn" data-i18n="filter_back_live" style="display:none">回到实时</button>
         </div>
-        <div id="danmaku-browser-status" class="danmaku-browser-status">browser v11</div>
+        <div id="danmaku-browser-status" class="danmaku-browser-status">browser v12</div>
       </div>
       <div class="adv-separator"></div>
       <div class="section">
@@ -356,7 +354,7 @@
     </div>
 
   </div>
-  <script src="index.js?v=11"></script>
+  <script src="index.js?v=12"></script>
 </body>
 
 </html>
