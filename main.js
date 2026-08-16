@@ -624,9 +624,10 @@ function mergeDuplicateItems(items, windowMs) {
         j++;
       }
       if (count > 1) {
-        // 不带变体选择符(VS16): ✖ 按文本字形渲染,颜色继承文字颜色;
-        // 带 \ufe0f 会被 WKWebView 渲染成灰色 emoji 字形
-        first.text = first.text + '\u2716' + count;
+        // 合并标记(调用方据此给新弹幕加颜色指令);分隔符用 x(✖ 太粗,且不带
+        // 变体选择符时才按文本渲染)
+        first._mergeCount = count;
+        first.text = first.text + 'x' + count;
       }
       out.push(first);
       i = j;
@@ -674,6 +675,10 @@ function dedupeNicoJson(encodedContent) {
     for (var k = 0; k < merged.length; k++) {
       var e = merged[k];
       if (e._skip) { newComments.push(e._c); continue; }
+      if (e._mergeCount > 1) {
+        // 合并出的新弹幕: 追加红色命令(与已有 mail 命令共存)
+        e._c.mail = (e._c.mail ? String(e._c.mail) + ' ' : '') + 'red';
+      }
       if (e._c.body !== undefined) e._c.body = e.text;
       else e._c.content = e.text;
       newComments.push(e._c);
@@ -714,6 +719,18 @@ function dedupeContent(encodedContent, ft) {
     for (var k = 0; k < merged.length; k++) {
       var e = merged[k];
       if (e._skip) { out.push(e._d); continue; }
+      if (e._mergeCount > 1 && Array.isArray(e._d._commands)) {
+        // 合并出的新弹幕: 颜色命令替换为红色(无颜色命令则追加)
+        var hasColor = false;
+        for (var ci = 0; ci < e._d._commands.length; ci++) {
+          if (e._d._commands[ci].charAt(0) === '#') {
+            e._d._commands[ci] = '#ff0000';
+            hasColor = true;
+            break;
+          }
+        }
+        if (!hasColor) e._d._commands.push('#ff0000');
+      }
       e._d.text = e.text;
       out.push(e._d);
     }
@@ -749,7 +766,19 @@ function dedupeContent(encodedContent, ft) {
     }
     parts.push(rawStr.slice(last, mm.index));
     if (line && kept.has(line)) {
-      parts.push(line.head + encodeXmlText(line.text) + line.tail);
+      var head = line.head;
+      if (line._mergeCount > 1) {
+        // 合并出的新弹幕: p 属性第 4 段(颜色)替换为红色 #FF0000
+        var pm = head.match(/p="([^"]*)"/);
+        if (pm) {
+          var pParts = pm[1].split(',');
+          if (pParts.length >= 4) {
+            pParts[3] = '16711680';
+            head = head.replace(pm[1], pParts.join(','));
+          }
+        }
+      }
+      parts.push(head + encodeXmlText(line.text) + line.tail);
     }
     last = mm.index + mm[0].length;
   }
