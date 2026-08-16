@@ -1559,6 +1559,26 @@ iina.postMessage("danmaku-browser-watch", { watch: false });
 browserCountWatchSend();
 browserUpdateDiag();
 
+// 弹幕列表显示开关: 隐藏列表区域(数据保留,重开即恢复);状态持久化在 main
+var browserVisToggle = document.getElementById("danmaku-browser-vis-toggle");
+var browserListWrap = document.querySelector(".danmaku-browser-list-wrap");
+
+function applyBrowserVis(v) {
+  if (browserListWrap) browserListWrap.style.display = v ? "" : "none";
+  if (browserVisToggle) browserVisToggle.checked = !!v;
+  if (totalEl) totalEl.style.display = v ? "" : "none";
+}
+if (browserVisToggle) {
+  browserVisToggle.addEventListener("change", function () {
+    var v = browserVisToggle.checked;
+    applyBrowserVis(v);
+    iina.postMessage("danmaku-browser-vis-set", { visible: v });
+  });
+}
+iina.onMessage("danmaku-browser-vis-state", function (data) {
+  if (data && data.visible !== undefined) applyBrowserVis(data.visible);
+});
+
 // 加载即上报插件根目录(main 的简繁转换器初始化不依赖过滤 tab 打开)
 iina.postMessage("danmaku-sidebar-ready", { pluginRoot: browserPluginRoot() });
 

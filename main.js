@@ -206,6 +206,7 @@ var danmakuFilterLimit = 0;
 var danmakuFilterDensity = 0;
 var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听(控制播放时间推送)
 var lastBrowserTimeSent = 0;     // 时间推送节流标记
+var danmakuBrowserVisible = preferences.get("danmakuBrowserVisible") !== undefined ? !!preferences.get("danmakuBrowserVisible") : true; // 弹幕列表显示开关
 var pluginRootPath = '';         // 插件根目录(读 overlay/lib/opencc.min.js;与其他设置一样持久化)
 // 启动时从 preferences 重读: 重启后不依赖任何 webview 上报即可用
 var storedRoot = preferences.get("pluginRootPath");
@@ -2162,6 +2163,16 @@ function registerSidebarHandlers() {
     sidebar.postMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
   });
 
+  // 弹幕列表显示开关(持久化,与其他设置一致)
+  sidebar.onMessage("danmaku-browser-vis-set", function (data) {
+    if (data && data.visible !== undefined) {
+      danmakuBrowserVisible = !!data.visible;
+      preferences.set("danmakuBrowserVisible", danmakuBrowserVisible);
+      syncPreferencesSoon();
+      sidebar.postMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible });
+    }
+  });
+
   sidebar.onMessage("request-state", function () {
     // Rebuild file list from scratch — sidebar WebView might have been
     // suspended/resumed while video changed, leaving danmakuFileList stale
@@ -2403,6 +2414,7 @@ function registerSidebarHandlers() {
   sidebar.onMessage("danmaku-browser-request", function (data) {
     // sidebar 上报插件根目录(file:// 定位),供 main 读 overlay/lib/opencc.min.js
     if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
+    sidebar.postMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible }); // 列表开关回显
     sendDanmakuBrowserData(buildDanmakuBrowserList());
   });
 
