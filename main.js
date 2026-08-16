@@ -2109,6 +2109,7 @@ function registerSidebarHandlers() {
     var sec = data.vpos / 100 - (danmakuTimeOffsetSec || 0);
     if (sec < 0) sec = 0;
     try {
+      core.osd('seek \u2192 ' + sec.toFixed(2) + 's');
       core.player.seekTo(sec);
     } catch (e) {
       debugLog('danmaku-seek failed: ' + e);

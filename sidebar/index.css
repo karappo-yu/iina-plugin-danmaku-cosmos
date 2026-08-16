@@ -802,6 +802,7 @@ kbd {
   white-space: nowrap;
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer; /* 点击整行跳转到该弹幕时间 */
 }
 .danmaku-browser-row.blocked {
   opacity: 0.45;
