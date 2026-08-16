@@ -894,7 +894,7 @@ kbd {
   padding-right: 14px;
 }
 .toggle-group #danmaku-dedupe-row {
-  padding: 0 14px 12px; /* 底部留白: 五个选项按钮不贴分组面板底边 */
+  padding: 0 14px 6px; /* 底部小留白: 五个选项按钮不贴分组面板底边 */
 }
 
 /* ── 屏蔽词列表: 与弹幕列表同款样式(共用规则,仅容器定位不同) ── */
