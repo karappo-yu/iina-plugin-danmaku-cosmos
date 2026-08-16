@@ -983,6 +983,10 @@ kbd {
   font-size: 12px;
   padding: 0;
 }
+.danmaku-blocklist-add-item .danmaku-blocklist-input:focus {
+  border-color: transparent;
+  box-shadow: none; /* 去掉全局 input:focus 的蓝色光晕 */
+}
 /* 诊断状态行: 数据异常时显示消息计数器,用于定位断点;正常时只显示版本 */
 .danmaku-browser-status {
   margin-top: 6px;
