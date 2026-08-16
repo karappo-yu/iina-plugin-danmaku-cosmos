@@ -1338,9 +1338,9 @@ function browserRenderWindow() {
 function browserSetViewMode(mode) {
   if (mode !== 'all' && mode !== 'blocked' && mode !== 'merged') return;
   browserViewMode = mode;
-  var btns = document.querySelectorAll('.danmaku-browser-view-btn');
-  for (var i = 0; i < btns.length; i++) {
-    btns[i].classList.toggle('active', btns[i].getAttribute('data-view') === mode);
+  var opts = document.querySelectorAll('.danmaku-browser-view-option');
+  for (var i = 0; i < opts.length; i++) {
+    opts[i].classList.toggle('active', opts[i].getAttribute('data-view') === mode);
   }
   // 视图内容不同: 清空渲染缓存与滚动位置
   browserRowNodes.forEach(function (el) { el.remove(); });
@@ -1412,12 +1412,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v10';
+    el.textContent = 'browser v11';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v10 watch→' + browserDiag.watchSent
+  el.textContent = 'v11 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
@@ -1580,14 +1580,27 @@ iina.postMessage("danmaku-browser-watch", { watch: false });
 browserCountWatchSend();
 browserUpdateDiag();
 
-// 弹幕列表视图切换(全部/已屏蔽/已合并)
-var browserViewBtns = document.querySelectorAll('.danmaku-browser-view-btn');
-for (var bvi = 0; bvi < browserViewBtns.length; bvi++) {
-  (function (btn) {
-    btn.addEventListener("click", function () {
-      browserSetViewMode(btn.getAttribute("data-view"));
-    });
-  })(browserViewBtns[bvi]);
+// 弹幕列表视图下拉菜单(点击标题打开,点选项切换,点外部关闭)
+var browserViewLabel = document.getElementById("danmaku-browser-view-label");
+var browserViewMenu = document.getElementById("danmaku-browser-view-menu");
+if (browserViewLabel && browserViewMenu) {
+  browserViewLabel.addEventListener("click", function (e) {
+    e.stopPropagation();
+    browserViewMenu.style.display = browserViewMenu.style.display === "none" ? "" : "none";
+  });
+  document.addEventListener("click", function () {
+    if (browserViewMenu) browserViewMenu.style.display = "none";
+  });
+  var viewOptions = document.querySelectorAll('.danmaku-browser-view-option');
+  for (var voi = 0; voi < viewOptions.length; voi++) {
+    (function (opt) {
+      opt.addEventListener("click", function (e) {
+        e.stopPropagation();
+        browserSetViewMode(opt.getAttribute("data-view"));
+        browserViewMenu.style.display = "none";
+      });
+    })(viewOptions[voi]);
+  }
 }
 
 /* ========== 屏蔽词(tag 列表 + 开关 + 添加/删除) ========== */
