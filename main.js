@@ -651,8 +651,8 @@ function encodeXmlText(text) {
 // 合并弹幕颜色池(鲜艳色,视觉可区分;nico 经典色系)
 var MERGE_COLORS = [
   { name: 'red',    hex: '#ff0000', dec: 16711680 },
-  { name: 'pink',   hex: '#ff8080', dec: 16744320 },
-  { name: 'orange', hex: '#ffcc00', dec: 16766720 },
+  { name: 'pink',   hex: '#ff8080', dec: 16744576 },
+  { name: 'orange', hex: '#ffcc00', dec: 16763904 },
   { name: 'yellow', hex: '#ffff00', dec: 16776960 },
   { name: 'green',  hex: '#00ff00', dec: 65280 },
   { name: 'cyan',   hex: '#00ffff', dec: 65535 },
