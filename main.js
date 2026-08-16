@@ -1905,6 +1905,7 @@ function loadManualDanmakuFile(path) {
   var xmlContent = file.read(path);
   if (!xmlContent) { core.osd(t('read_failed')); return; }
   var encodedContent = encodeContent(xmlContent);
+  danmakuCache[path] = encodedContent; // 必须存缓存: getEffectiveContent 从这里取内容
   var manualFileName = path.split("/").pop();
   var manualFileType = detectDanmakuType(xmlContent);
   updateDanmakuStatus({ fileType: manualFileType, fileName: manualFileName, relativePath: manualFileName, isLoaded: true });
