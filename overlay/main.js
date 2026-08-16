@@ -74,7 +74,7 @@ function buildFormattedCanvasData(list, sourceType) {
       id: i,
       no: d._no || 0,
       vpos: Math.round(d.t || 0),
-      content: d.text || '',
+      content: (d._isDedupe || d._dedupe ? '\u200b' : '') + d.text || '',
       date: d._dateSec || 0,
       date_usec: 0,
       owner: sourceType !== 'bilibili-xml' && !!d._isOwner,
@@ -97,6 +97,17 @@ function prepareCanvasSource(rawStr, parsedList, sourceType) {
     try {
       rawNicoJsonData = JSON.parse(rawStr);
       nicoRawData = JSON.parse(rawStr); // 独立副本,避免重复注入叠加
+      // main 合并弹幕标记(dmdedupe): content 加零宽字符前缀,供 CSS 拆分渲染识别
+      for (let ti = 0; ti < nicoRawData.length; ti++) {
+        const th = nicoRawData[ti];
+        if (!th || !Array.isArray(th.comments)) continue;
+        for (let ci = 0; ci < th.comments.length; ci++) {
+          const c = th.comments[ci];
+          if (c && c.dmdedupe && typeof c.body === 'string' && c.body.charAt(0) !== '\u200b') {
+            c.body = '\u200b' + c.body;
+          }
+        }
+      }
       nicoRawFormat = detectNicoFormat(nicoRawData);
       applyScrollSpeedToNicoJson(nicoRawData);
       return;
@@ -440,6 +451,7 @@ iina.onMessage("set-fontscale", (data) => {
 iina.onMessage("set-canvas-mode", (data) => {
   const oldMode = canvasNicoMode;
   canvasNicoMode = data.mode;
+  resetDedupeSplitObserver(); // 渲染模式切换: 重挂合并弹幕拆分观察
   if (nicoRawData) {
     initCanvasRenderer(nicoRawData);
     startCanvasLoop();
@@ -522,7 +534,10 @@ iina.onMessage("apply-settings", (data) => {
     if (cssContainer) cssContainer.style.opacity = data.opacity;
   }
   if (data.canvasFontScale !== undefined) canvasFontScale = data.canvasFontScale;
-  if (data.canvasMode !== undefined) canvasNicoMode = data.canvasMode;
+  if (data.canvasMode !== undefined) {
+    canvasNicoMode = data.canvasMode;
+    resetDedupeSplitObserver(); // 渲染模式切换: 重挂合并弹幕拆分观察
+  }
   if (data.strokeColor !== undefined) strokeColor = data.strokeColor;
   if (data.strokeInversionColor !== undefined) strokeInversionColor = data.strokeInversionColor;
   if (data.strokeOpacity !== undefined) strokeOpacity = data.strokeOpacity;
@@ -535,3 +550,55 @@ iina.onMessage("apply-settings", (data) => {
 });
 
 iina.postMessage("overlay-ready", {});
+
+// ── 合并弹幕(CSS 模式)拆分渲染: 内容保持原色,xN 标红 ──
+// main 给合并弹幕的 content 加了零宽字符前缀(\u200b);引擎的 CSS 渲染器把每条
+// 弹幕渲染为 [data-dm-comment] div(textContent 单节点)。观察容器新增节点,
+// 检测到前缀后把文本拆成两段 span——内容 span 继承父 div 颜色,末尾 "xN" span 标红。
+// 动画/位置/生命周期仍在父 div 上,由引擎控制。Canvas 模式无 DOM,合并弹幕整条红色。
+let dmSplitObserver = null;
+
+function splitDedupeComment(el) {
+  const text = el.textContent || '';
+  if (text.charAt(0) !== '\u200b') return;
+  const body = text.slice(1);
+  const m = body.match(/^(.*)x(\d+)$/);
+  if (!m) return;
+  el.textContent = '';
+  const span1 = document.createElement('span');
+  span1.textContent = m[1];
+  const span2 = document.createElement('span');
+  span2.textContent = 'x' + m[2];
+  span2.style.color = '#ff0000';
+  el.appendChild(span1);
+  el.appendChild(span2);
+}
+
+// 观察 body 的 subtree: 引擎 CSS 容器与弹幕节点都由引擎动态创建,
+// 容器重建/模式切换后观察仍然有效
+function setupDedupeSplitObserver() {
+  if (dmSplitObserver || canvasNicoMode === 'default') return; // 仅 CSS 渲染器
+  dmSplitObserver = new MutationObserver(function (mutations) {
+    for (let i = 0; i < mutations.length; i++) {
+      const nodes = mutations[i].addedNodes;
+      if (!nodes) continue;
+      for (let j = 0; j < nodes.length; j++) {
+        const node = nodes[j];
+        if (node.nodeType === 1 && node.hasAttribute && node.hasAttribute('data-dm-comment')) {
+          splitDedupeComment(node);
+        }
+      }
+    }
+  });
+  dmSplitObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+// 渲染模式切换时重置(disconnect 旧观察;canvasNicoMode 决定是否重新挂载)
+function resetDedupeSplitObserver() {
+  if (dmSplitObserver) {
+    dmSplitObserver.disconnect();
+    dmSplitObserver = null;
+  }
+  setupDedupeSplitObserver();
+}
+setupDedupeSplitObserver();

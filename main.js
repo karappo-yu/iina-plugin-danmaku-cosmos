@@ -676,8 +676,9 @@ function dedupeNicoJson(encodedContent) {
       var e = merged[k];
       if (e._skip) { newComments.push(e._c); continue; }
       if (e._mergeCount > 1) {
-        // 合并出的新弹幕: 追加红色命令(与已有 mail 命令共存)
+        // 合并出的新弹幕: 追加红色命令(与已有 mail 命令共存);dmdedupe 供 overlay 识别
         e._c.mail = (e._c.mail ? String(e._c.mail) + ' ' : '') + 'red';
+        e._c.dmdedupe = 1;
       }
       if (e._c.body !== undefined) e._c.body = e.text;
       else e._c.content = e.text;
@@ -730,6 +731,7 @@ function dedupeContent(encodedContent, ft) {
           }
         }
         if (!hasColor) e._d._commands.push('#ff0000');
+        e._d._dedupe = true; // 供 overlay 识别合并弹幕
       }
       e._d.text = e.text;
       out.push(e._d);
@@ -768,7 +770,7 @@ function dedupeContent(encodedContent, ft) {
     if (line && kept.has(line)) {
       var head = line.head;
       if (line._mergeCount > 1) {
-        // 合并出的新弹幕: p 属性第 4 段(颜色)替换为红色 #FF0000
+        // 合并出的新弹幕: p 属性第 4 段(颜色)替换为红色 #FF0000;加 dmdedupe 属性供 overlay 识别
         var pm = head.match(/p="([^"]*)"/);
         if (pm) {
           var pParts = pm[1].split(',');
@@ -777,6 +779,7 @@ function dedupeContent(encodedContent, ft) {
             head = head.replace(pm[1], pParts.join(','));
           }
         }
+        head = head.replace(/>$/, ' dmdedupe="1">');
       }
       parts.push(head + encodeXmlText(line.text) + line.tail);
     }

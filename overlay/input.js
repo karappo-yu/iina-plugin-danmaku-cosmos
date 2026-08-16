@@ -8,6 +8,7 @@ function parseNicoXml(chats) {
       t: parseInt(el.getAttribute('vpos') || "0", 10),
       text: text,
       _isOwner: false,
+      _isDedupe: el.getAttribute('dmdedupe') === '1', // main 合并弹幕标记
       _commands: (el.getAttribute('mail') || '').toLowerCase().split(/\s+/).filter(Boolean),
       _userId: el.getAttribute('user_id') || '',
       _dateSec: parseInt(el.getAttribute('date') || "0", 10),
@@ -57,6 +58,7 @@ function parseBilibiliXml(xmlStr) {
             t: Math.round(parseFloat(parts[0]) * 100),
             text: el.textContent || '',
             _isOwner: false,
+            _isDedupe: el.getAttribute('dmdedupe') === '1', // main 合并弹幕标记
             _commands: commands,
             _userId: 0,
             _dateSec: 1767196800
@@ -74,7 +76,7 @@ function parseBilibiliXml(xmlStr) {
 
   // Fallback: regex (for malformed XML that DOMParser can't handle)
   var list = [];
-  var regex = /<d p="([^"]+)">([\s\S]*?)<\/d>/g;
+  var regex = /<d\s+p="([^"]+)"([^>]*)>([\s\S]*?)<\/d>/g;
   var match;
   while ((match = regex.exec(xmlStr)) !== null) {
     var p = match[1].split(",");
@@ -92,8 +94,9 @@ function parseBilibiliXml(xmlStr) {
     commands.push('#' + colorVal.toString(16).padStart(6, '0'));
     list.push({
       t: Math.round(parseFloat(p[0]) * 100),
-      text: decodeXmlText(match[2]),
+      text: decodeXmlText(match[3]),
       _isOwner: false,
+      _isDedupe: /dmdedupe="1"/.test(match[2]), // main 合并弹幕标记
       _commands: commands,
       _userId: 0,
       _dateSec: 1767196800
