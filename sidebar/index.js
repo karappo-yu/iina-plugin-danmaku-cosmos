@@ -1245,7 +1245,11 @@ iina.onMessage("dandanplay-bangumi-result", function (data) {
    数据由 sidebar 主动向 main.js 拉取(danmaku-browser-request,懒加载约束);
    main 侧按与 overlay 相同的过滤(切片/密度/强制简体)构建,保证列表与渲染一致。 */
 var BROWSER_ROW_H = 26;
-var browserItems = [];         // [{t, text, blocked, merged}] 按 t 升序
+var browserItems = [];         // [{t, text, blocked, merged}] 按 t 升序(全量)
+var browserAllItems = [];      // 分类后的三个列表(接收数据时一次分好)
+var browserBlockedItems = [];
+var browserMergedItems = [];
+var browserViewItems = browserAllItems; // 当前视图显示的数组(切换=换引用)
 var browserViewMode = 'all';   // 列表视图: all | blocked | merged
 var browserVpos = -1;          // 最近一次时间消息的 vpos(1/100s)
 var browserFollowLive = true;  // 跟随模式: 锚定 vpos 行滚动(用户手动翻阅时退出)
@@ -1254,13 +1258,6 @@ var browserListEl = document.getElementById("danmaku-browser-list");
 var browserSpacerEl = document.getElementById("danmaku-browser-spacer");
 var browserRowNodes = new Map(); // 行号 -> 已渲染节点
 var browserExpectedScrollTop = -1;
-
-// 当前视图下的可见条目(全部/已屏蔽/已合并)
-function browserViewItems() {
-  if (browserViewMode === 'blocked') return browserItems.filter(function (v) { return v.blocked; });
-  if (browserViewMode === 'merged') return browserItems.filter(function (v) { return v.merged; });
-  return browserItems;
-}
 
 // sidebar 自身的 file:// 根目录,上报给 main 用于读 overlay/lib/opencc.min.js
 function browserPluginRoot() {
@@ -1285,7 +1282,7 @@ function browserFmtTime(vpos) {
 
 // 二分查找: 最后一个 t <= vpos 的行号(用于无在屏弹幕时锚定当前位置;按当前视图)
 function browserRowForVpos(vpos) {
-  var items = browserViewItems();
+  var items = browserViewItems;
   var lo = 0, hi = items.length - 1, ans = -1;
   while (lo <= hi) {
     var mid = (lo + hi) >> 1;
@@ -1297,7 +1294,7 @@ function browserRowForVpos(vpos) {
 
 function browserRenderWindow() {
   if (!browserListEl) return;
-  var items = browserViewItems();
+  var items = browserViewItems;
   var total = items.length;
   if (browserSpacerEl) browserSpacerEl.style.height = (total * BROWSER_ROW_H) + "px";
   if (total === 0) {
@@ -1344,11 +1341,14 @@ function browserRenderWindow() {
   }
 }
 
-// 切换列表视图(全部/已屏蔽/已合并)
+// 切换列表视图(全部/已屏蔽/已合并): 只换数组引用,不做过滤/重建
 function browserSetViewMode(mode) {
   if (mode !== 'all' && mode !== 'blocked' && mode !== 'merged') return;
   browserViewMode = mode;
   if (browserViewSelect) browserViewSelect.value = mode;
+  browserViewItems = mode === 'blocked' ? browserBlockedItems
+    : mode === 'merged' ? browserMergedItems
+    : browserAllItems;
   // 视图内容不同: 清空渲染缓存与滚动位置
   browserRowNodes.forEach(function (el) { el.remove(); });
   browserRowNodes.clear();
@@ -1369,14 +1369,14 @@ function browserSetViewMode(mode) {
 // 视图内条数显示
 function browserUpdateTotal() {
   if (!totalEl) return;
-  var n = browserViewItems().length;
+  var n = browserViewItems.length;
   totalEl.textContent = n > 0 ? n.toLocaleString() : "";
 }
 
 // 视图内空状态
 function browserUpdateEmpty() {
   if (!emptyEl) return;
-  if (browserViewItems().length > 0) {
+  if (browserViewItems.length > 0) {
     emptyEl.style.display = "none";
     return;
   }
@@ -1424,12 +1424,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v14';
+    el.textContent = 'browser v15';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v14 watch→' + browserDiag.watchSent
+  el.textContent = 'v15 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
@@ -1511,6 +1511,10 @@ iina.onMessage("danmaku-browser-data", function (data) {
   if (chunkIndex === 0) {
     // 新数据或重发: 重置状态
     browserItems = [];
+    browserAllItems = [];
+    browserBlockedItems = [];
+    browserMergedItems = [];
+    browserViewItems = browserAllItems;
     browserVpos = -1;
     browserNextChunk = 1;
     browserRowNodes.forEach(function (el) { el.remove(); });
@@ -1534,8 +1538,19 @@ iina.onMessage("danmaku-browser-data", function (data) {
     browserRenderWindow();
     return;
   }
-  // 全部收齐: 更新汇总与空状态(按当前视图),数据未变(如 refresh)时保留滚动位置
+  // 全部收齐: 一次性分类三个列表 + 更新汇总与空状态(按当前视图)
   debugLog('danmaku-browser: data complete, total=' + browserItems.length + ', chunks=' + (chunkIndex + 1));
+  // 按标记一次性分类(切换视图只换数组引用,不再过滤)
+  browserAllItems = browserItems;
+  browserBlockedItems = [];
+  browserMergedItems = [];
+  for (var bi = 0; bi < browserItems.length; bi++) {
+    if (browserItems[bi].blocked) browserBlockedItems.push(browserItems[bi]);
+    if (browserItems[bi].merged) browserMergedItems.push(browserItems[bi]);
+  }
+  browserViewItems = browserViewMode === 'blocked' ? browserBlockedItems
+    : browserViewMode === 'merged' ? browserMergedItems
+    : browserAllItems;
   browserUpdateTotal();
   browserUpdateEmpty();
   var key = browserItems.length + ':' +
