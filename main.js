@@ -30,7 +30,7 @@ var strokeColor = preferences.get("strokeColor") || '#000000';
 var strokeInversionColor = preferences.get("strokeInversionColor") || '#ffffff';
 var commentLimit = preferences.get("commentLimit") !== undefined ? preferences.get("commentLimit") : 0;
 var scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get("scrollSpeed") : 1.0;
-var danmakuTimeOffsetSec = preferences.get("danmakuTimeOffset") !== undefined ? preferences.get("danmakuTimeOffset") : 0;
+var danmakuTimeOffsetSec = 0; // 弹幕偏移不做持久化: 偏移量因视频/弹幕文件而异,每个会话从 0 开始
 var danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
 var danmakuFontWeight = preferences.get("danmakuFontWeight") || "400";
 var stylePreset = preferences.get("stylePreset") || "nico";
@@ -241,8 +241,6 @@ function applyDanmakuOffset(offsetSec) {
   var nextOffset = parseFloat(offsetSec);
   if (isNaN(nextOffset)) nextOffset = 0;
   danmakuTimeOffsetSec = nextOffset;
-  preferences.set("danmakuTimeOffset", danmakuTimeOffsetSec);
-  syncPreferencesSoon();
   if (overlayReady) {
     overlay.postMessage("set-danmaku-offset", { offset: danmakuTimeOffsetSec });
   }
