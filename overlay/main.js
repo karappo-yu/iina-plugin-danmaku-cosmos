@@ -27,91 +27,6 @@ let canvasSystemAnchorTime = 0;
 let canvasIsPlaying = false;
 let playbackSpeed = 1.0;
 let danmakuVisible = true;
-let danmakuForceSimplified = false;
-// OpenCC 转换器 —— lib/opencc.min.js (1.1MB) 不在页面默认加载，
-// 首次开启「强制简体」时才动态注入，避免拖慢 overlay 启动。
-let toSimplified = function(text) { return text; }; // 兜底函数
-let openccLoadPromise = null;
-let lastLoadRawStr = null;   // 最近一次 load-danmaku 的原始内容，供 OpenCC 异步就绪后重建
-let lastLoadType = null;
-
-function ensureOpenCCLoaded() {
-  if (window.OpenCC) return Promise.resolve(window.OpenCC);
-  if (!openccLoadPromise) {
-    openccLoadPromise = new Promise(function (resolve, reject) {
-      const s = document.createElement('script');
-      s.src = 'lib/opencc.min.js';
-      s.onload = function () {
-        if (window.OpenCC) resolve(window.OpenCC);
-        else { openccLoadPromise = null; reject(new Error('OpenCC missing after script load')); }
-      };
-      s.onerror = function () {
-        openccLoadPromise = null;
-        reject(new Error('failed to load lib/opencc.min.js'));
-      };
-      document.head.appendChild(s);
-    });
-  }
-  return openccLoadPromise;
-}
-
-function buildSimplifiedConverter() {
-  const converter = OpenCC.Converter({ from: 'hk', to: 'cn' });
-  toSimplified = function(text) {
-    if (!text) return "";
-    return converter(text);
-  };
-}
-
-function rebuildFromLastLoad() {
-  if (!lastLoadRawStr || !lastLoadType) return;
-  // nico-json 只可能是日语弹幕,繁简转换对其无意义 —— 该格式走 JSON.parse 直通引擎,
-  // 从不经过 toSimplified,因此也无需重建(避免无意义的渲染器重建/闪屏)
-  if (lastLoadType === 'nico-json') return;
-  let list = [];
-  try {
-    list = lastLoadType === 'dandanplay' ? JSON.parse(lastLoadRawStr) : parseDanmaku(lastLoadRawStr, true);
-  } catch (e) { return; }
-  prepareCanvasSource(lastLoadRawStr, list, lastLoadType);
-  if (nicoRawData) {
-    canvasIsPlaying = !isPaused;
-    initCanvasRenderer(nicoRawData);
-    startCanvasLoop();
-  }
-}
-
-function updateSimplifiedConverter(enabled) {
-  danmakuForceSimplified = !!enabled;
-  if (!danmakuForceSimplified) {
-    toSimplified = function(text) { return text || ''; };
-    return;
-  }
-  if (window.OpenCC) {
-    try {
-      buildSimplifiedConverter();
-    } catch (e) {
-      console.error("[Danmaku Cosmos] OpenCC 初始化失败:", e);
-      toSimplified = function(text) { return text || ''; };
-    }
-    return;
-  }
-  // bundle 尚未加载:先保持直通,加载完成后重建当前弹幕使转换立即生效
-  toSimplified = function(text) { return text || ''; };
-  ensureOpenCCLoaded().then(function () {
-    if (!danmakuForceSimplified) return; // 加载期间被关闭了
-    try {
-      buildSimplifiedConverter();
-    } catch (e) {
-      console.error("[Danmaku Cosmos] OpenCC 初始化失败:", e);
-      return;
-    }
-    if (nicoRawData) rebuildFromLastLoad();
-  }).catch(function (err) {
-    console.error("[Danmaku Cosmos] OpenCC 库加载失败:", err);
-  });
-}
-
-updateSimplifiedConverter(danmakuForceSimplified);
 
 function canvasSyncAnchor(videoTimeSec) {
   canvasVideoAnchorTime = videoTimeSec;
@@ -159,7 +74,7 @@ function buildFormattedCanvasData(list, sourceType) {
       id: i,
       no: d._no || 0,
       vpos: Math.round(d.t || 0),
-      content: toSimplified(d.text || ''),
+      content: d.text || '',
       date: d._dateSec || 0,
       date_usec: 0,
       owner: sourceType !== 'bilibili-xml' && !!d._isOwner,
@@ -424,10 +339,6 @@ iina.onMessage("load-danmaku", (data) => {
     if (cssContainer) cssContainer.style.opacity = data.opacity;
   }
 
-  if (data.danmakuForceSimplified !== undefined) {
-    updateSimplifiedConverter(data.danmakuForceSimplified);
-  }
-
   const encodedStr = data.xmlContent;
   let rawStr;
   try { rawStr = decodeURIComponent(encodedStr); } catch (e) {
@@ -437,8 +348,6 @@ iina.onMessage("load-danmaku", (data) => {
 
   var danmakuType = data.danmakuType || detectRawDanmakuType(rawStr);
   currentDanmakuType = danmakuType;
-  lastLoadRawStr = rawStr;
-  lastLoadType = danmakuType;
 
   if (danmakuType === 'dandanplay') {
     try {
@@ -601,8 +510,6 @@ iina.onMessage("clear-danmaku", () => {
   nicoRawData = null;
   nicoRawFormat = 'legacy';
   currentDanmakuType = 'none';
-  lastLoadRawStr = null;
-  lastLoadType = null;
   iina.postMessage("danmaku-type", { type: 'none' });
 });
 
@@ -625,9 +532,19 @@ iina.onMessage("apply-settings", (data) => {
   if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
   if (data.danmakuFontFamily !== undefined) danmakuFontFamily = data.danmakuFontFamily || "";
   if (data.danmakuFontWeight !== undefined) danmakuFontWeight = data.danmakuFontWeight || "";
-  if (data.danmakuForceSimplified !== undefined) {
-    updateSimplifiedConverter(data.danmakuForceSimplified);
-  }
 });
 
-iina.postMessage("overlay-ready", {});
+// overlay 自身的 file:// 根目录(插件启动即加载,上报给 main 用于读 opencc.min.js
+// ——不依赖侧栏懒加载,简繁转换器在重启后打开新视频时即可构建)
+function overlayPluginRoot() {
+  try {
+    var u = new URL('../', window.location.href);
+    var p = decodeURIComponent(u.pathname);
+    if (p.length > 1 && p.charAt(p.length - 1) === '/') p = p.slice(0, -1);
+    return p;
+  } catch (e) {
+    return '';
+  }
+}
+
+iina.postMessage("overlay-ready", { pluginRoot: overlayPluginRoot() });

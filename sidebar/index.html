@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="index.css" />
+  <link rel="stylesheet" href="index.css?v=48" />
   <title>Danmaku Control</title>
 </head>
 
@@ -42,6 +42,13 @@
           <path d="M16 49L13 54M44 49L47 54" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
         </svg>
         <span data-i18n="tab_advanced">高级</span>
+      </div>
+      <div class="tab" data-tab="filter" data-clickable>
+        <svg viewBox="0 0 64 64">
+          <path d="M14 16H50L37 36V50L27 46V36Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M27 44L22 48" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+        <span data-i18n="tab_filter">过滤</span>
       </div>
     </div>
 
@@ -287,8 +294,59 @@
 
     </div>
 
+    <!-- ==================== Filter tab ==================== -->
+    <div id="tab-filter" style="display:none">
+      <div class="toggle-group" style="margin-top:12px">
+        <div class="toggle-row">
+          <div class="toggle-row-left">
+            <span class="toggle-label" data-i18n="filter_title">弹幕列表</span>
+            <span id="danmaku-browser-total" class="browser-total"></span>
+          </div>
+          <label class="switch" data-clickable>
+            <input type="checkbox" id="danmaku-browser-vis-toggle" />
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+        <div class="danmaku-browser-list-wrap">
+          <div id="danmaku-browser-list-all" class="danmaku-browser-list" data-clickable>
+            <div class="danmaku-browser-spacer"></div>
+            <div class="danmaku-browser-empty" style="display:none">未加载弹幕</div>
+          </div>
+          <button id="danmaku-browser-follow-btn" class="danmaku-browser-follow-float" data-i18n="filter_back_live" style="display:none">回到实时</button>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label" data-i18n="blocklist_title">屏蔽词</span>
+          <label class="switch" data-clickable>
+            <input type="checkbox" id="danmaku-blocklist-toggle" />
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+        <div id="danmaku-blocklist-panel" style="display:none">
+          <div id="danmaku-blocklist-list" class="danmaku-blocklist-list"></div>
+          <div id="danmaku-blocklist-empty" class="danmaku-blocklist-empty" data-i18n="blocklist_empty" style="display:none">暂无屏蔽词</div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label" data-i18n="dedupe_title">弹幕去重</span>
+          <label class="switch" data-clickable>
+            <input type="checkbox" id="danmaku-dedupe-toggle" />
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+        <div class="control-row" id="danmaku-dedupe-row" style="display:none;margin-top:6px">
+          <span class="toggle-label" data-i18n="dedupe_window">去重区间</span>
+          <div class="segmented" id="danmaku-dedupe-segmented" data-clickable style="margin-left:auto;width:200px">
+            <button class="seg-item" data-window="1">1s</button>
+            <button class="seg-item active" data-window="2">2s</button>
+            <button class="seg-item" data-window="3">3s</button>
+            <button class="seg-item" data-window="4">4s</button>
+            <button class="seg-item" data-window="5">5s</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
-  <script src="index.js"></script>
+  <script src="index.js?v=47"></script>
 </body>
 
 </html>

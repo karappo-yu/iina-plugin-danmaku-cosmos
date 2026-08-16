@@ -36,6 +36,7 @@ var densityValue = document.getElementById("density-value");
 var densityCount = document.getElementById("density-count");
 var tabBasic = document.getElementById("tab-basic");
 var tabAdvanced = document.getElementById("tab-advanced");
+var tabFilter = document.getElementById("tab-filter");
 var tabButtons = document.querySelectorAll(".tabbar .tab");
 var fileAddBtn = document.getElementById("danmaku-file-add-btn");
 
@@ -160,20 +161,11 @@ function renderFileList() {
   var container = document.getElementById('danmaku-file-list-container');
   if (!container) return;
   container.innerHTML = '';
-
-  var lang = getBrowserLang();
-  var xmlTitle = lang === 'zh' ? 'XML 弹幕' : lang === 'ja' ? 'XML\u30b3\u30e1\u30f3\u30c8' : 'XML Danmaku';
-  var jsonTitle = lang === 'zh' ? 'JSON 弹幕' : lang === 'ja' ? 'JSON\u30b3\u30e1\u30f3\u30c8' : 'JSON Danmaku';
-
-  if (fileListState.xmlFiles.length > 0) {
-    var xmlGroup = createFileGroup(xmlTitle, fileListState.xmlFiles, fileListState.selectedPaths);
-    if (xmlGroup) container.appendChild(xmlGroup);
-  }
-  if (fileListState.jsonFiles.length > 0) {
-    var jsonGroup = createFileGroup(jsonTitle, fileListState.jsonFiles, fileListState.selectedPaths);
-    if (jsonGroup) container.appendChild(jsonGroup);
-  }
-
+  // XML/JSON 弹幕合并为一个列表(按文件名排序)——不按类型分区块隔开
+  var allFiles = fileListState.xmlFiles.concat(fileListState.jsonFiles);
+  allFiles.sort(function (a, b) { return String(a.filename).localeCompare(String(b.filename)); });
+  var group = createFileGroup('', allFiles, fileListState.selectedPaths);
+  if (group) container.appendChild(group);
 }
 
 function updateDanmakuInfoUI() {
@@ -232,7 +224,20 @@ var i18n = {
     episodes_count: "{n} episodes",
     match_type_hash: "(hash)",
     match_type_filename: "(filename match)",
-    match_type_filename_title: "Hash match failed; showing filename-related matches"
+    match_type_filename_title: "Hash match failed; showing filename-related matches",
+    tab_filter: "Filter",
+    filter_title: "Danmaku List",
+    filter_back_live: "Back to Live",
+    filter_empty: "No danmaku loaded",
+    filter_empty_blocked: "No blocked danmaku",
+    filter_empty_merged: "No merged danmaku",
+    blocklist_title: "Block Words",
+    blocklist_add: "Add",
+    blocklist_empty: "No block words yet",
+    blocklist_placeholder: "word or regex...",
+    blocklist_remove: "Remove",
+    dedupe_title: "Deduplicate",
+    dedupe_window: "Window (sec)"
   },
   ja: {
     danmaku_visible: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a",
@@ -271,7 +276,20 @@ var i18n = {
     episodes_count: "{n}\u8a71",
     match_type_hash: "\uff08hash\uff09",
     match_type_filename: "\uff08\u30d5\u30a1\u30a4\u30eb\u540d\u4e00\u81f4\uff09",
-    match_type_filename_title: "hash \u30de\u30c3\u30c1\u5931\u6557\u3001\u30d5\u30a1\u30a4\u30eb\u540d\u95a2\u9023\u30ea\u30b9\u30c8\u3092\u8868\u793a"
+    match_type_filename_title: "hash \u30de\u30c3\u30c1\u5931\u6557\u3001\u30d5\u30a1\u30a4\u30eb\u540d\u95a2\u9023\u30ea\u30b9\u30c8\u3092\u8868\u793a",
+    tab_filter: "\u30d5\u30a3\u30eb\u30bf\u30fc",
+    filter_title: "\u30b3\u30e1\u30f3\u30c8\u4e00\u89a7",
+    filter_back_live: "\u6700\u65b0\u3078",
+    filter_empty: "\u30b3\u30e1\u30f3\u30c8\u672a\u8aad\u8fbc",
+    filter_empty_blocked: "\u30d6\u30ed\u30c3\u30af\u3055\u308c\u305f\u30b3\u30e1\u30f3\u30c8\u306f\u3042\u308a\u307e\u305b\u3093",
+    filter_empty_merged: "\u5408\u4f75\u3055\u308c\u305f\u30b3\u30e1\u30f3\u30c8\u306f\u3042\u308a\u307e\u305b\u3093",
+    blocklist_title: "\u30d6\u30ed\u30c3\u30af\u8a9e",
+    blocklist_add: "\u8ffd\u52a0",
+    blocklist_empty: "\u307e\u3060\u30d6\u30ed\u30c3\u30af\u8a9e\u306f\u3042\u308a\u307e\u305b\u3093",
+    blocklist_placeholder: "\u5358\u8a9e\u307e\u305f\u306f\u6b63\u898f\u8868\u73fe...",
+    blocklist_remove: "\u524a\u9664",
+    dedupe_title: "\u91cd\u8907\u30b3\u30e1\u30f3\u30c8\u5408\u4f75",
+    dedupe_window: "\u5408\u4f75\u7bc4\u56f2 (\u79d2)"
   },
   zh: {
     danmaku_visible: "\u5f39\u5e55\u663e\u793a",
@@ -310,7 +328,20 @@ var i18n = {
     episodes_count: "{n} \u96c6",
     match_type_hash: "\uff08hash\uff09",
     match_type_filename: "\uff08\u6587\u4ef6\u540d\u5173\u8054\uff09",
-    match_type_filename_title: "hash \u672a\u5339\u914d\u5230\u7f51\u7edc\u5f39\u5e55\uff0c\u663e\u793a\u6587\u4ef6\u540d\u5173\u8054\u5217\u8868"
+    match_type_filename_title: "hash \u672a\u5339\u914d\u5230\u7f51\u7edc\u5f39\u5e55\uff0c\u663e\u793a\u6587\u4ef6\u540d\u5173\u8054\u5217\u8868",
+    tab_filter: "\u8fc7\u6ee4",
+    filter_title: "\u5f39\u5e55\u5217\u8868",
+    filter_back_live: "\u56de\u5230\u5b9e\u65f6",
+    filter_empty: "\u672a\u52a0\u8f7d\u5f39\u5e55",
+    filter_empty_blocked: "\u65e0\u5df2\u5c4f\u853d\u5f39\u5e55",
+    filter_empty_merged: "\u65e0\u5df2\u5408\u5e76\u5f39\u5e55",
+    blocklist_title: "\u5c4f\u853d\u8bcd",
+    blocklist_add: "\u6dfb\u52a0",
+    blocklist_empty: "\u6682\u65e0\u5c4f\u853d\u8bcd",
+    blocklist_placeholder: "\u5c4f\u853d\u8bcd\u6216\u6b63\u5219...",
+    blocklist_remove: "\u5220\u9664",
+    dedupe_title: "\u5f39\u5e55\u53bb\u91cd",
+    dedupe_window: "\u53bb\u91cd\u533a\u95f4 (\u79d2)"
   }
 };
 
@@ -523,7 +554,7 @@ toggleDanmaku.addEventListener("change", function () {
   iina.postMessage("toggle-danmaku");
 });
 
-// Tab switching (basic / advanced)
+// Tab switching (basic / advanced / filter)
 if (tabButtons.length) {
   tabButtons.forEach(function (tab) {
     tab.addEventListener("click", function () {
@@ -533,6 +564,21 @@ if (tabButtons.length) {
       });
       if (tabBasic) tabBasic.style.display = name === "basic" ? "" : "none";
       if (tabAdvanced) tabAdvanced.style.display = name === "advanced" ? "" : "none";
+      if (tabFilter) {
+        var showFilter = name === "filter";
+        tabFilter.style.display = showFilter ? "" : "none";
+        if (showFilter) {
+          // sidebar 懒加载: 主动拉取弹幕列表 + 开启播放时间推送
+          // 带上插件根目录(file:// 定位),供 main 读取 overlay/lib/opencc.min.js(简繁转换)
+          iina.postMessage("danmaku-browser-request", { pluginRoot: browserPluginRoot() });
+          iina.postMessage("danmaku-browser-watch", { watch: true });
+          iina.postMessage("danmaku-blocklist-request");
+          iina.postMessage("danmaku-dedupe-request");
+        } else {
+          iina.postMessage("danmaku-browser-watch", { watch: false });
+        }
+        browserCountWatchSend();
+      }
     });
   });
 }
@@ -1173,3 +1219,503 @@ iina.onMessage("dandanplay-bangumi-result", function (data) {
     }
   } catch (e) {}
 });
+
+/* ========== Filter tab: danmaku browser list ==========
+   全量时间线列表(按 vpos 排序),直播聊天栏式实时跟随: 播放推进时列表锚定
+   vpos 对应行并保持其在可视区底部,新出现的弹幕在底部"推出"。
+   列表是虚拟滚动: 只渲染视口附近的 ~几十行,滚动时重算,几万条也不卡。
+   数据由 sidebar 主动向 main.js 拉取(danmaku-browser-request,懒加载约束);
+   main 侧按与 overlay 相同的过滤(切片/密度/强制简体)构建,保证列表与渲染一致。 */
+var BROWSER_ROW_H = 26;
+var browserItems = [];         // [{t, text, blocked, merged}] 按 t 升序(全量,接收原样)
+var browserVpos = -1;          // 最近一次时间消息的 vpos(1/100s)
+var browserFollowLive = true;  // 跟随模式: 锚定 vpos 行滚动(用户手动翻阅时退出)
+var totalEl = document.getElementById("danmaku-browser-total");
+
+// 弹幕时间线列表(单容器): 数据/渲染缓存/滚动位置独立持有
+var browserList = {
+  el: document.getElementById("danmaku-browser-list-all"),
+  items: [],
+  rowNodes: new Map()
+};
+browserList.spacerEl = browserList.el.querySelector(".danmaku-browser-spacer");
+browserList.emptyEl = browserList.el.querySelector(".danmaku-browser-empty");
+
+// sidebar 自身的 file:// 根目录,上报给 main 用于读 overlay/lib/opencc.min.js
+function browserPluginRoot() {
+  try {
+    var u = new URL('../', window.location.href);
+    var p = decodeURIComponent(u.pathname);
+    if (p.length > 1 && p.charAt(p.length - 1) === '/') p = p.slice(0, -1);
+    return p;
+  } catch (e) {
+    return '';
+  }
+}
+
+function browserFmtTime(vpos) {
+  var sec = Math.floor((vpos || 0) / 100);
+  var h = Math.floor(sec / 3600);
+  var m = Math.floor((sec % 3600) / 60);
+  var s = sec % 60;
+  var p = function (n) { return n < 10 ? "0" + n : String(n); };
+  return h > 0 ? h + ":" + p(m) + ":" + p(s) : p(m) + ":" + p(s);
+}
+
+// 二分查找: 最后一个 t <= vpos 的行号(用于无在屏弹幕时锚定当前位置)
+function browserRowForVpos(vpos, items) {
+  var lo = 0, hi = items.length - 1, ans = -1;
+  while (lo <= hi) {
+    var mid = (lo + hi) >> 1;
+    if (items[mid].t <= vpos) { ans = mid; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+  return ans;
+}
+
+// 弹幕内容里的时间(m:ss / h:mm:ss)→ 可点击链接,点击 seek 到该时间。
+// 普通文本保留为文本节点(可复制),时间部分拆成独立 span。
+function browserRenderTextWithLinks(text, container) {
+  var re = /(\d{1,2}):(\d{2})(?::(\d{2}))?/g;
+  var last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) container.appendChild(document.createTextNode(text.slice(last, m.index)));
+    var sec = m[3] !== undefined
+      ? parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10)
+      : parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    var link = document.createElement("span");
+    link.className = "danmaku-time-link";
+    link.textContent = m[0];
+    (function (vpos) {
+      link.addEventListener("click", function (e) {
+        e.stopPropagation(); // 不干扰行内文本选择
+        iina.postMessage("danmaku-seek", { vpos: vpos });
+      });
+    })(sec * 100);
+    container.appendChild(link);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) container.appendChild(document.createTextNode(text.slice(last)));
+  if (last === 0 && container.childNodes.length === 0) container.textContent = text;
+}
+
+// 渲染一个列表容器的可视窗口(虚拟滚动)。容器滚动位置自洽:
+// scrollTop 被 clamp 到自身数据范围,渲染窗口永远跟随视口。
+function browserRenderList(list) {
+  if (!list || !list.el) return;
+  var items = list.items;
+  var total = items.length;
+  list.spacerEl.style.height = (total * BROWSER_ROW_H) + "px";
+  if (total === 0) {
+    list.rowNodes.forEach(function (el) { el.remove(); });
+    list.rowNodes.clear();
+    list.emptyEl.style.display = "";
+    return;
+  }
+  list.emptyEl.style.display = "none";
+  var rawScrollTop = list.el.scrollTop;
+  var viewH = list.el.clientHeight;
+  var maxScroll = Math.max(0, total * BROWSER_ROW_H - viewH);
+  var scrollTop = Math.min(rawScrollTop, maxScroll);
+  var first = Math.max(0, Math.floor(scrollTop / BROWSER_ROW_H) - 8);
+  var last = Math.min(total - 1, Math.ceil((scrollTop + viewH) / BROWSER_ROW_H) + 8);
+  if (first > last) {
+    first = 0;
+    last = Math.min(total - 1, Math.ceil(viewH / BROWSER_ROW_H) + 8);
+  }
+  list.rowNodes.forEach(function (el, row) {
+    if (row < first || row > last) { el.remove(); list.rowNodes.delete(row); }
+  });
+  // 被屏蔽弹幕划线标注(全部视图)
+  for (var row = first; row <= last; row++) {
+    var node = list.rowNodes.get(row);
+    if (node) continue;
+    var item = items[row];
+    var div = document.createElement("div");
+    div.className = "danmaku-browser-row" + (item.blocked ? " blocked" : "");
+    div.style.top = (row * BROWSER_ROW_H) + "px";
+    var time = document.createElement("span");
+    time.className = "danmaku-browser-time";
+    time.textContent = browserFmtTime(item.t);
+    // 点击时间戳 → 跳转到该弹幕时间(main 做 seek,含弹幕偏移换算)
+    (function (vpos) {
+      time.addEventListener("click", function (e) {
+        e.stopPropagation(); // 不干扰整行的复制选择
+        iina.postMessage("danmaku-seek", { vpos: vpos });
+      });
+    })(item.t);
+    var text = document.createElement("span");
+    text.className = "danmaku-browser-text";
+    // 弹幕内容里的时间(m:ss / h:mm:ss,如"空降 01:39")渲染为可点击跳转
+    browserRenderTextWithLinks(item.text, text);
+    div.appendChild(time);
+    div.appendChild(text);
+    list.spacerEl.appendChild(div);
+    list.rowNodes.set(row, div);
+  }
+}
+
+// 列表条数显示(格式: (12,345) 紧贴标题)
+function browserUpdateTotal() {
+  if (!totalEl) return;
+  var n = browserList.items.length;
+  totalEl.textContent = n > 0 ? "(" + n.toLocaleString() + ")" : "";
+}
+
+function browserUpdateLiveUI() {
+  // 播放时间显示已移除(标题行不再展示);只维护"回到实时"按钮
+  var btn = document.getElementById("danmaku-browser-follow-btn");
+  if (btn) btn.style.display = (browserFollowLive || browserItems.length === 0) ? "none" : "";
+}
+
+// 聊天栏式跟随: 锚定 vpos 对应行并保持其在可视区底部,新弹幕到点在底部"推出"
+function browserFollowToLive() {
+  var list = browserList;
+  if (list.items.length === 0) return;
+  var anchorRow = browserRowForVpos(browserVpos, list.items);
+  if (anchorRow < 0) return;
+  var viewH = list.el.clientHeight;
+  var target = Math.max(0, (anchorRow + 1) * BROWSER_ROW_H - viewH);
+  browserProgramScrollTop = target;
+  list.el.scrollTop = target;
+  browserRenderList(list); // 立即渲染,不等浏览器派发 scroll 事件
+}
+
+var browserNextChunk = 0;
+var browserLastRefreshRequest = 0;
+
+// ── 诊断计数器(过滤 tab 状态行,数据异常时展示) ──
+var browserDiag = { watchSent: 0, dataMsgs: 0, timeMsgs: 0, decodeErrs: 0 };
+
+function browserUpdateDiag() {
+  var el = document.getElementById("danmaku-browser-status");
+  if (!el) return;
+  if (browserItems.length > 0) {
+    el.textContent = 'browser v24';
+    el.classList.remove('broken');
+    return;
+  }
+  el.classList.add('broken');
+  el.textContent = 'v24 watch→' + browserDiag.watchSent
+    + ' data←' + browserDiag.dataMsgs
+    + ' time←' + browserDiag.timeMsgs
+    + ' items=' + browserItems.length
+    + ' err=' + browserDiag.decodeErrs;
+}
+
+function browserCountWatchSend() {
+  browserDiag.watchSent++;
+  browserUpdateDiag();
+}
+
+// 数据缺失时重发拉取请求,限流避免循环
+function requestBrowserDataRefresh() {
+  var now = Date.now();
+  if (now - browserLastRefreshRequest < 1500) return;
+  browserLastRefreshRequest = now;
+  debugLog('danmaku-browser: data missing, re-requesting');
+  iina.postMessage("danmaku-browser-request", { pluginRoot: browserPluginRoot() });
+  iina.postMessage("danmaku-browser-watch", { watch: true });
+  browserCountWatchSend();
+}
+
+// main.js 以 base64 编码投递(绕开 IINA 桥的模板字符串注入);解码失败返回 null
+function browserDecodePayload(payload) {
+  try {
+    var bin = atob(payload);
+    var bytes = [];
+    for (var i = 0; i < bin.length; i++) bytes.push(bin.charCodeAt(i));
+    return JSON.parse(browserUtf8Decode(bytes));
+  } catch (e) {
+    return null;
+  }
+}
+
+function browserUtf8Decode(bytes) {
+  var out = '';
+  for (var i = 0; i < bytes.length;) {
+    var b = bytes[i];
+    if (b < 0x80) {
+      out += String.fromCharCode(b);
+      i++;
+    } else if (b < 0xE0) {
+      out += String.fromCharCode(((b & 0x1F) << 6) | (bytes[i + 1] & 0x3F));
+      i += 2;
+    } else if (b < 0xF0) {
+      out += String.fromCharCode(((b & 0x0F) << 12) | ((bytes[i + 1] & 0x3F) << 6) | (bytes[i + 2] & 0x3F));
+      i += 3;
+    } else {
+      var cp = ((b & 0x07) << 18) | ((bytes[i + 1] & 0x3F) << 12) | ((bytes[i + 2] & 0x3F) << 6) | (bytes[i + 3] & 0x3F);
+      out += String.fromCharCode(((cp - 0x10000) >> 10) + 0xD800, ((cp - 0x10000) & 0x3FF) + 0xDC00);
+      i += 4;
+    }
+  }
+  return out;
+}
+
+iina.onMessage("danmaku-browser-data", function (data) {
+  if (!data) return;
+  browserDiag.dataMsgs++;
+  var items = null;
+  if (typeof data.payload === 'string') {
+    items = browserDecodePayload(data.payload);
+    if (items === null) {
+      browserDiag.decodeErrs++;
+      browserUpdateDiag();
+      requestBrowserDataRefresh(); // 解码失败: 请求重发
+      return;
+    }
+  } else if (Array.isArray(data.items)) {
+    items = data.items;
+  }
+  if (items === null) {
+    browserUpdateDiag();
+    return;
+  }
+  // 兼容旧格式(无 chunkIndex/done 的单条消息)
+  var chunkIndex = data.chunkIndex === undefined ? 0 : data.chunkIndex;
+  var isDone = data.done !== false;
+  if (chunkIndex === 0) {
+    // 新数据或重发: 重置状态
+    browserItems = [];
+    browserVpos = -1;
+    browserNextChunk = 1;
+    browserList.items = [];
+    browserList.rowNodes.forEach(function (el) { el.remove(); });
+    browserList.rowNodes.clear();
+  } else if (chunkIndex === browserNextChunk) {
+    browserNextChunk = chunkIndex + 1;
+  } else {
+    requestBrowserDataRefresh(); // 丢块/乱序: 丢弃不完整数据并重新拉取
+    browserUpdateDiag();
+    return;
+  }
+  // 追加本块
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    if (!item || typeof item.t !== 'number' || !isFinite(item.t) || !item.text) continue;
+    browserItems.push({ t: item.t, text: item.text, blocked: !!item.blocked, merged: !!item.merged });
+  }
+  if (!isDone) {
+    // 传输中不渲染(done 时一次性渲染)
+    browserUpdateDiag();
+    return;
+  }
+  // 全部收齐: 单容器渲染
+  debugLog('danmaku-browser: data complete, total=' + browserItems.length + ', chunks=' + (chunkIndex + 1));
+  browserList.items = browserItems;
+  browserRenderList(browserList);
+  browserUpdateTotal();
+  browserUpdateLiveUI();
+  browserUpdateDiag();
+});
+
+// 播放时间推送(main.js 300ms 节流): 更新锚点;跟随模式下滚动到 vpos 行(聊天栏式)
+iina.onMessage("danmaku-visible-time", function (data) {
+  if (!data || typeof data.time !== 'number') return;
+  browserDiag.timeMsgs++;
+  var vpos = Math.round((data.time + (data.offset || 0)) * 100);
+  browserVpos = vpos;
+  // 自愈: 时间信号在流动但本地无列表数据 → 重新拉取
+  if (browserItems.length === 0) requestBrowserDataRefresh();
+  browserUpdateLiveUI();
+  browserUpdateDiag();
+  if (browserFollowLive) browserFollowToLive();
+});
+
+var browserProgramScrollTop = -1; // 程序滚动目标(跟随锚定);scroll 事件据此区分手动/程序滚动
+
+// 列表容器监听滚动: 虚拟渲染重算窗口;手动滚动退出跟随
+browserList.el.addEventListener("scroll", function () {
+  if (browserProgramScrollTop >= 0 && Math.abs(browserList.el.scrollTop - browserProgramScrollTop) < 1) {
+    browserProgramScrollTop = -1;
+    browserRenderList(browserList); // 程序滚动(跟随锚定): 重渲染,不退出跟随
+    return;
+  }
+  browserProgramScrollTop = -1;
+  if (browserFollowLive) {
+    browserFollowLive = false; // 用户手动翻阅: 暂停跟随
+    browserUpdateLiveUI();
+  }
+  browserRenderList(browserList);
+});
+
+var browserFollowBtn = document.getElementById("danmaku-browser-follow-btn");
+if (browserFollowBtn) {
+  browserFollowBtn.addEventListener("click", function () {
+    browserFollowLive = true;
+    browserUpdateLiveUI();
+    browserFollowToLive();
+  });
+}
+
+// 侧栏初始在基础 tab: 显式关掉监听,清除 main.js 侧可能残留的 watch 状态
+iina.postMessage("danmaku-browser-watch", { watch: false });
+browserCountWatchSend();
+browserUpdateDiag();
+
+// 弹幕列表显示开关: 隐藏列表区域(数据保留,重开即恢复);状态持久化在 main
+var browserVisToggle = document.getElementById("danmaku-browser-vis-toggle");
+var browserListWrap = document.querySelector(".danmaku-browser-list-wrap");
+
+function applyBrowserVis(v) {
+  if (browserListWrap) browserListWrap.style.display = v ? "" : "none";
+  if (browserVisToggle) browserVisToggle.checked = !!v;
+  if (totalEl) totalEl.style.display = v ? "" : "none";
+}
+if (browserVisToggle) {
+  browserVisToggle.addEventListener("change", function () {
+    var v = browserVisToggle.checked;
+    applyBrowserVis(v);
+    iina.postMessage("danmaku-browser-vis-set", { visible: v });
+  });
+}
+iina.onMessage("danmaku-browser-vis-state", function (data) {
+  if (data && data.visible !== undefined) applyBrowserVis(data.visible);
+});
+
+// 加载即上报插件根目录(main 的简繁转换器初始化不依赖过滤 tab 打开)
+iina.postMessage("danmaku-sidebar-ready", { pluginRoot: browserPluginRoot() });
+
+/* ========== 屏蔽词(tag 列表 + 开关 + 添加/删除) ========== */
+var blocklistToggle = document.getElementById("danmaku-blocklist-toggle");
+var blocklistPanel = document.getElementById("danmaku-blocklist-panel");
+var blocklistList = document.getElementById("danmaku-blocklist-list");
+var blocklistEmpty = document.getElementById("danmaku-blocklist-empty");
+var blocklistWords = [];
+
+function renderBlocklist() {
+  if (!blocklistList) return;
+  blocklistList.innerHTML = '';
+  if (blocklistEmpty) blocklistEmpty.style.display = blocklistWords.length === 0 ? "" : "none";
+  for (var i = 0; i < blocklistWords.length; i++) {
+    var item = document.createElement("div");
+    item.className = "danmaku-blocklist-item";
+    var label = document.createElement("span");
+    label.className = "danmaku-blocklist-item-text";
+    label.textContent = blocklistWords[i];
+    var x = document.createElement("button");
+    x.className = "danmaku-blocklist-item-x";
+    x.textContent = "\u00d7";
+    x.title = t('blocklist_remove');
+    x.setAttribute("data-clickable", "");
+    (function (word) {
+      x.addEventListener("click", function () {
+        iina.postMessage("danmaku-blocklist-remove", { word: word }); // 按词值删除,防下标错位
+      });
+    })(blocklistWords[i]);
+    item.appendChild(label);
+    item.appendChild(x);
+    blocklistList.appendChild(item);
+  }
+  // 添加行: + 号,点击进入内联编辑(替代独立添加按钮)
+  var addItem = document.createElement("div");
+  addItem.className = "danmaku-blocklist-item danmaku-blocklist-add-item";
+  addItem.textContent = "+ " + t('blocklist_add');
+  addItem.setAttribute("data-clickable", "");
+  addItem.addEventListener("click", blocklistStartAdd);
+  blocklistList.appendChild(addItem);
+}
+
+// 点击 + 行: 该行变为内联输入框;回车提交、Esc 取消、失焦提交(空内容忽略)
+function blocklistStartAdd() {
+  var item = this;
+  item.classList.add("editing");
+  item.innerHTML = "";
+  var inp = document.createElement("input");
+  inp.type = "text";
+  inp.className = "danmaku-blocklist-input";
+  inp.placeholder = t('blocklist_placeholder');
+  item.appendChild(inp);
+  var committing = false;
+  var done = function () {
+    if (committing) return;
+    committing = true;
+    var w = inp.value.trim();
+    if (w) iina.postMessage("danmaku-blocklist-add", { word: w });
+    renderBlocklist();
+  };
+  inp.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      done();
+    } else if (e.key === "Escape") {
+      committing = true; // 阻止 blur 触发提交
+      renderBlocklist();
+    }
+  });
+  inp.addEventListener("blur", done);
+  inp.focus();
+}
+
+function applyBlocklistState(state) {
+  if (!state) return;
+  if (typeof state.enabled === 'boolean') {
+    if (blocklistToggle) blocklistToggle.checked = state.enabled;
+    if (blocklistPanel) blocklistPanel.style.display = state.enabled ? "" : "none";
+  }
+  if (Array.isArray(state.words)) {
+    blocklistWords = state.words.slice();
+    renderBlocklist();
+  }
+}
+
+iina.onMessage("danmaku-blocklist-state", function (data) {
+  applyBlocklistState(data);
+});
+
+if (blocklistToggle) {
+  blocklistToggle.addEventListener("change", function () {
+    var on = blocklistToggle.checked;
+    if (blocklistPanel) blocklistPanel.style.display = on ? "" : "none";
+    iina.postMessage("danmaku-blocklist-set-enabled", { enabled: on });
+  });
+}
+
+/* ========== 弹幕去重(开关 + 区间输入) ========== */
+var dedupeToggle = document.getElementById("danmaku-dedupe-toggle");
+var dedupeRow = document.getElementById("danmaku-dedupe-row");
+var dedupeSegmented = document.getElementById("danmaku-dedupe-segmented");
+var dedupeSegItems = dedupeSegmented ? dedupeSegmented.querySelectorAll(".seg-item") : [];
+var dedupeWindowTimer = null; // 去重区间防抖(300ms): 连续点选只应用最后一次,避免每次触发全量重算/重放
+
+function applyDedupeState(state) {
+  if (!state) return;
+  if (typeof state.enabled === 'boolean') {
+    if (dedupeToggle) dedupeToggle.checked = state.enabled;
+    if (dedupeRow) dedupeRow.style.display = state.enabled ? "" : "none";
+  }
+  if (typeof state.window === 'number') {
+    for (var i = 0; i < dedupeSegItems.length; i++) {
+      dedupeSegItems[i].classList.toggle("active", dedupeSegItems[i].dataset.window === String(state.window));
+    }
+  }
+}
+
+iina.onMessage("danmaku-dedupe-state", function (data) {
+  applyDedupeState(data);
+});
+
+if (dedupeToggle && dedupeSegmented) {
+  dedupeToggle.addEventListener("change", function () {
+    var on = dedupeToggle.checked;
+    if (dedupeRow) dedupeRow.style.display = on ? "" : "none";
+    iina.postMessage("danmaku-dedupe-set", { enabled: on });
+  });
+  // 去重区间: 5 档分段按钮;防抖 300ms 后应用(main 全量重算+overlay 重放开销大)
+  for (var i = 0; i < dedupeSegItems.length; i++) {
+    (function (btn) {
+      btn.addEventListener("click", function () {
+        var w = parseFloat(btn.dataset.window);
+        if (!isFinite(w)) return;
+        for (var j = 0; j < dedupeSegItems.length; j++) {
+          dedupeSegItems[j].classList.toggle("active", dedupeSegItems[j] === btn);
+        }
+        if (dedupeWindowTimer) clearTimeout(dedupeWindowTimer);
+        dedupeWindowTimer = setTimeout(function () {
+          dedupeWindowTimer = null;
+          iina.postMessage("danmaku-dedupe-set", { window: w });
+        }, 300);
+      });
+    })(dedupeSegItems[i]);
+  }
+}

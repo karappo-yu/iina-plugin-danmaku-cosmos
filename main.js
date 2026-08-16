@@ -10,6 +10,17 @@ var mpv = iina.mpv;
 
 var danmakuEnabled = preferences.get("danmakuEnabled");
 var danmakuForceSimplified = preferences.get("danmakuForceSimplified") !== undefined ? preferences.get("danmakuForceSimplified") : true;
+// 屏蔽词过滤(正则支持)——列表与开关都持久化;过滤在 getEffectiveContent 单源出口执行
+var danmakuBlocklist = [];
+try { danmakuBlocklist = JSON.parse(preferences.get("danmakuBlocklist") || '[]') || []; } catch (e) { danmakuBlocklist = []; }
+if (!Array.isArray(danmakuBlocklist)) danmakuBlocklist = [];
+var danmakuBlocklistEnabled = !!preferences.get("danmakuBlocklistEnabled");
+var blockRegexes = []; // 编译缓存(列表变化时重建)
+rebuildBlockRegexes();
+// 弹幕去重: 开关 + 区间(秒,1-5)。窗口内重复文本合并为 "原文✖️N",时间取组内最早。
+var danmakuDedupeEnabled = !!preferences.get("danmakuDedupeEnabled");
+var danmakuDedupeWindow = parseFloat(preferences.get("danmakuDedupeWindow"));
+if (!isFinite(danmakuDedupeWindow) || danmakuDedupeWindow < 1 || danmakuDedupeWindow > 5) danmakuDedupeWindow = 2;
 var canvasOpacity = preferences.get("danmakuCanvasOpacity") || 0.8;
 var canvasFontScale = preferences.get("niconicommentsFontScale") || 1.0;
 var currentCanvasMode = preferences.get("canvasMode") || 'css';
@@ -193,6 +204,34 @@ var nicoJsonTotalCount = 0;
 var danmakuFilterOffset = 0;
 var danmakuFilterLimit = 0;
 var danmakuFilterDensity = 0;
+var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听(控制播放时间推送)
+var lastBrowserTimeSent = 0;     // 时间推送节流标记
+var danmakuBrowserVisible = preferences.get("danmakuBrowserVisible") !== undefined ? !!preferences.get("danmakuBrowserVisible") : true; // 弹幕列表显示开关
+var pluginRootPath = '';         // 插件根目录(读 overlay/lib/opencc.min.js;与其他设置一样持久化)
+// 启动时从 preferences 重读: 重启后不依赖任何 webview 上报即可用
+var storedRoot = preferences.get("pluginRootPath");
+if (typeof storedRoot === 'string' && storedRoot.length > 0) {
+  pluginRootPath = sanitizePluginRoot(storedRoot);
+}
+
+// 校验 sidebar/overlay 上报的插件根目录: 只接受绝对路径且拒绝 .. 穿越
+// (消息源理论上可被篡改;裸路径会被 file.read + eval 执行任意文件)
+function sanitizePluginRoot(p) {
+  if (typeof p !== 'string' || p.length === 0) return '';
+  if (p.charAt(0) !== '/') return '';   // 必须绝对路径
+  if (p.indexOf('..') !== -1) return ''; // 拒绝路径穿越
+  return p;
+}
+
+// 路径上报后持久化(与其他设置一致): 重启后 main 直接读 preferences
+function persistPluginRoot(p) {
+  pluginRootPath = sanitizePluginRoot(p);
+  if (pluginRootPath) {
+    preferences.set("pluginRootPath", pluginRootPath);
+    syncPreferencesSoon();
+  }
+}
+var openccSimplifier = null;     // 简繁转换器(hk→cn,懒加载;仅强制简体开启且列表被监听时构建)
 
 function sanitizeIPCString(value) {
   return String(value || '').replace(/[`\u2018\u2019]/g, "'");
@@ -449,12 +488,10 @@ function applyDanmakuFilter(offset, limit) {
 
   var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
   if (!selectedPath) return;
-  var encodedContent = danmakuCache[selectedPath];
-  if (!encodedContent) return;
+  if (!danmakuCache[selectedPath]) return;
 
-  var filteredEncoded = applyNicoJsonFilters(encodedContent);
   overlay.postMessage("load-danmaku", {
-    xmlContent: filteredEncoded,
+    xmlContent: getEffectiveContent(selectedPath),
     path: selectedPath,
     danmakuType: 'nico-json',
     opacity: canvasOpacity,
@@ -479,6 +516,608 @@ function applyDanmakuFilterDensity(density) {
   if (ft === 'nico-json') {
     applyDanmakuFilter(danmakuFilterOffset, danmakuFilterLimit);
   }
+}
+
+// ── 过滤 tab: 弹幕时间线列表 ──────────────────────────────────────────
+// 数据源为 danmakuCache(main.js 本就持有已加载的弹幕内容,发给 overlay 渲染的同一份),
+// 不经 overlay。sidebar 懒加载,只能由 sidebar 主动拉取(danmaku-browser-request);
+// 播放时间以 danmaku-visible-time 节流推送,sidebar 按时间线锚定跟随。
+// 列表与 overlay 渲染内容保持一致: nico-json 应用与 overlay 相同的 offset/limit/密度
+// 切片(applyNicoJsonFilters);其他格式文本过强制简体转换(OpenCC,与 overlay 同一库同参数)。
+
+// 纯 JS base64(UTF-8)——main.js 运行在 IINA 的 JavaScriptCore 环境,不保证有 btoa/unescape
+var B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function b64Encode(str) {
+  var bytes = [];
+  for (var i = 0; i < str.length; i++) {
+    var c = str.charCodeAt(i);
+    if (c < 0x80) {
+      bytes.push(c);
+    } else if (c < 0x800) {
+      bytes.push(0xC0 | (c >> 6), 0x80 | (c & 63));
+    } else if (c >= 0xD800 && c <= 0xDBFF && i + 1 < str.length) {
+      var c2 = str.charCodeAt(i + 1);
+      if (c2 >= 0xDC00 && c2 <= 0xDFFF) {
+        var cp = 0x10000 + ((c - 0xD800) << 10) + (c2 - 0xDC00);
+        bytes.push(0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+        i++;
+      } else {
+        bytes.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      }
+    } else {
+      bytes.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    }
+  }
+  var out = '';
+  for (var j = 0; j < bytes.length; j += 3) {
+    var b0 = bytes[j], b1 = bytes[j + 1], b2 = bytes[j + 2];
+    out += B64_CHARS[b0 >> 2];
+    out += B64_CHARS[((b0 & 3) << 4) | (b1 === undefined ? 0 : b1 >> 4)];
+    out += b1 === undefined ? '=' : B64_CHARS[((b1 & 15) << 2) | (b2 === undefined ? 0 : b2 >> 6)];
+    out += b2 === undefined ? '=' : B64_CHARS[b2 & 63];
+  }
+  return out;
+}
+
+function decodeXmlText(text) {
+  if (text.indexOf('&') === -1) return text;
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+// 简繁转换器(OpenCC hk→cn,与 overlay/lib/opencc.min.js 同一库同参数)。
+// opencc.min.js 是 UMD bundle,无 DOM 依赖,file.read + eval 即可在 JavaScriptCore 运行;
+// 失败则返回 false(列表退化为原文,不影响渲染主链路)。首次构建 ~几百 ms,缓存复用。
+function ensureBrowserSimplifier() {
+  if (openccSimplifier) return true;
+  if (!danmakuForceSimplified) return false;
+  if (!pluginRootPath) return false;
+  try {
+    var code = file.read(pluginRootPath + '/overlay/lib/opencc.min.js');
+    if (!code) return false;
+    eval(code); // UMD 挂到全局(globalThis.OpenCC)
+    if (!globalThis.OpenCC) return false;
+    openccSimplifier = globalThis.OpenCC.Converter({ from: 'hk', to: 'cn' });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// ── 屏蔽词过滤(正则支持) ─────────────────────────────────────────────
+// 过滤发生在 getEffectiveContent 单源出口: overlay 渲染与 sidebar 列表拿同一份
+// 过滤后内容,结构性一致。每个词优先按正则编译;非法正则退化为转义后的普通文本匹配。
+
+function rebuildBlockRegexes() {
+  blockRegexes = [];
+  for (var i = 0; i < danmakuBlocklist.length; i++) {
+    var w = danmakuBlocklist[i];
+    if (!w) continue;
+    var re;
+    try {
+      re = new RegExp(w, 'i'); // 优先按正则
+    } catch (e) {
+      try {
+        re = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); // 非法正则 → 转义当普通词
+      } catch (e2) {
+        continue;
+      }
+    }
+    blockRegexes.push(re);
+  }
+}
+
+function isBlockedText(text) {
+  if (!text || blockRegexes.length === 0) return false;
+  for (var i = 0; i < blockRegexes.length; i++) {
+    if (blockRegexes[i].test(text)) return true;
+  }
+  return false;
+}
+
+// ── 弹幕去重(时间窗内重复文本合并) ───────────────────────────────────
+// 输入为已含 .t(1/100s) 与 .text 的对象数组(时间无需有序,内部按 t 排序);
+// 窗口 windowMs 内文本相同的弹幕合并为一条——保留组内最早对象(时间=t),
+// 其 .text 原地改为 "原文✖️N";被合并对象从输出消失。调用方通过对象引用
+// 判断保留/删除。与屏蔽词/简繁共用同一变换序列,保证 overlay 与列表一致。
+function mergeDuplicateItems(items, windowMs) {
+  if (!items || items.length === 0) return items;
+  if (!(windowMs > 0)) return items;
+  var buckets = new Map();
+  var out = []; // 空文本条目(未解析/无效评论占位)不进桶,原样透传——否则被去重丢弃
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    if (!it || typeof it.t !== 'number' || !isFinite(it.t)) continue;
+    if (it._skip) { out.push(it); continue; } // 占位(无效/owner 弹幕): 原样透传,不参与去重
+    if (!it.text) { out.push(it); continue; }  // 空文本(未解析/无效评论)原样透传
+    var bucket = buckets.get(it.text);
+    if (!bucket) { bucket = []; buckets.set(it.text, bucket); }
+    bucket.push(it);
+  }
+  buckets.forEach(function (bucket) {
+    bucket.sort(function (a, b) { return a.t - b.t; });
+    var i = 0;
+    while (i < bucket.length) {
+      var first = bucket[i];
+      var count = 1;
+      var j = i + 1;
+      while (j < bucket.length && bucket[j].t - first.t <= windowMs) {
+        count++;
+        j++;
+      }
+      if (count > 1) {
+        // 合并标记(调用方据此给新弹幕加颜色指令);分隔符用 x(✖ 太粗,且不带
+        // 变体选择符时才按文本渲染)
+        first._mergeCount = count;
+        first.text = first.text + 'x' + count;
+      }
+      out.push(first);
+      i = j;
+    }
+  });
+  out.sort(function (a, b) { return a.t - b.t; });
+  return out;
+}
+
+// XML 文本转义(合并文本重建行时用;与 decodeXmlText 互逆)
+function encodeXmlText(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+// 合并弹幕颜色池(鲜艳色,视觉可区分;nico 经典色系)
+var MERGE_COLORS = [
+  { name: 'red',    hex: '#ff0000', dec: 16711680 },
+  { name: 'pink',   hex: '#ff8080', dec: 16744576 },
+  { name: 'orange', hex: '#ffcc00', dec: 16763904 },
+  { name: 'yellow', hex: '#ffff00', dec: 16776960 },
+  { name: 'green',  hex: '#00ff00', dec: 65280 },
+  { name: 'cyan',   hex: '#00ffff', dec: 65535 },
+  { name: 'blue',   hex: '#0000ff', dec: 255 },
+  { name: 'purple', hex: '#800080', dec: 8388736 }
+];
+function pickMergeColor(text) {
+  if (text) {
+    // 按文本 hash 稳定选色: 同一合并文本每次重建颜色不变(重发/改设置不闪色),
+    // 不同文本按 hash 分散到色池
+    var h = 0;
+    for (var i = 0; i < text.length; i++) {
+      h = (h * 31 + text.charCodeAt(i)) | 0;
+    }
+    return MERGE_COLORS[Math.abs(h) % MERGE_COLORS.length];
+  }
+  return MERGE_COLORS[Math.floor(Math.random() * MERGE_COLORS.length)];
+}
+
+// nico-json 去重: 每个 thread 的 comments 内合并(保留组内最早 comment 的全部字段)
+function dedupeNicoJson(encodedContent) {
+  if (!(danmakuDedupeWindow > 0)) return encodedContent;
+  var rawStr;
+  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return encodedContent; }
+  var data;
+  try { data = JSON.parse(rawStr); } catch (e) { return encodedContent; }
+  if (!Array.isArray(data)) return encodedContent;
+  var windowMs = danmakuDedupeWindow * 100;
+  var changed = false;
+  var filteredData = [];
+  for (var i = 0; i < data.length; i++) {
+    var thread = data[i];
+    // owner 线程(fork==='owner')压根不进过滤器: 原样透传,不参与去重
+    if (thread && thread.fork === 'owner') { filteredData.push(thread); continue; }
+    // legacy nico-json(thread.chat)与现代表格(thread.comments)都处理
+    var srcComments = thread ? (Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null)) : null;
+    if (!srcComments) { filteredData.push(thread); continue; }
+    var entries = [];
+    for (var j = 0; j < srcComments.length; j++) {
+      var c = srcComments[j];
+      if (!c) { entries.push({ t: 0, text: '', _c: c, _skip: true }); continue; }
+      var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
+      var text = c.body !== undefined ? c.body : c.content;
+      if (!isFinite(t) || !text) { entries.push({ t: 0, text: '', _c: c, _skip: true }); continue; }
+      entries.push({ t: t, text: text, _c: c });
+    }
+    var merged = mergeDuplicateItems(entries, windowMs);
+    var newComments = [];
+    for (var k = 0; k < merged.length; k++) {
+      var e = merged[k];
+      if (e._skip) { newComments.push(e._c); continue; }
+      if (e._mergeCount > 1) {
+        // 合并出的新弹幕: commands 数组追加随机颜色命令(v1 格式无 mail 字段,
+        // commands 直接作为引擎 mail 解析,颜色名经 config.colors 生效)
+        var mc = pickMergeColor(e.text);
+        if (!Array.isArray(e._c.commands)) e._c.commands = [];
+        e._c.commands.push(mc.name);
+      }
+      if (e._c.body !== undefined) e._c.body = e.text;
+      else e._c.content = e.text;
+      newComments.push(e._c);
+    }
+    if (newComments.length !== srcComments.length) {
+      changed = true;
+      var newObj = {};
+      for (var p in thread) { if (thread.hasOwnProperty(p)) newObj[p] = thread[p]; }
+      newObj[Array.isArray(thread.comments) ? 'comments' : 'chat'] = newComments;
+      newObj.commentCount = newComments.length;
+      filteredData.push(newObj);
+    } else {
+      filteredData.push(thread);
+    }
+  }
+  if (!changed) return encodedContent;
+  return encodeContent(JSON.stringify(filteredData));
+}
+
+// 非 nico-json 去重: dandanplay 解析合并;XML(bilibili <d> / nico <chat>)行级合并
+function dedupeContent(encodedContent, ft) {
+  if (!(danmakuDedupeWindow > 0)) return encodedContent;
+  var rawStr;
+  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return encodedContent; }
+  var windowMs = danmakuDedupeWindow * 100;
+  if (ft === 'dandanplay') {
+    var list;
+    try { list = JSON.parse(rawStr); } catch (e) { return encodedContent; }
+    if (!Array.isArray(list)) return encodedContent;
+    var entries = [];
+    for (var i = 0; i < list.length; i++) {
+      var d = list[i];
+      if (!d || typeof d.t !== 'number' || !isFinite(d.t) || !d.text) { entries.push({ t: 0, text: '', _d: d, _skip: true }); continue; }
+      entries.push({ t: Math.round(d.t), text: d.text, _d: d });
+    }
+    var merged = mergeDuplicateItems(entries, windowMs);
+    var out = [];
+    for (var k = 0; k < merged.length; k++) {
+      var e = merged[k];
+      if (e._skip) { out.push(e._d); continue; }
+      if (e._mergeCount > 1 && Array.isArray(e._d._commands)) {
+        // 合并出的新弹幕: 颜色命令替换为随机颜色(无颜色命令则追加)
+        var mc = pickMergeColor(e.text);
+        var hasColor = false;
+        for (var ci = 0; ci < e._d._commands.length; ci++) {
+          if (e._d._commands[ci].charAt(0) === '#') {
+            e._d._commands[ci] = mc.hex;
+            hasColor = true;
+            break;
+          }
+        }
+        if (!hasColor) e._d._commands.push(mc.hex);
+      }
+      e._d.text = e.text;
+      out.push(e._d);
+    }
+    if (out.length === list.length) return encodedContent;
+    return encodeContent(JSON.stringify(out));
+  }
+  // 用 ft 判断格式(内容嗅探 '<chat' 会误判含 <chatserver> 头部的 bilibili XML)
+  var re = ft === 'nico-xml'
+    ? /(<chat\b[^>]*>)([\s\S]*?)(<\/chat>)/g
+    : /(<d\s+p="[^"]*"[^>]*>)([\s\S]*?)(<\/d>)/g;
+  var lines = []; // {t, text, head, tail, full, start}
+  var m;
+  while ((m = re.exec(rawStr)) !== null) {
+    var t = m[1].indexOf('vpos="') !== -1
+      ? parseInt((m[1].match(/vpos="(\d+)"/) || [0, 0])[1], 10) || 0
+      : Math.round((parseFloat((m[1].match(/p="([^"]*)"/) || [0, '0'])[1].split(',')[0]) || 0) * 100);
+    // start = 本行在原始串中的位置: 重建时按序推进,无需重扫/线性查找(O(n))
+    lines.push({ t: t, text: decodeXmlText(m[2]), head: m[1], tail: m[3], full: m[0], start: m.index });
+  }
+  if (lines.length === 0) return encodedContent;
+  var merged = mergeDuplicateItems(lines, windowMs);
+  var kept = new Set();
+  for (var i2 = 0; i2 < merged.length; i2++) kept.add(merged[i2]);
+  if (kept.size === lines.length) return encodedContent;
+  // 重建: 按原始顺序推进——每行输出它前面那段原始内容(头部等非弹幕内容),
+  // 保留的行重建(合并标色/文本),被合并掉的行自然跳过。O(n)。
+  var parts = [];
+  var last = 0;
+  for (var li = 0; li < lines.length; li++) {
+    var line = lines[li];
+    parts.push(rawStr.slice(last, line.start));
+    if (kept.has(line)) {
+      var head = line.head;
+      if (line._mergeCount > 1) {
+        // 合并出的新弹幕: p 属性第 4 段(颜色)替换为随机颜色
+        var pm = head.match(/p="([^"]*)"/);
+        if (pm) {
+          var pParts = pm[1].split(',');
+          if (pParts.length >= 4) {
+            pParts[3] = String(pickMergeColor(line.text).dec);
+            head = head.replace(pm[1], pParts.join(','));
+          }
+        }
+      }
+      parts.push(head + encodeXmlText(line.text) + line.tail);
+    }
+    last = line.start + line.full.length;
+  }
+  parts.push(rawStr.slice(last));
+  return encodeContent(parts.join(''));
+}
+
+// nico-json: 过滤所有 thread 的 comments(owner 线程 fork==='owner' 压根不进过滤器)
+function filterBlockedNicoJson(encodedContent) {
+  if (blockRegexes.length === 0) return encodedContent;
+  var rawStr;
+  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return encodedContent; }
+  var data;
+  try { data = JSON.parse(rawStr); } catch (e) { return encodedContent; }
+  if (!Array.isArray(data)) return encodedContent;
+  var changed = false;
+  var filteredData = [];
+  for (var i = 0; i < data.length; i++) {
+    var thread = data[i];
+    // owner 线程(fork==='owner')压根不进过滤器: 原样透传,屏蔽词不影响 owner 弹幕
+    if (thread && thread.fork === 'owner') { filteredData.push(thread); continue; }
+    // legacy nico-json(thread.chat)与现代表格(thread.comments)都处理
+    var srcComments = thread ? (Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null)) : null;
+    if (!srcComments) { filteredData.push(thread); continue; }
+    var kept = [];
+    for (var j = 0; j < srcComments.length; j++) {
+      var c = srcComments[j];
+      if (!c) { kept.push(c); continue; }
+      var text = c.body !== undefined ? c.body : c.content;
+      if (isBlockedText(text)) changed = true;
+      else kept.push(c);
+    }
+    if (kept.length !== srcComments.length) {
+      var newObj = {};
+      for (var k in thread) { if (thread.hasOwnProperty(k)) newObj[k] = thread[k]; }
+      newObj[Array.isArray(thread.comments) ? 'comments' : 'chat'] = kept;
+      newObj.commentCount = kept.length;
+      filteredData.push(newObj);
+    } else {
+      filteredData.push(thread);
+    }
+  }
+  if (!changed) return encodedContent;
+  return encodeContent(JSON.stringify(filteredData));
+}
+
+// 非 nico-json: 内容字符串层面的弹幕行过滤。dandanplay(JSON)解析后过滤;
+// XML(bilibili <d> / nico <chat>)行级正则,只删除匹配弹幕行,保留整体结构。
+function filterBlockedContent(encodedContent, ft) {
+  if (blockRegexes.length === 0) return encodedContent;
+  var rawStr;
+  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return encodedContent; }
+  if (ft === 'dandanplay') {
+    var list;
+    try { list = JSON.parse(rawStr); } catch (e) { return encodedContent; }
+    if (!Array.isArray(list)) return encodedContent;
+    var kept = [];
+    var changed = false;
+    for (var i = 0; i < list.length; i++) {
+      var d = list[i];
+      if (!d || !isBlockedText(d.text)) kept.push(d);
+      else changed = true;
+    }
+    if (!changed) return encodedContent;
+    return encodeContent(JSON.stringify(kept));
+  }
+  // 用 ft 判断格式(内容嗅探 '<chat' 会误判含 <chatserver> 头部的 bilibili XML)
+  var re = ft === 'nico-xml'
+    ? /<chat\b[^>]*>([\s\S]*?)<\/chat>/g
+    : /<d\s+p="[^"]*"[^>]*>([\s\S]*?)<\/d>/g;
+  var out = [];
+  var last = 0;
+  var m;
+  var changed = false;
+  while ((m = re.exec(rawStr)) !== null) {
+    out.push(rawStr.slice(last, m.index));
+    if (isBlockedText(decodeXmlText(m[1]))) {
+      changed = true; // 删除该弹幕行
+    } else {
+      out.push(m[0]);
+    }
+    last = m.index + m[0].length;
+  }
+  out.push(rawStr.slice(last));
+  if (!changed) return encodedContent;
+  return encodeContent(out.join(''));
+}
+
+// 单源内容出口: 按当前设置返回"最终内容"(URI 编码形式)。
+// overlay 的 load-danmaku 与 sidebar 过滤列表都从这里取数,保证两边拿到
+// 完全同一份数据——nico-json 应用 offset/limit/密度切片;其他格式应用强制简体转换;
+// 屏蔽词开启时两者都再经过屏蔽词过滤;去重开启时最后合并重复弹幕。
+function getEffectiveContent(path) {
+  var encodedContent = danmakuCache[path];
+  if (!encodedContent) return null;
+  var ft = currentDanmakuStatus.fileType;
+  var out;
+  if (ft === 'nico-json') {
+    out = applyNicoJsonFilters(encodedContent); // 切片/密度(无过滤时原样返回)
+    if (danmakuBlocklistEnabled) out = filterBlockedNicoJson(out);
+    if (danmakuDedupeEnabled) out = dedupeNicoJson(out);
+    return out;
+  }
+  if (danmakuForceSimplified && ensureBrowserSimplifier()) {
+    try {
+      out = encodeContent(openccSimplifier(decodeURIComponent(encodedContent)));
+    } catch (e) {
+      out = encodedContent;
+    }
+  } else {
+    out = encodedContent;
+  }
+  if (danmakuBlocklistEnabled) out = filterBlockedContent(out, ft);
+  if (danmakuDedupeEnabled) out = dedupeContent(out, ft);
+  return out;
+}
+
+// 逐条文本简繁转换(与 getEffectiveContent 的整串转换结果一致,OpenCC 逐字符幂等)
+function simplifyText(text) {
+  if (!text || !openccSimplifier || !danmakuForceSimplified) return text;
+  return openccSimplifier(text);
+}
+
+// 从原始内容构建 [{t, text, blocked}] 时间线(vpos 升序)。
+// 与 getEffectiveContent 完全相同的变换序列: nico-json 先切片/密度(排除的不入列表,
+// 它们不在当前范围而非"被屏蔽");文本按强制简体转换;屏蔽词命中标记 blocked——
+// 被屏蔽弹幕仍显示在列表(划线),其 blocked 状态与 overlay 实际过滤掉的弹幕一一对应。
+// 格式字段与 overlay 解析一致: nico-json v1(vposMs/body)与 legacy(vpos/content);
+// dandanplay 缓存已是 {t,text}; nico/bilibili XML 轻量正则提取。
+function buildDanmakuBrowserList() {
+  var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+  if (!selectedPath) return [];
+  var encodedContent = danmakuCache[selectedPath];
+  if (!encodedContent) return [];
+  var ft = currentDanmakuStatus.fileType;
+  var rawStr;
+  try {
+    rawStr = decodeURIComponent(ft === 'nico-json' ? applyNicoJsonFilters(encodedContent) : encodedContent);
+  } catch (e) { return []; }
+  ensureBrowserSimplifier(); // 需要时构建转换器(非 nico-json + 强制简体)
+  var items = [];
+  try {
+    if (ft === 'nico-json') {
+      var data = JSON.parse(rawStr);
+      if (Array.isArray(data)) {
+        for (var i = 0; i < data.length; i++) {
+          var thread = data[i];
+          if (!thread) continue;
+          if (thread.fork === 'owner' || thread.fork === 'easy') continue;
+          var comments = Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null);
+          if (!comments) continue;
+          for (var j = 0; j < comments.length; j++) {
+            var c = comments[j];
+            if (!c) continue;
+            var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
+            var text = c.body !== undefined ? c.body : c.content;
+            if (!isFinite(t) || !text) continue;
+            items.push({ t: t, text: text, blocked: danmakuBlocklistEnabled && isBlockedText(text) });
+          }
+        }
+      }
+    } else if (ft === 'dandanplay') {
+      var list = JSON.parse(rawStr);
+      if (Array.isArray(list)) {
+        for (var k = 0; k < list.length; k++) {
+          var d = list[k];
+          if (!d || typeof d.t !== 'number' || !isFinite(d.t) || !d.text) continue;
+          var st = simplifyText(d.text);
+          items.push({ t: Math.round(d.t), text: st, blocked: danmakuBlocklistEnabled && isBlockedText(st) });
+        }
+      }
+    } else {
+      if (ft === 'nico-xml' || rawStr.indexOf('<packet') !== -1) {
+        var reChat = /<chat\b[^>]*\bvpos="(\d+)"[^>]*>([\s\S]*?)<\/chat>/g;
+        var m;
+        while ((m = reChat.exec(rawStr)) !== null) {
+          if (!m[2]) continue;
+          var ct = simplifyText(decodeXmlText(m[2]));
+          items.push({ t: parseInt(m[1], 10) || 0, text: ct, blocked: danmakuBlocklistEnabled && isBlockedText(ct) });
+        }
+      } else {
+        var reD = /<d\s+p="([^"]*)"[^>]*>([\s\S]*?)<\/d>/g;
+        var m2;
+        while ((m2 = reD.exec(rawStr)) !== null) {
+          var parts = m2[1].split(',');
+          var sec = parseFloat(parts[0]);
+          if (!isFinite(sec) || !m2[2]) continue;
+          var bt = simplifyText(decodeXmlText(m2[2]));
+          items.push({ t: Math.round(sec * 100), text: bt, blocked: danmakuBlocklistEnabled && isBlockedText(bt) });
+        }
+      }
+    }
+  } catch (e) {
+    return [];
+  }
+  // 去重: 可见弹幕合并(与 overlay 相同规则——屏蔽先于去重,overlay 不渲染
+  // 被屏蔽弹幕所以不参与画面合并);被屏蔽弹幕按同一规则做展示层合并
+  // (已屏蔽/全部视图里 2s 内重复的屏蔽弹幕显示为 草x5,而非逐条列出)。
+  // 合并弹幕标记 merged(供 sidebar 切换"已合并"视图识别;blocked 合并项
+  // 不标 merged——"已合并"视图只展示画面里的合并弹幕)。
+  if (danmakuDedupeEnabled && danmakuDedupeWindow > 0) {
+    var visible = [];
+    var blockedItems = [];
+    for (var di = 0; di < items.length; di++) {
+      if (items[di].blocked) blockedItems.push(items[di]);
+      else visible.push(items[di]);
+    }
+    var mergedOut = mergeDuplicateItems(visible, danmakuDedupeWindow * 100);
+    for (var mi = 0; mi < mergedOut.length; mi++) {
+      if (mergedOut[mi]._mergeCount > 1) {
+        mergedOut[mi].merged = true;
+      }
+    }
+    // 被屏蔽弹幕展示层合并(保持 blocked 标记;时间窗相同)
+    var blockedMerged = mergeDuplicateItems(blockedItems, danmakuDedupeWindow * 100);
+    items = blockedMerged.concat(mergedOut);
+  }
+  items.sort(function (a, b) { return a.t - b.t; });
+  return items;
+}
+
+// 分块 + base64 投递。IINA 的 sidebar 桥把数据拼进 JS 模板字符串(String.raw`...`),
+// 文本里出现 ${ 或反引号会让整条消息被 JS 异常静默丢弃;base64 字母表与之不相交。
+function sendDanmakuBrowserData(items) {
+  var CHUNK = 2000;
+  var total = items.length;
+  if (total === 0) {
+    sidebar.postMessage("danmaku-browser-data", { payload: b64Encode('[]'), total: 0, chunkIndex: 0, done: true });
+    return;
+  }
+  var n = Math.ceil(total / CHUNK);
+  for (var c = 0; c < n; c++) {
+    sidebar.postMessage("danmaku-browser-data", {
+      payload: b64Encode(JSON.stringify(items.slice(c * CHUNK, (c + 1) * CHUNK))),
+      total: total,
+      chunkIndex: c,
+      done: c === n - 1
+    });
+  }
+}
+
+// 播放时间推送(300ms 节流),sidebar 据此计算在屏弹幕窗口
+function pushBrowserTime(timeSec, force) {
+  var now = Date.now();
+  if (!force && now - lastBrowserTimeSent < 300) return;
+  lastBrowserTimeSent = now;
+  sidebar.postMessage("danmaku-visible-time", { time: timeSec, offset: danmakuTimeOffsetSec });
+}
+
+var browserDataPending = false; // 列表开关关闭期间数据变化: 不构建不发送,打开时补发一次
+
+// 弹幕加载/切换/清空后,若 sidebar 正在监听则推送刷新列表
+function notifyBrowserDataChanged() {
+  if (!danmakuBrowserWatch) return;
+  if (!danmakuBrowserVisible) {
+    browserDataPending = true; // 列表隐藏: 跳过构建与分块传输(省性能),打开时补发
+    return;
+  }
+  sendDanmakuBrowserData(buildDanmakuBrowserList());
+}
+
+// 向 overlay 重发当前弹幕(内容经 getEffectiveContent 单源处理)。
+// 屏蔽词/简体等设置变化后调用,让渲染内容与 sidebar 列表同步更新。
+function resendDanmakuToOverlay() {
+  if (!overlayReady) return;
+  var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+  if (!selectedPath || !danmakuCache[selectedPath]) return;
+  overlay.postMessage("load-danmaku", {
+    xmlContent: getEffectiveContent(selectedPath),
+    path: selectedPath,
+    danmakuType: currentDanmakuStatus.fileType,
+    opacity: canvasOpacity,
+    canvasFontScale: canvasFontScale,
+    strokeColor: strokeColor,
+    strokeInversionColor: strokeInversionColor,
+    strokeOpacity: strokeOpacity,
+    strokeWidth: strokeWidth,
+    commentLimit: commentLimit,
+    scrollSpeed: scrollSpeed,
+    danmakuTimeOffsetSec: danmakuTimeOffsetSec,
+    danmakuFontFamily: danmakuFontFamily,
+    danmakuFontWeight: danmakuFontWeight,
+    preservePosition: true
+  });
 }
 
 function extractNumberFromName(name) {
@@ -965,9 +1604,10 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
     danmakuFilterDensity = 0;
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
+    notifyBrowserDataChanged();
 
     var payload = {
-      xmlContent: danmakuCache[virtualPath],
+      xmlContent: getEffectiveContent(virtualPath),
       path: virtualPath,
       danmakuType: 'dandanplay',
       opacity: canvasOpacity,
@@ -1087,6 +1727,7 @@ function loadDanmakuForVideo(url) {
     danmakuFileList = { xmlFiles: [], jsonFiles: [], unknownFiles: [], selectedPaths: [] };
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
+    notifyBrowserDataChanged();
     if (overlayReady) overlay.postMessage("clear-danmaku", {});
     if (dandanplayAutoNetwork) ddpAutoMatchAndLoad(url);
     return;
@@ -1113,6 +1754,7 @@ function loadDanmakuForVideo(url) {
   // === Step 2: Send file list (all available sources, regardless of priority) ===
   sidebar.postMessage("danmaku-file-list", danmakuFileList);
   sendDanmakuFilterInfo();
+  notifyBrowserDataChanged();
 
   // === Step 3: Auto-load to overlay based on autoNetwork setting ===
   if (dandanplayAutoNetwork) {
@@ -1184,9 +1826,10 @@ function loadLocalDanmaku(fileInfo) {
 
   sidebar.postMessage("danmaku-file-list", danmakuFileList);
   sendDanmakuFilterInfo();
+  notifyBrowserDataChanged();
 
   var payload = {
-    xmlContent: encodedContent,
+    xmlContent: getEffectiveContent(fileInfo.path),
     path: fileInfo.path,
     danmakuType: fileType,
     opacity: canvasOpacity,
@@ -1199,10 +1842,6 @@ function loadLocalDanmaku(fileInfo) {
     scrollSpeed: scrollSpeed,
     preservePosition: true,
   };
-
-  if (fileType === 'nico-json') {
-    payload.xmlContent = applyNicoJsonFilters(encodedContent);
-  }
 
   if (overlayReady) {
     overlay.postMessage("load-danmaku", payload);
@@ -1259,6 +1898,7 @@ function setObserver(start) {
   if (start && overlayReady && danmakuEnabled) {
     timePosListenerID = event.on("mpv.time-pos.changed", function (t) {
       overlay.postMessage("time-update", { time: t });
+      if (danmakuBrowserWatch) pushBrowserTime(t);
     });
     windowScaleListenerID = event.on("mpv.window-scale.changed", function () {
       overlay.postMessage("resize", {});
@@ -1304,6 +1944,7 @@ function loadManualDanmakuFile(path) {
   var xmlContent = file.read(path);
   if (!xmlContent) { core.osd(t('read_failed')); return; }
   var encodedContent = encodeContent(xmlContent);
+  danmakuCache[path] = encodedContent; // 必须存缓存: getEffectiveContent 从这里取内容
   var manualFileName = path.split("/").pop();
   var manualFileType = detectDanmakuType(xmlContent);
   updateDanmakuStatus({ fileType: manualFileType, fileName: manualFileName, relativePath: manualFileName, isLoaded: true });
@@ -1317,9 +1958,10 @@ function loadManualDanmakuFile(path) {
   danmakuFilterLimit = 0;
   danmakuFilterDensity = 0;
   sendDanmakuFilterInfo();
+  notifyBrowserDataChanged();
 
   var manualPayload = {
-    xmlContent: encodedContent,
+    xmlContent: getEffectiveContent(path),
     path: path,
     danmakuType: manualFileType,
     opacity: canvasOpacity,
@@ -1332,10 +1974,6 @@ function loadManualDanmakuFile(path) {
     scrollSpeed: scrollSpeed,
     preservePosition: true,
   };
-
-  if (manualFileType === 'nico-json') {
-    manualPayload.xmlContent = applyNicoJsonFilters(encodedContent);
-  }
 
   if (overlayReady) {
     overlay.postMessage("load-danmaku", manualPayload);
@@ -1372,40 +2010,20 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("set-danmaku-force-simplified", function (data) {
-  // 更新 main.js 内部的全局变量
-  danmakuForceSimplified = !!data.value;
-  
-  // 将此偏好持久化同步到 IINA 系统配置中
-  preferences.set("danmakuForceSimplified", danmakuForceSimplified);
-  syncPreferencesSoon();
-  
-  // 通知 overlay.js 实时变更设置并触发重新渲染清洗
-  if (overlayReady) {
-    overlay.postMessage("apply-settings", {
-      danmakuForceSimplified: danmakuForceSimplified
-    });
-    
-    // 如果当前已经加载了弹幕文件，重新驱动加载管道，让 OpenCC 重新清洗文本
-    // nico-json 只可能是日语弹幕，繁简转换对其无意义（overlay 也从不转换该格式），跳过重建
-    var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
-    if (selectedPath && currentDanmakuStatus.fileType !== 'nico-json') {
-      overlay.postMessage("load-danmaku", {
-        xmlContent: danmakuCache[selectedPath],
-        path: selectedPath,
-        danmakuType: currentDanmakuStatus.fileType === 'dandanplay' ? 'dandanplay' : 'bilibili-xml',
-        opacity: canvasOpacity,
-        canvasFontScale: canvasFontScale,
-        strokeColor: strokeColor,
-        strokeInversionColor: strokeInversionColor,
-        strokeOpacity: strokeOpacity,
-        strokeWidth: strokeWidth,
-        commentLimit: commentLimit,
-        scrollSpeed: scrollSpeed,
-        preservePosition: true,
-        danmakuForceSimplified: danmakuForceSimplified
-      });
+    // 更新 main.js 内部的全局变量
+    danmakuForceSimplified = !!data.value;
+
+    // 将此偏好持久化同步到 IINA 系统配置中
+    preferences.set("danmakuForceSimplified", danmakuForceSimplified);
+    syncPreferencesSoon();
+
+    // 当前已加载弹幕时重新驱动加载管道（内容经 getEffectiveContent 单源转换）
+    // nico-json 只可能是日语弹幕，繁简转换对其无意义（getEffectiveContent 也不转换该格式），跳过重建
+    if (currentDanmakuStatus.fileType !== 'nico-json') {
+      resendDanmakuToOverlay();
     }
-  }
+    // 过滤 tab 列表与 overlay 同源: 简体开关变化 → 重新构建并推送
+    notifyBrowserDataChanged();
   });
 
   sidebar.onMessage("set-stroke-opacity", function (data) {
@@ -1472,10 +2090,97 @@ function registerSidebarHandlers() {
 
   sidebar.onMessage("set-danmaku-filter", function (data) {
     applyDanmakuFilter(data.offset || 0, data.limit);
+    notifyBrowserDataChanged(); // 范围切片变化 → 列表与 overlay 同步重建
   });
 
   sidebar.onMessage("set-danmaku-filter-density", function (data) {
     applyDanmakuFilterDensity(data.density || 0);
+    notifyBrowserDataChanged(); // 密度过滤变化 → 列表与 overlay 同步重建
+  });
+
+  // ── 屏蔽词 ──
+  sidebar.onMessage("danmaku-blocklist-request", function () {
+    sidebar.postMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
+  });
+
+  sidebar.onMessage("danmaku-blocklist-set-enabled", function (data) {
+    danmakuBlocklistEnabled = !!data.enabled;
+    preferences.set("danmakuBlocklistEnabled", danmakuBlocklistEnabled);
+    syncPreferencesSoon();
+    notifyBrowserDataChanged();
+    resendDanmakuToOverlay();
+    sidebar.postMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
+  });
+
+  sidebar.onMessage("danmaku-blocklist-add", function (data) {
+    var w = String(data.word || '').trim();
+    if (!w) return;
+    if (danmakuBlocklist.indexOf(w) === -1) danmakuBlocklist.push(w);
+    preferences.set("danmakuBlocklist", JSON.stringify(danmakuBlocklist));
+    syncPreferencesSoon();
+    rebuildBlockRegexes();
+    notifyBrowserDataChanged();
+    resendDanmakuToOverlay();
+    sidebar.postMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
+  });
+
+  // 按词值删除(不按下标): 渲染与点击之间列表可能变化,下标会删错词
+  sidebar.onMessage("danmaku-blocklist-remove", function (data) {
+    var word = data && data.word !== undefined ? String(data.word) : null;
+    var idx = word !== null ? danmakuBlocklist.indexOf(word) : -1;
+    if (idx < 0) return;
+    danmakuBlocklist.splice(idx, 1);
+    preferences.set("danmakuBlocklist", JSON.stringify(danmakuBlocklist));
+    syncPreferencesSoon();
+    rebuildBlockRegexes();
+    notifyBrowserDataChanged();
+    resendDanmakuToOverlay();
+    sidebar.postMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
+  });
+
+  // ── 弹幕去重 ──
+  sidebar.onMessage("danmaku-dedupe-request", function () {
+    sidebar.postMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
+  });
+
+  // 点击列表时间戳 → 跳转到该弹幕时间(弹幕 vpos 换算为视频秒,考虑弹幕偏移)
+  sidebar.onMessage("danmaku-seek", function (data) {
+    if (!data || typeof data.vpos !== 'number' || !isFinite(data.vpos)) return;
+    var sec = data.vpos / 100 - (danmakuTimeOffsetSec || 0);
+    if (sec < 0) sec = 0;
+    try {
+      core.seekTo(sec); // seekTo 是 core 对象的方法(core.player 不存在)
+    } catch (e) {
+      debugLog('danmaku-seek failed: ' + e);
+    }
+  });
+
+  sidebar.onMessage("danmaku-dedupe-set", function (data) {
+    if (data.enabled !== undefined) danmakuDedupeEnabled = !!data.enabled;
+    if (data.window !== undefined) {
+      var w = parseFloat(data.window);
+      if (isFinite(w) && w >= 1 && w <= 5) danmakuDedupeWindow = w;
+    }
+    preferences.set("danmakuDedupeEnabled", danmakuDedupeEnabled);
+    preferences.set("danmakuDedupeWindow", danmakuDedupeWindow);
+    syncPreferencesSoon();
+    notifyBrowserDataChanged();
+    resendDanmakuToOverlay();
+    sidebar.postMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
+  });
+
+  // 弹幕列表显示开关(持久化,与其他设置一致)
+  sidebar.onMessage("danmaku-browser-vis-set", function (data) {
+    if (data && data.visible !== undefined) {
+      danmakuBrowserVisible = !!data.visible;
+      preferences.set("danmakuBrowserVisible", danmakuBrowserVisible);
+      syncPreferencesSoon();
+      sidebar.postMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible });
+      if (danmakuBrowserVisible && browserDataPending) {
+        browserDataPending = false; // 关闭期间数据有变化: 打开时补发一次
+        sendDanmakuBrowserData(buildDanmakuBrowserList());
+      }
+    }
   });
 
   sidebar.onMessage("request-state", function () {
@@ -1531,8 +2236,9 @@ function registerSidebarHandlers() {
     });
   });
 
-  sidebar.onMessage("select-danmaku-file", function (data) {
-    var filePath = data.path;
+  // 加载选中弹幕文件(danmaku-file-add 添加后也会自动调用——添加即显示)
+  function selectDanmakuFile(filePath) {
+    if (!filePath) return;
 
     var encodedContent = danmakuCache[filePath];
     if (!encodedContent && filePath.indexOf('dandanplay://') === 0) {
@@ -1584,9 +2290,10 @@ function registerSidebarHandlers() {
 
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
+    notifyBrowserDataChanged();
 
     var selectPayload = {
-      xmlContent: encodedContent,
+      xmlContent: getEffectiveContent(filePath),
       path: filePath,
       danmakuType: fileType,
       opacity: canvasOpacity,
@@ -1600,13 +2307,13 @@ function registerSidebarHandlers() {
       preservePosition: true,
     };
 
-    if (fileType === 'nico-json') {
-      selectPayload.xmlContent = applyNicoJsonFilters(encodedContent);
-    }
-
     overlay.postMessage("load-danmaku", selectPayload);
     core.osd(t('loaded') + (fileInfo ? fileInfo.filename : fileName));
     ensureDanmakuEnabled();
+  }
+
+  sidebar.onMessage("select-danmaku-file", function (data) {
+    if (data && data.path) selectDanmakuFile(data.path);
   });
 
   sidebar.onMessage("danmaku-file-add", function () {
@@ -1632,7 +2339,8 @@ function registerSidebarHandlers() {
       var content = file.read(path);
       if (content) {
         danmakuCache[path] = encodeContent(content);
-        core.osd(t('added_click_to_load', { name: fname }));
+        selectDanmakuFile(path); // 添加即加载: 不用再在列表里手动点选
+        core.osd(t('loaded') + fname);
       } else {
         core.osd(t('read_failed_name') + fname);
         sidebar.postMessage("danmaku-file-error", { path: path, message: t('read_failed') });
@@ -1706,6 +2414,33 @@ function registerSidebarHandlers() {
       ddpAutoMatchAndLoad(currentVideoUrl);
     }
   });
+
+  // sidebar 加载即上报插件根目录并持久化(简繁转换器初始化不依赖过滤 tab 打开)
+  sidebar.onMessage("danmaku-sidebar-ready", function (data) {
+    if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
+  });
+
+  // 过滤 tab: sidebar 懒加载,只能由 sidebar 主动拉取弹幕列表;watch 控制播放时间推送
+  sidebar.onMessage("danmaku-browser-request", function (data) {
+    // sidebar 上报插件根目录(file:// 定位),供 main 读 overlay/lib/opencc.min.js
+    if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
+    sidebar.postMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible }); // 列表开关回显
+    if (danmakuBrowserVisible) {
+      sendDanmakuBrowserData(buildDanmakuBrowserList());
+    } else {
+      browserDataPending = true; // 列表关闭: 跳过传输,打开时补发
+    }
+  });
+
+  sidebar.onMessage("danmaku-browser-watch", function (data) {
+    danmakuBrowserWatch = !!data.watch;
+    if (danmakuBrowserWatch) {
+      var t = mpv.getNumber("time-pos");
+      // force: 播种锚点必须送达——若被 300ms 节流吞掉,暂停播放时不再有
+      // time-pos 事件,sidebar 的 browserVpos 保持 -1,列表永不锚定
+      if (t !== undefined && t !== null) pushBrowserTime(t, true);
+    }
+  });
 }
 
 event.on("iina.window-loaded", function () {
@@ -1714,7 +2449,11 @@ event.on("iina.window-loaded", function () {
   registerSidebarHandlers();
 });
 
-overlay.onMessage("overlay-ready", function () { markOverlayReady(); });
+overlay.onMessage("overlay-ready", function (data) {
+  // overlay 启动即上报插件根目录并持久化(重启后 main 直接读 preferences)
+  if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
+  markOverlayReady();
+});
 
 event.on("iina.plugin-overlay-loaded", function () {
   overlay.show();

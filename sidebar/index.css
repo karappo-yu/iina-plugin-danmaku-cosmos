@@ -764,3 +764,237 @@ kbd {
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   margin: 16px -16px;
 }
+
+/* ========== Filter tab: danmaku browser list ========== */
+.browser-total,
+.danmaku-browser-live {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--secondary-label);
+}
+.toggle-row-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.browser-total {
+  /* 数量并入标题组: 弹幕列表(12,345) 紧贴 */
+}
+.danmaku-browser-list-wrap {
+  position: relative;
+  height: min(46vh, 460px);
+  min-height: 200px;
+}
+.danmaku-browser-list {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  margin-top: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+.danmaku-browser-spacer {
+  position: relative;
+  width: 100%;
+}
+.danmaku-browser-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.danmaku-browser-row.blocked {
+  opacity: 0.45;
+}
+.danmaku-browser-row.blocked .danmaku-browser-text {
+  text-decoration: line-through;
+  text-decoration-color: var(--secondary-label);
+}
+.danmaku-browser-time {
+  flex-shrink: 0;
+  min-width: 40px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--tertiary-label);
+  cursor: pointer; /* 点击跳转到该弹幕时间 */
+}
+.danmaku-browser-time:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.danmaku-browser-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--label);
+}
+.danmaku-time-link {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+  text-underline-offset: 2px;
+}
+.danmaku-time-link:hover {
+  color: #fff;
+}
+.danmaku-browser-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--tertiary-label);
+  pointer-events: none;
+}
+
+/* 回到实时: 悬浮在列表右下角(跟随模式退出时显示) */
+.danmaku-browser-follow-float {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 5;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--label);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+.danmaku-browser-follow-float:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* toggle-group 内嵌面板: 与分组面板同宽(全宽,不缩进不套框) */
+.toggle-group .danmaku-browser-list,
+.toggle-group .danmaku-blocklist-list {
+  margin-top: 0;
+}
+/* 面板内行内容(添加按钮/去重区间标签)与开关行 14px 内边距对齐,不贴框边缘 */
+.toggle-group #danmaku-dedupe-row {
+  padding: 0 14px 6px; /* 底部小留白: 五个选项按钮不贴分组面板底边 */
+}
+
+/* ── 屏蔽词列表: 与弹幕列表同款样式(共用规则,仅容器定位不同) ── */
+.danmaku-browser-list,
+.danmaku-blocklist-list {
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  margin-top: 8px; /* 与标题行(开关)隔开 */
+  -webkit-overflow-scrolling: touch;
+}
+.danmaku-browser-list {
+  position: absolute;
+  inset: 0;
+}
+.danmaku-blocklist-list {
+  max-height: 140px;
+  padding: 2px 0;
+}
+.danmaku-browser-row,
+.danmaku-blocklist-item {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.danmaku-browser-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+}
+/* 屏蔽词列表全量渲染: 最后一行不画底部分隔线(弹幕列表是虚拟渲染,不可用 :last-child) */
+.danmaku-blocklist-item:last-child {
+  border-bottom: none;
+}
+.danmaku-blocklist-item-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.danmaku-blocklist-item-x {
+  background: none;
+  border: none;
+  color: var(--tertiary-label);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.danmaku-blocklist-item-x:hover {
+  color: var(--label);
+  background: rgba(255, 255, 255, 0.15);
+}
+.danmaku-blocklist-empty {
+  font-size: 11px;
+  color: var(--tertiary-label);
+  margin-top: 8px;
+}
+/* + 号添加行: 点击进入内联编辑 */
+.danmaku-blocklist-add-item {
+  color: var(--tertiary-label);
+  cursor: pointer;
+}
+.danmaku-blocklist-add-item:hover {
+  color: var(--label);
+  background: rgba(255, 255, 255, 0.05);
+}
+.danmaku-blocklist-add-item.editing {
+  padding: 0 8px;
+}
+.danmaku-blocklist-add-item .danmaku-blocklist-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--label);
+  font-size: 12px;
+  padding: 0;
+}
+.danmaku-blocklist-add-item .danmaku-blocklist-input:focus {
+  border-color: transparent;
+  box-shadow: none; /* 去掉全局 input:focus 的蓝色光晕 */
+}
+/* 诊断状态行: 数据异常时显示消息计数器,用于定位断点;正常时只显示版本 */
+.danmaku-browser-status {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--tertiary-label);
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+.danmaku-browser-status.broken {
+  color: var(--danger);
+}
