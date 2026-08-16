@@ -552,8 +552,13 @@ if (tabButtons.length) {
       if (tabFilter) {
         var showFilter = name === "filter";
         tabFilter.style.display = showFilter ? "" : "none";
-        // 过滤 tab 激活时开启实时弹幕推送并请求全量列表;离开时停止推送
-        iina.postMessage("danmaku-browser-watch", { watch: showFilter, refresh: showFilter });
+        if (showFilter) {
+          // sidebar 懒加载: 主动拉取弹幕列表 + 开启播放时间推送
+          iina.postMessage("danmaku-browser-request");
+          iina.postMessage("danmaku-browser-watch", { watch: true });
+        } else {
+          iina.postMessage("danmaku-browser-watch", { watch: false });
+        }
         browserCountWatchSend();
       }
     });
@@ -1199,13 +1204,15 @@ iina.onMessage("dandanplay-bangumi-result", function (data) {
 
 /* ========== Filter tab: danmaku browser list ==========
    全量时间线列表(按 vpos 排序)+ 实时在屏高亮。列表是虚拟滚动:
-   只渲染视口附近的 ~几十行,滚动时重算,因此几万条弹幕也不卡。 */
+   只渲染视口附近的 ~几十行,滚动时重算,因此几万条弹幕也不卡。
+   数据由 sidebar 主动向 main.js 拉取(danmaku-browser-request,懒加载约束);
+   在屏弹幕按播放时间窗口计算: [当前vpos - 5s, 当前vpos] 为近似显示时长。 */
 var BROWSER_ROW_H = 26;
-var browserItems = [];       // [{index, t, text}] 按 t 升序
-var browserRowOfIndex = null; // index -> 行号
-var browserLiveRows = [];    // 当前在屏弹幕的行号(升序)
-var browserLiveSet = null;
-var browserVpos = -1;        // 最近一次 visible 消息里的 vpos(1/100s)
+var BROWSER_LIVE_WINDOW = 500; // 在屏窗口(vpos, 1/100s): 滚动/固定弹幕的近似显示时长(5s)
+var browserItems = [];         // [{t, text}] 按 t 升序
+var browserLiveLo = -1;        // 在屏弹幕行号区间 [lo, hi](-1 = 无)
+var browserLiveHi = -1;
+var browserVpos = -1;          // 最近一次时间消息的 vpos(1/100s)
 var browserFollowLive = true;
 var browserDataKey = '';
 var browserListEl = document.getElementById("danmaku-browser-list");
@@ -1251,13 +1258,14 @@ function browserRenderWindow() {
   });
   for (var row = first; row <= last; row++) {
     var node = browserRowNodes.get(row);
+    var isLive = browserLiveLo >= 0 && row >= browserLiveLo && row <= browserLiveHi;
     if (node) {
-      node.classList.toggle("live", browserLiveSet && browserLiveSet.has(browserItems[row].index));
+      node.classList.toggle("live", isLive);
       continue;
     }
     var item = browserItems[row];
     var div = document.createElement("div");
-    div.className = "danmaku-browser-row" + (browserLiveSet && browserLiveSet.has(item.index) ? " live" : "");
+    div.className = "danmaku-browser-row" + (isLive ? " live" : "");
     div.style.top = (row * BROWSER_ROW_H) + "px";
     var time = document.createElement("span");
     time.className = "danmaku-browser-time";
@@ -1273,10 +1281,11 @@ function browserRenderWindow() {
 }
 
 function browserUpdateLiveUI() {
+  var liveCount = (browserLiveLo >= 0 && browserLiveHi >= browserLiveLo) ? (browserLiveHi - browserLiveLo + 1) : 0;
   var liveEl = document.getElementById("danmaku-browser-live");
   if (liveEl) {
     liveEl.textContent = browserVpos >= 0 && browserItems.length > 0
-      ? browserFmtTime(browserVpos) + " \u00b7 " + t('filter_live').replace('{n}', browserLiveRows.length)
+      ? browserFmtTime(browserVpos) + " \u00b7 " + t('filter_live').replace('{n}', liveCount)
       : '';
   }
   var btn = document.getElementById("danmaku-browser-follow-btn");
@@ -1292,7 +1301,7 @@ function browserScrollTo(top) {
 
 function browserFollowToLive() {
   if (!browserListEl || browserItems.length === 0) return;
-  var anchorRow = browserLiveRows.length > 0 ? browserLiveRows[0] : browserRowForVpos(browserVpos);
+  var anchorRow = browserLiveLo >= 0 ? browserLiveLo : browserRowForVpos(browserVpos);
   if (anchorRow < 0) return;
   browserScrollTo(Math.max(0, anchorRow * BROWSER_ROW_H - 48));
 }
@@ -1301,20 +1310,20 @@ var browserNextChunk = 0;
 var browserLastRefreshRequest = 0;
 
 // ── 诊断计数器(过滤 tab 状态行,数据异常时展示) ──
-var browserDiag = { watchSent: 0, dataMsgs: 0, visibleMsgs: 0, decodeErrs: 0 };
+var browserDiag = { watchSent: 0, dataMsgs: 0, timeMsgs: 0, decodeErrs: 0 };
 
 function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v4';
+    el.textContent = 'browser v5';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v4 watch→' + browserDiag.watchSent
+  el.textContent = 'v5 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
-    + ' vis←' + browserDiag.visibleMsgs
+    + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
     + ' err=' + browserDiag.decodeErrs;
 }
@@ -1324,13 +1333,14 @@ function browserCountWatchSend() {
   browserUpdateDiag();
 }
 
-// 数据消息丢失时(如 IPC 丢弃了某条分块)请求 overlay 重发,限流避免循环
+// 数据缺失时重发拉取请求,限流避免循环
 function requestBrowserDataRefresh() {
   var now = Date.now();
   if (now - browserLastRefreshRequest < 1500) return;
   browserLastRefreshRequest = now;
-  debugLog('danmaku-browser: data missing, requesting refresh');
-  iina.postMessage("danmaku-browser-watch", { watch: true, refresh: true });
+  debugLog('danmaku-browser: data missing, re-requesting');
+  iina.postMessage("danmaku-browser-request");
+  iina.postMessage("danmaku-browser-watch", { watch: true });
   browserCountWatchSend();
 }
 
@@ -1338,11 +1348,34 @@ function requestBrowserDataRefresh() {
 function browserDecodePayload(payload) {
   try {
     var bin = atob(payload);
-    var str = decodeURIComponent(escape(bin));
-    return JSON.parse(str);
+    var bytes = [];
+    for (var i = 0; i < bin.length; i++) bytes.push(bin.charCodeAt(i));
+    return JSON.parse(browserUtf8Decode(bytes));
   } catch (e) {
     return null;
   }
+}
+
+function browserUtf8Decode(bytes) {
+  var out = '';
+  for (var i = 0; i < bytes.length;) {
+    var b = bytes[i];
+    if (b < 0x80) {
+      out += String.fromCharCode(b);
+      i++;
+    } else if (b < 0xE0) {
+      out += String.fromCharCode(((b & 0x1F) << 6) | (bytes[i + 1] & 0x3F));
+      i += 2;
+    } else if (b < 0xF0) {
+      out += String.fromCharCode(((b & 0x0F) << 12) | ((bytes[i + 1] & 0x3F) << 6) | (bytes[i + 2] & 0x3F));
+      i += 3;
+    } else {
+      var cp = ((b & 0x07) << 18) | ((bytes[i + 1] & 0x3F) << 12) | ((bytes[i + 2] & 0x3F) << 6) | (bytes[i + 3] & 0x3F);
+      out += String.fromCharCode(((cp - 0x10000) >> 10) + 0xD800, ((cp - 0x10000) & 0x3FF) + 0xDC00);
+      i += 4;
+    }
+  }
+  return out;
 }
 
 iina.onMessage("danmaku-browser-data", function (data) {
@@ -1368,11 +1401,10 @@ iina.onMessage("danmaku-browser-data", function (data) {
   var chunkIndex = data.chunkIndex === undefined ? 0 : data.chunkIndex;
   var isDone = data.done !== false;
   if (chunkIndex === 0) {
-    // 新数据或 refresh 重发: 重置状态
+    // 新数据或重发: 重置状态
     browserItems = [];
-    browserRowOfIndex = new Map();
-    browserLiveSet = new Set();
-    browserLiveRows = [];
+    browserLiveLo = -1;
+    browserLiveHi = -1;
     browserVpos = -1;
     browserNextChunk = 1;
     browserRowNodes.forEach(function (el) { el.remove(); });
@@ -1380,17 +1412,15 @@ iina.onMessage("danmaku-browser-data", function (data) {
   } else if (chunkIndex === browserNextChunk) {
     browserNextChunk = chunkIndex + 1;
   } else {
-    requestBrowserDataRefresh(); // 丢块/乱序: 丢弃不完整数据并请求重发
+    requestBrowserDataRefresh(); // 丢块/乱序: 丢弃不完整数据并重新拉取
     browserUpdateDiag();
     return;
   }
-  // 追加本块并增量建立 index→行号 映射
-  var base = browserItems.length;
+  // 追加本块
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
-    if (!item) continue;
-    browserItems.push(item);
-    if (item.index !== undefined) browserRowOfIndex.set(item.index, base + i);
+    if (!item || typeof item.t !== 'number' || !isFinite(item.t) || !item.text) continue;
+    browserItems.push({ t: item.t, text: item.text });
   }
   if (!isDone) {
     browserUpdateLiveUI();
@@ -1415,24 +1445,22 @@ iina.onMessage("danmaku-browser-data", function (data) {
   browserRenderWindow();
 });
 
-iina.onMessage("danmaku-visible", function (data) {
-  if (!data || !data.indices) return;
-  browserDiag.visibleMsgs++;
-  if (data.vpos !== undefined) browserVpos = data.vpos;
-  // 自愈: 有在屏弹幕但本地无列表数据(数据消息可能被 IPC 丢弃)→ 请求重发
-  if (browserItems.length === 0 && data.indices.length > 0) requestBrowserDataRefresh();
-  browserLiveSet = new Set();
-  browserLiveRows = [];
-  var seen = {};
-  for (var i = 0; i < data.indices.length; i++) {
-    var idx = data.indices[i];
-    if (seen[idx]) continue;
-    seen[idx] = true;
-    browserLiveSet.add(idx);
-    var row = browserRowOfIndex ? browserRowOfIndex.get(idx) : undefined;
-    if (row !== undefined && row >= 0) browserLiveRows.push(row);
+// 播放时间推送(main.js 300ms 节流): 据此计算在屏弹幕窗口 [vpos-5s, vpos]
+iina.onMessage("danmaku-visible-time", function (data) {
+  if (!data || typeof data.time !== 'number') return;
+  browserDiag.timeMsgs++;
+  var vpos = Math.round((data.time + (data.offset || 0)) * 100);
+  browserVpos = vpos;
+  // 自愈: 时间信号在流动但本地无列表数据 → 重新拉取
+  if (browserItems.length === 0) requestBrowserDataRefresh();
+  var lo = browserRowForVpos(vpos - BROWSER_LIVE_WINDOW) + 1;
+  var hi = browserRowForVpos(vpos);
+  browserLiveLo = lo < 0 ? 0 : lo;
+  browserLiveHi = hi;
+  if (browserLiveLo > browserLiveHi) {
+    browserLiveLo = -1;
+    browserLiveHi = -1; // 窗口内没有弹幕
   }
-  browserLiveRows.sort(function (a, b) { return a - b; });
   browserUpdateLiveUI();
   browserUpdateDiag();
   browserRenderWindow();

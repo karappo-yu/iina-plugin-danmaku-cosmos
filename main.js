@@ -193,8 +193,8 @@ var nicoJsonTotalCount = 0;
 var danmakuFilterOffset = 0;
 var danmakuFilterLimit = 0;
 var danmakuFilterDensity = 0;
-var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听实时弹幕
-var pendingBrowserWatch = null;  // overlay 未就绪时暂存的 watch 消息(就绪后补发)
+var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听(控制播放时间推送)
+var lastBrowserTimeSent = 0;     // 时间推送节流标记
 
 function sanitizeIPCString(value) {
   return String(value || '').replace(/[`\u2018\u2019]/g, "'");
@@ -481,6 +481,156 @@ function applyDanmakuFilterDensity(density) {
   if (ft === 'nico-json') {
     applyDanmakuFilter(danmakuFilterOffset, danmakuFilterLimit);
   }
+}
+
+// ── 过滤 tab: 弹幕时间线列表 ──────────────────────────────────────────
+// 数据源为 danmakuCache(main.js 本就持有已加载的弹幕内容,发给 overlay 渲染的同一份),
+// 不经 overlay。sidebar 懒加载,只能由 sidebar 主动拉取(danmaku-browser-request);
+// 播放时间以 danmaku-visible-time 节流推送,sidebar 按时间窗口自行计算在屏弹幕。
+
+// 纯 JS base64(UTF-8)——main.js 运行在 IINA 的 JavaScriptCore 环境,不保证有 btoa/unescape
+var B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function b64Encode(str) {
+  var bytes = [];
+  for (var i = 0; i < str.length; i++) {
+    var c = str.charCodeAt(i);
+    if (c < 0x80) {
+      bytes.push(c);
+    } else if (c < 0x800) {
+      bytes.push(0xC0 | (c >> 6), 0x80 | (c & 63));
+    } else if (c >= 0xD800 && c <= 0xDBFF && i + 1 < str.length) {
+      var c2 = str.charCodeAt(i + 1);
+      if (c2 >= 0xDC00 && c2 <= 0xDFFF) {
+        var cp = 0x10000 + ((c - 0xD800) << 10) + (c2 - 0xDC00);
+        bytes.push(0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+        i++;
+      } else {
+        bytes.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      }
+    } else {
+      bytes.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    }
+  }
+  var out = '';
+  for (var j = 0; j < bytes.length; j += 3) {
+    var b0 = bytes[j], b1 = bytes[j + 1], b2 = bytes[j + 2];
+    out += B64_CHARS[b0 >> 2];
+    out += B64_CHARS[((b0 & 3) << 4) | (b1 === undefined ? 0 : b1 >> 4)];
+    out += b1 === undefined ? '=' : B64_CHARS[((b1 & 15) << 2) | (b2 === undefined ? 0 : b2 >> 6)];
+    out += b2 === undefined ? '=' : B64_CHARS[b2 & 63];
+  }
+  return out;
+}
+
+function decodeXmlText(text) {
+  if (text.indexOf('&') === -1) return text;
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+// 从 danmakuCache 构建 [{t, text}] 时间线(vpos 升序)。格式字段与 overlay 解析一致:
+// nico-json v1(vposMs/body)与 legacy(vpos/content);dandanplay 缓存已是 {t,text};
+// nico/bilibili XML 轻量正则提取
+function buildDanmakuBrowserList() {
+  var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+  if (!selectedPath) return [];
+  var encodedContent = danmakuCache[selectedPath];
+  if (!encodedContent) return [];
+  var rawStr;
+  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return []; }
+  var ft = currentDanmakuStatus.fileType;
+  var items = [];
+  try {
+    if (ft === 'nico-json') {
+      var data = JSON.parse(rawStr);
+      if (Array.isArray(data)) {
+        for (var i = 0; i < data.length; i++) {
+          var thread = data[i];
+          if (!thread) continue;
+          if (thread.fork === 'owner' || thread.fork === 'easy') continue;
+          var comments = Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null);
+          if (!comments) continue;
+          for (var j = 0; j < comments.length; j++) {
+            var c = comments[j];
+            if (!c) continue;
+            var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
+            var text = c.body !== undefined ? c.body : c.content;
+            if (!isFinite(t) || !text) continue;
+            items.push({ t: t, text: text });
+          }
+        }
+      }
+    } else if (ft === 'dandanplay') {
+      var list = JSON.parse(rawStr);
+      if (Array.isArray(list)) {
+        for (var k = 0; k < list.length; k++) {
+          var d = list[k];
+          if (!d || typeof d.t !== 'number' || !isFinite(d.t) || !d.text) continue;
+          items.push({ t: Math.round(d.t), text: d.text });
+        }
+      }
+    } else {
+      if (ft === 'nico-xml' || rawStr.indexOf('<packet') !== -1) {
+        var reChat = /<chat\b[^>]*\bvpos="(\d+)"[^>]*>([\s\S]*?)<\/chat>/g;
+        var m;
+        while ((m = reChat.exec(rawStr)) !== null) {
+          if (!m[2]) continue;
+          items.push({ t: parseInt(m[1], 10) || 0, text: decodeXmlText(m[2]) });
+        }
+      } else {
+        var reD = /<d\s+p="([^"]*)"[^>]*>([\s\S]*?)<\/d>/g;
+        var m2;
+        while ((m2 = reD.exec(rawStr)) !== null) {
+          var parts = m2[1].split(',');
+          var sec = parseFloat(parts[0]);
+          if (!isFinite(sec) || !m2[2]) continue;
+          items.push({ t: Math.round(sec * 100), text: decodeXmlText(m2[2]) });
+        }
+      }
+    }
+  } catch (e) {
+    return [];
+  }
+  items.sort(function (a, b) { return a.t - b.t; });
+  return items;
+}
+
+// 分块 + base64 投递。IINA 的 sidebar 桥把数据拼进 JS 模板字符串(String.raw`...`),
+// 文本里出现 ${ 或反引号会让整条消息被 JS 异常静默丢弃;base64 字母表与之不相交。
+function sendDanmakuBrowserData(items) {
+  var CHUNK = 2000;
+  var total = items.length;
+  if (total === 0) {
+    sidebar.postMessage("danmaku-browser-data", { payload: b64Encode('[]'), total: 0, chunkIndex: 0, done: true });
+    return;
+  }
+  var n = Math.ceil(total / CHUNK);
+  for (var c = 0; c < n; c++) {
+    sidebar.postMessage("danmaku-browser-data", {
+      payload: b64Encode(JSON.stringify(items.slice(c * CHUNK, (c + 1) * CHUNK))),
+      total: total,
+      chunkIndex: c,
+      done: c === n - 1
+    });
+  }
+}
+
+// 播放时间推送(300ms 节流),sidebar 据此计算在屏弹幕窗口
+function pushBrowserTime(timeSec) {
+  var now = Date.now();
+  if (now - lastBrowserTimeSent < 300) return;
+  lastBrowserTimeSent = now;
+  sidebar.postMessage("danmaku-visible-time", { time: timeSec, offset: danmakuTimeOffsetSec });
+}
+
+// 弹幕加载/切换/清空后,若 sidebar 正在监听则推送刷新列表
+function notifyBrowserDataChanged() {
+  if (!danmakuBrowserWatch) return;
+  sendDanmakuBrowserData(buildDanmakuBrowserList());
 }
 
 function extractNumberFromName(name) {
@@ -967,6 +1117,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
     danmakuFilterDensity = 0;
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
+    notifyBrowserDataChanged();
 
     var payload = {
       xmlContent: danmakuCache[virtualPath],
@@ -1089,6 +1240,7 @@ function loadDanmakuForVideo(url) {
     danmakuFileList = { xmlFiles: [], jsonFiles: [], unknownFiles: [], selectedPaths: [] };
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
+    notifyBrowserDataChanged();
     if (overlayReady) overlay.postMessage("clear-danmaku", {});
     if (dandanplayAutoNetwork) ddpAutoMatchAndLoad(url);
     return;
@@ -1115,6 +1267,7 @@ function loadDanmakuForVideo(url) {
   // === Step 2: Send file list (all available sources, regardless of priority) ===
   sidebar.postMessage("danmaku-file-list", danmakuFileList);
   sendDanmakuFilterInfo();
+  notifyBrowserDataChanged();
 
   // === Step 3: Auto-load to overlay based on autoNetwork setting ===
   if (dandanplayAutoNetwork) {
@@ -1186,6 +1339,7 @@ function loadLocalDanmaku(fileInfo) {
 
   sidebar.postMessage("danmaku-file-list", danmakuFileList);
   sendDanmakuFilterInfo();
+  notifyBrowserDataChanged();
 
   var payload = {
     xmlContent: encodedContent,
@@ -1221,12 +1375,6 @@ function markOverlayReady() {
   overlayReady = true;
   overlay.show();
   overlay.postMessage("ack", {});
-
-  if (pendingBrowserWatch) {
-    // 过滤 tab 的 watch 消息在 overlay 就绪前到达过: 补发
-    overlay.postMessage("danmaku-browser-watch", pendingBrowserWatch);
-    pendingBrowserWatch = null;
-  }
 
   overlay.postMessage("apply-settings", {
     opacity: canvasOpacity,
@@ -1267,6 +1415,7 @@ function setObserver(start) {
   if (start && overlayReady && danmakuEnabled) {
     timePosListenerID = event.on("mpv.time-pos.changed", function (t) {
       overlay.postMessage("time-update", { time: t });
+      if (danmakuBrowserWatch) pushBrowserTime(t);
     });
     windowScaleListenerID = event.on("mpv.window-scale.changed", function () {
       overlay.postMessage("resize", {});
@@ -1325,6 +1474,7 @@ function loadManualDanmakuFile(path) {
   danmakuFilterLimit = 0;
   danmakuFilterDensity = 0;
   sendDanmakuFilterInfo();
+  notifyBrowserDataChanged();
 
   var manualPayload = {
     xmlContent: encodedContent,
@@ -1592,6 +1742,7 @@ function registerSidebarHandlers() {
 
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
+    notifyBrowserDataChanged();
 
     var selectPayload = {
       xmlContent: encodedContent,
@@ -1715,13 +1866,16 @@ function registerSidebarHandlers() {
     }
   });
 
+  // 过滤 tab: sidebar 懒加载,只能由 sidebar 主动拉取弹幕列表;watch 控制播放时间推送
+  sidebar.onMessage("danmaku-browser-request", function () {
+    sendDanmakuBrowserData(buildDanmakuBrowserList());
+  });
+
   sidebar.onMessage("danmaku-browser-watch", function (data) {
     danmakuBrowserWatch = !!data.watch;
-    var msg = { watch: danmakuBrowserWatch, refresh: !!data.refresh };
-    if (overlayReady) {
-      overlay.postMessage("danmaku-browser-watch", msg);
-    } else {
-      pendingBrowserWatch = msg; // overlay 尚未就绪: 暂存,就绪后补发,避免消息被丢弃
+    if (danmakuBrowserWatch) {
+      var t = mpv.getNumber("time-pos");
+      if (t !== undefined && t !== null) pushBrowserTime(t);
     }
   });
 }
@@ -1752,27 +1906,6 @@ event.on("mpv.pause.changed", function () {
 overlay.onMessage("danmaku-type", function (data) {
   currentDanmakuStatus.fileType = data.type;
   sidebar.postMessage("danmaku-type", currentDanmakuStatus);
-});
-
-// 过滤 tab 弹幕列表: 全量数据始终转发(供 sidebar 预存),实时在屏集合只在监听时转发
-// IINA 的 sidebar 桥把数据拼进 JS 模板字符串(String.raw`...`),文本里出现 ${ 或反引号
-// 会让整条消息被 JS 异常静默丢弃 —— 因此 items 以 base64 编码后投递,字母表与模板
-// 字符串元字符不相交,任何弹幕文本都安全;sidebar 端 atob 解码还原。
-overlay.onMessage("danmaku-browser-data", function (data) {
-  if (data && data.items) {
-    try {
-      data.payload = btoa(unescape(encodeURIComponent(JSON.stringify(data.items))));
-    } catch (e) {
-      data.payload = '';
-    }
-    delete data.items;
-  }
-  sidebar.postMessage("danmaku-browser-data", data);
-});
-
-overlay.onMessage("danmaku-visible", function (data) {
-  if (!danmakuBrowserWatch) return;
-  sidebar.postMessage("danmaku-visible", data);
 });
 
 overlay.onMessage("seek-disable", function () { core.osd(t('seek_disable')); });
