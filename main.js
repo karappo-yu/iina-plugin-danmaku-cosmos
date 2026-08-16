@@ -694,18 +694,29 @@ function getEffectiveContent(path) {
   return out;
 }
 
-// 从 getEffectiveContent(单源出口)构建 [{t, text}] 时间线(vpos 升序)。
+// 逐条文本简繁转换(与 getEffectiveContent 的整串转换结果一致,OpenCC 逐字符幂等)
+function simplifyText(text) {
+  if (!text || !openccSimplifier || !danmakuForceSimplified) return text;
+  return openccSimplifier(text);
+}
+
+// 从原始内容构建 [{t, text, blocked}] 时间线(vpos 升序)。
+// 与 getEffectiveContent 完全相同的变换序列: nico-json 先切片/密度(排除的不入列表,
+// 它们不在当前范围而非"被屏蔽");文本按强制简体转换;屏蔽词命中标记 blocked——
+// 被屏蔽弹幕仍显示在列表(划线),其 blocked 状态与 overlay 实际过滤掉的弹幕一一对应。
 // 格式字段与 overlay 解析一致: nico-json v1(vposMs/body)与 legacy(vpos/content);
 // dandanplay 缓存已是 {t,text}; nico/bilibili XML 轻量正则提取。
-// 所有过滤/转换已在 getEffectiveContent 完成(与 overlay 收到的 load-danmaku 同一份)。
 function buildDanmakuBrowserList() {
   var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
   if (!selectedPath) return [];
-  var encodedContent = getEffectiveContent(selectedPath);
+  var encodedContent = danmakuCache[selectedPath];
   if (!encodedContent) return [];
-  var rawStr;
-  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return []; }
   var ft = currentDanmakuStatus.fileType;
+  var rawStr;
+  try {
+    rawStr = decodeURIComponent(ft === 'nico-json' ? applyNicoJsonFilters(encodedContent) : encodedContent);
+  } catch (e) { return []; }
+  ensureBrowserSimplifier(); // 需要时构建转换器(非 nico-json + 强制简体)
   var items = [];
   try {
     if (ft === 'nico-json') {
@@ -723,7 +734,7 @@ function buildDanmakuBrowserList() {
             var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
             var text = c.body !== undefined ? c.body : c.content;
             if (!isFinite(t) || !text) continue;
-            items.push({ t: t, text: text });
+            items.push({ t: t, text: text, blocked: isBlockedText(text) });
           }
         }
       }
@@ -733,7 +744,8 @@ function buildDanmakuBrowserList() {
         for (var k = 0; k < list.length; k++) {
           var d = list[k];
           if (!d || typeof d.t !== 'number' || !isFinite(d.t) || !d.text) continue;
-          items.push({ t: Math.round(d.t), text: d.text });
+          var st = simplifyText(d.text);
+          items.push({ t: Math.round(d.t), text: st, blocked: isBlockedText(st) });
         }
       }
     } else {
@@ -742,7 +754,8 @@ function buildDanmakuBrowserList() {
         var m;
         while ((m = reChat.exec(rawStr)) !== null) {
           if (!m[2]) continue;
-          items.push({ t: parseInt(m[1], 10) || 0, text: decodeXmlText(m[2]) });
+          var ct = simplifyText(decodeXmlText(m[2]));
+          items.push({ t: parseInt(m[1], 10) || 0, text: ct, blocked: isBlockedText(ct) });
         }
       } else {
         var reD = /<d\s+p="([^"]*)"[^>]*>([\s\S]*?)<\/d>/g;
@@ -751,7 +764,8 @@ function buildDanmakuBrowserList() {
           var parts = m2[1].split(',');
           var sec = parseFloat(parts[0]);
           if (!isFinite(sec) || !m2[2]) continue;
-          items.push({ t: Math.round(sec * 100), text: decodeXmlText(m2[2]) });
+          var bt = simplifyText(decodeXmlText(m2[2]));
+          items.push({ t: Math.round(sec * 100), text: bt, blocked: isBlockedText(bt) });
         }
       }
     }

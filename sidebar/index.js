@@ -1285,7 +1285,7 @@ function browserRenderWindow() {
     if (node) continue;
     var item = browserItems[row];
     var div = document.createElement("div");
-    div.className = "danmaku-browser-row";
+    div.className = "danmaku-browser-row" + (item.blocked ? " blocked" : "");
     div.style.top = (row * BROWSER_ROW_H) + "px";
     var time = document.createElement("span");
     time.className = "danmaku-browser-time";
@@ -1337,12 +1337,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v7';
+    el.textContent = 'browser v8';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v7 watch→' + browserDiag.watchSent
+  el.textContent = 'v8 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
@@ -1439,7 +1439,7 @@ iina.onMessage("danmaku-browser-data", function (data) {
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
     if (!item || typeof item.t !== 'number' || !isFinite(item.t) || !item.text) continue;
-    browserItems.push({ t: item.t, text: item.text });
+    browserItems.push({ t: item.t, text: item.text, blocked: !!item.blocked });
   }
   if (!isDone) {
     browserUpdateLiveUI();

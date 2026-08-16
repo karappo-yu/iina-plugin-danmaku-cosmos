@@ -803,6 +803,13 @@ kbd {
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
+.danmaku-browser-row.blocked {
+  opacity: 0.45;
+}
+.danmaku-browser-row.blocked .danmaku-browser-text {
+  text-decoration: line-through;
+  text-decoration-color: var(--secondary-label);
+}
 .danmaku-browser-time {
   flex-shrink: 0;
   min-width: 40px;
