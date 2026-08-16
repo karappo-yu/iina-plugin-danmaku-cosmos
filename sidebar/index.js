@@ -1565,24 +1565,24 @@ iina.postMessage("danmaku-sidebar-ready", { pluginRoot: browserPluginRoot() });
 /* ========== 屏蔽词(tag 列表 + 开关 + 添加/删除) ========== */
 var blocklistToggle = document.getElementById("danmaku-blocklist-toggle");
 var blocklistPanel = document.getElementById("danmaku-blocklist-panel");
-var blocklistTags = document.getElementById("danmaku-blocklist-tags");
+var blocklistList = document.getElementById("danmaku-blocklist-list");
 var blocklistEmpty = document.getElementById("danmaku-blocklist-empty");
 var blocklistInput = document.getElementById("danmaku-blocklist-input");
 var blocklistAddBtn = document.getElementById("danmaku-blocklist-add-btn");
 var blocklistWords = [];
 
 function renderBlocklist() {
-  if (!blocklistTags) return;
-  blocklistTags.innerHTML = '';
+  if (!blocklistList) return;
+  blocklistList.innerHTML = '';
   if (blocklistEmpty) blocklistEmpty.style.display = blocklistWords.length === 0 ? "" : "none";
   for (var i = 0; i < blocklistWords.length; i++) {
-    var chip = document.createElement("span");
-    chip.className = "danmaku-blocklist-tag";
+    var item = document.createElement("div");
+    item.className = "danmaku-blocklist-item";
     var label = document.createElement("span");
-    label.className = "danmaku-blocklist-tag-text";
+    label.className = "danmaku-blocklist-item-text";
     label.textContent = blocklistWords[i];
     var x = document.createElement("button");
-    x.className = "danmaku-blocklist-tag-x";
+    x.className = "danmaku-blocklist-item-x";
     x.textContent = "\u00d7";
     x.title = t('blocklist_remove');
     x.setAttribute("data-clickable", "");
@@ -1591,9 +1591,9 @@ function renderBlocklist() {
         iina.postMessage("danmaku-blocklist-remove", { word: word }); // 按词值删除,防下标错位
       });
     })(blocklistWords[i]);
-    chip.appendChild(label);
-    chip.appendChild(x);
-    blocklistTags.appendChild(chip);
+    item.appendChild(label);
+    item.appendChild(x);
+    blocklistList.appendChild(item);
   }
 }
 
