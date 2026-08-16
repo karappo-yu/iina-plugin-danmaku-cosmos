@@ -1363,12 +1363,7 @@ function browserUpdateTotal() {
 }
 
 function browserUpdateLiveUI() {
-  var liveEl = document.getElementById("danmaku-browser-live");
-  if (liveEl) {
-    liveEl.textContent = browserVpos >= 0 && browserItems.length > 0
-      ? browserFmtTime(browserVpos)
-      : '';
-  }
+  // 播放时间显示已移除(标题行不再展示);只维护"回到实时"按钮
   var btn = document.getElementById("danmaku-browser-follow-btn");
   if (btn) btn.style.display = (browserFollowLive || browserItems.length === 0) ? "none" : "";
 }
