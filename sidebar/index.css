@@ -834,6 +834,31 @@ kbd {
   color: var(--tertiary-label);
   pointer-events: none;
 }
+.danmaku-browser-view {
+  display: flex;
+  gap: 4px;
+  margin: 6px 0 2px;
+}
+.danmaku-browser-view-btn {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: var(--secondary-label);
+  font-size: 11px;
+  padding: 3px 0;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.danmaku-browser-view-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.danmaku-browser-view-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 .danmaku-browser-live {
   font-size: 11px;
   color: var(--secondary-label);

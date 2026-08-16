@@ -237,7 +237,12 @@ var i18n = {
     tab_filter: "Filter",
     filter_title: "Danmaku List",
     filter_back_live: "Back to Live",
+    filter_view_all: "All",
+    filter_view_blocked: "Blocked",
+    filter_view_merged: "Merged",
     filter_empty: "No danmaku loaded",
+    filter_empty_blocked: "No blocked danmaku",
+    filter_empty_merged: "No merged danmaku",
     blocklist_title: "Block Words",
     blocklist_add: "Add",
     blocklist_empty: "No block words yet",
@@ -287,7 +292,12 @@ var i18n = {
     tab_filter: "\u30d5\u30a3\u30eb\u30bf\u30fc",
     filter_title: "\u30b3\u30e1\u30f3\u30c8\u4e00\u89a7",
     filter_back_live: "\u6700\u65b0\u3078",
+    filter_view_all: "\u3059\u3079\u3066",
+    filter_view_blocked: "\u30d6\u30ed\u30c3\u30af",
+    filter_view_merged: "\u5408\u4f75",
     filter_empty: "\u30b3\u30e1\u30f3\u30c8\u672a\u8aad\u8fbc",
+    filter_empty_blocked: "\u30d6\u30ed\u30c3\u30af\u3055\u308c\u305f\u30b3\u30e1\u30f3\u30c8\u306f\u3042\u308a\u307e\u305b\u3093",
+    filter_empty_merged: "\u5408\u4f75\u3055\u308c\u305f\u30b3\u30e1\u30f3\u30c8\u306f\u3042\u308a\u307e\u305b\u3093",
     blocklist_title: "\u30d6\u30ed\u30c3\u30af\u8a9e",
     blocklist_add: "\u8ffd\u52a0",
     blocklist_empty: "\u307e\u3060\u30d6\u30ed\u30c3\u30af\u8a9e\u306f\u3042\u308a\u307e\u305b\u3093",
@@ -337,7 +347,12 @@ var i18n = {
     tab_filter: "\u8fc7\u6ee4",
     filter_title: "\u5f39\u5e55\u5217\u8868",
     filter_back_live: "\u56de\u5230\u5b9e\u65f6",
+    filter_view_all: "\u5168\u90e8",
+    filter_view_blocked: "\u5df2\u5c4f\u853d",
+    filter_view_merged: "\u5df2\u5408\u5e76",
     filter_empty: "\u672a\u52a0\u8f7d\u5f39\u5e55",
+    filter_empty_blocked: "\u65e0\u5df2\u5c4f\u853d\u5f39\u5e55",
+    filter_empty_merged: "\u65e0\u5df2\u5408\u5e76\u5f39\u5e55",
     blocklist_title: "\u5c4f\u853d\u8bcd",
     blocklist_add: "\u6dfb\u52a0",
     blocklist_empty: "\u6682\u65e0\u5c4f\u853d\u8bcd",
@@ -1230,7 +1245,8 @@ iina.onMessage("dandanplay-bangumi-result", function (data) {
    数据由 sidebar 主动向 main.js 拉取(danmaku-browser-request,懒加载约束);
    main 侧按与 overlay 相同的过滤(切片/密度/强制简体)构建,保证列表与渲染一致。 */
 var BROWSER_ROW_H = 26;
-var browserItems = [];         // [{t, text}] 按 t 升序
+var browserItems = [];         // [{t, text, blocked, merged}] 按 t 升序
+var browserViewMode = 'all';   // 列表视图: all | blocked | merged
 var browserVpos = -1;          // 最近一次时间消息的 vpos(1/100s)
 var browserFollowLive = true;  // 跟随模式: 锚定 vpos 行滚动(用户手动翻阅时退出)
 var browserDataKey = '';
@@ -1238,6 +1254,13 @@ var browserListEl = document.getElementById("danmaku-browser-list");
 var browserSpacerEl = document.getElementById("danmaku-browser-spacer");
 var browserRowNodes = new Map(); // 行号 -> 已渲染节点
 var browserExpectedScrollTop = -1;
+
+// 当前视图下的可见条目(全部/已屏蔽/已合并)
+function browserViewItems() {
+  if (browserViewMode === 'blocked') return browserItems.filter(function (v) { return v.blocked; });
+  if (browserViewMode === 'merged') return browserItems.filter(function (v) { return v.merged; });
+  return browserItems;
+}
 
 // sidebar 自身的 file:// 根目录,上报给 main 用于读 overlay/lib/opencc.min.js
 function browserPluginRoot() {
@@ -1260,12 +1283,13 @@ function browserFmtTime(vpos) {
   return h > 0 ? h + ":" + p(m) + ":" + p(s) : p(m) + ":" + p(s);
 }
 
-// 二分查找: 最后一个 t <= vpos 的行号(用于无在屏弹幕时锚定当前位置)
+// 二分查找: 最后一个 t <= vpos 的行号(用于无在屏弹幕时锚定当前位置;按当前视图)
 function browserRowForVpos(vpos) {
-  var lo = 0, hi = browserItems.length - 1, ans = -1;
+  var items = browserViewItems();
+  var lo = 0, hi = items.length - 1, ans = -1;
   while (lo <= hi) {
     var mid = (lo + hi) >> 1;
-    if (browserItems[mid].t <= vpos) { ans = mid; lo = mid + 1; }
+    if (items[mid].t <= vpos) { ans = mid; lo = mid + 1; }
     else hi = mid - 1;
   }
   return ans;
@@ -1273,7 +1297,8 @@ function browserRowForVpos(vpos) {
 
 function browserRenderWindow() {
   if (!browserListEl) return;
-  var total = browserItems.length;
+  var items = browserViewItems();
+  var total = items.length;
   if (browserSpacerEl) browserSpacerEl.style.height = (total * BROWSER_ROW_H) + "px";
   if (total === 0) {
     browserRowNodes.forEach(function (el) { el.remove(); });
@@ -1290,9 +1315,11 @@ function browserRenderWindow() {
   for (var row = first; row <= last; row++) {
     var node = browserRowNodes.get(row);
     if (node) continue;
-    var item = browserItems[row];
+    var item = items[row];
     var div = document.createElement("div");
-    div.className = "danmaku-browser-row" + (item.blocked ? " blocked" : "");
+    // 已屏蔽视图整列表都是屏蔽弹幕,不画删除线(视图本身表明身份)
+    var isBlockedView = browserViewMode === 'blocked';
+    div.className = "danmaku-browser-row" + (item.blocked && !isBlockedView ? " blocked" : "");
     div.style.top = (row * BROWSER_ROW_H) + "px";
     var time = document.createElement("span");
     time.className = "danmaku-browser-time";
@@ -1305,6 +1332,47 @@ function browserRenderWindow() {
     browserSpacerEl.appendChild(div);
     browserRowNodes.set(row, div);
   }
+}
+
+// 切换列表视图(全部/已屏蔽/已合并)
+function browserSetViewMode(mode) {
+  if (mode !== 'all' && mode !== 'blocked' && mode !== 'merged') return;
+  browserViewMode = mode;
+  var btns = document.querySelectorAll('.danmaku-browser-view-btn');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].classList.toggle('active', btns[i].getAttribute('data-view') === mode);
+  }
+  // 视图内容不同: 清空渲染缓存与滚动位置
+  browserRowNodes.forEach(function (el) { el.remove(); });
+  browserRowNodes.clear();
+  browserDataKey = '';
+  browserExpectedScrollTop = -1;
+  if (browserListEl) browserListEl.scrollTop = 0;
+  browserUpdateTotal();
+  browserUpdateEmpty();
+  browserRenderWindow();
+  browserUpdateDiag();
+}
+
+// 视图内条数显示
+function browserUpdateTotal() {
+  if (!totalEl) return;
+  var n = browserViewItems().length;
+  totalEl.textContent = n > 0 ? n.toLocaleString() : "";
+}
+
+// 视图内空状态
+function browserUpdateEmpty() {
+  if (!emptyEl) return;
+  if (browserViewItems().length > 0) {
+    emptyEl.style.display = "none";
+    return;
+  }
+  var key = browserViewMode === 'blocked' ? 'filter_empty_blocked'
+    : browserViewMode === 'merged' ? 'filter_empty_merged'
+    : 'filter_empty';
+  emptyEl.textContent = t(key);
+  emptyEl.style.display = "";
 }
 
 function browserUpdateLiveUI() {
@@ -1344,12 +1412,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v9';
+    el.textContent = 'browser v10';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v9 watch→' + browserDiag.watchSent
+  el.textContent = 'v10 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
@@ -1446,7 +1514,7 @@ iina.onMessage("danmaku-browser-data", function (data) {
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
     if (!item || typeof item.t !== 'number' || !isFinite(item.t) || !item.text) continue;
-    browserItems.push({ t: item.t, text: item.text, blocked: !!item.blocked });
+    browserItems.push({ t: item.t, text: item.text, blocked: !!item.blocked, merged: !!item.merged });
   }
   if (!isDone) {
     browserUpdateLiveUI();
@@ -1454,12 +1522,10 @@ iina.onMessage("danmaku-browser-data", function (data) {
     browserRenderWindow();
     return;
   }
-  // 全部收齐: 更新汇总与空状态,数据未变(如 refresh)时保留滚动位置
+  // 全部收齐: 更新汇总与空状态(按当前视图),数据未变(如 refresh)时保留滚动位置
   debugLog('danmaku-browser: data complete, total=' + browserItems.length + ', chunks=' + (chunkIndex + 1));
-  var totalEl = document.getElementById("danmaku-browser-total");
-  if (totalEl) totalEl.textContent = browserItems.length > 0 ? browserItems.length.toLocaleString() : "";
-  var emptyEl = document.getElementById("danmaku-browser-empty");
-  if (emptyEl) emptyEl.style.display = browserItems.length > 0 ? "none" : "";
+  browserUpdateTotal();
+  browserUpdateEmpty();
   var key = browserItems.length + ':' +
     (browserItems.length > 0 ? browserItems[0].t + ':' + browserItems[browserItems.length - 1].t : '');
   if (key !== browserDataKey) {
@@ -1513,6 +1579,16 @@ if (browserFollowBtn) {
 iina.postMessage("danmaku-browser-watch", { watch: false });
 browserCountWatchSend();
 browserUpdateDiag();
+
+// 弹幕列表视图切换(全部/已屏蔽/已合并)
+var browserViewBtns = document.querySelectorAll('.danmaku-browser-view-btn');
+for (var bvi = 0; bvi < browserViewBtns.length; bvi++) {
+  (function (btn) {
+    btn.addEventListener("click", function () {
+      browserSetViewMode(btn.getAttribute("data-view"));
+    });
+  })(browserViewBtns[bvi]);
+}
 
 /* ========== 屏蔽词(tag 列表 + 开关 + 添加/删除) ========== */
 var blocklistToggle = document.getElementById("danmaku-blocklist-toggle");

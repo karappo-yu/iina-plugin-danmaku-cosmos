@@ -1000,6 +1000,7 @@ function buildDanmakuBrowserList() {
   }
   // 去重: 仅对未屏蔽弹幕合并(与 overlay 相同合并规则——屏蔽先于去重),
   // 被屏蔽弹幕保持原样划线;合并后可见集合与 overlay 渲染内容一致。
+  // 合并弹幕标记 merged(供 sidebar 切换"已合并"视图识别)。
   if (danmakuDedupeEnabled && danmakuDedupeWindow > 0) {
     var visible = [];
     var blockedItems = [];
@@ -1007,7 +1008,13 @@ function buildDanmakuBrowserList() {
       if (items[di].blocked) blockedItems.push(items[di]);
       else visible.push(items[di]);
     }
-    items = blockedItems.concat(mergeDuplicateItems(visible, danmakuDedupeWindow * 100));
+    var mergedOut = mergeDuplicateItems(visible, danmakuDedupeWindow * 100);
+    for (var mi = 0; mi < mergedOut.length; mi++) {
+      if (mergedOut[mi]._mergeCount > 1) {
+        mergedOut[mi].merged = true;
+      }
+    }
+    items = blockedItems.concat(mergedOut);
   }
   items.sort(function (a, b) { return a.t - b.t; });
   return items;
