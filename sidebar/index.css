@@ -860,25 +860,42 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── 屏蔽词列表(与弹幕列表同款样式: 背景/圆角/滚动/行式) ── */
+/* ── 屏蔽词列表: 与弹幕列表同款样式(共用规则,仅容器定位不同) ── */
+.danmaku-browser-list,
 .danmaku-blocklist-list {
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius);
   overflow-y: auto;
+  overflow-x: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  margin-top: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+.danmaku-browser-list {
+  position: absolute;
+  inset: 0;
+}
+.danmaku-blocklist-list {
   max-height: 140px;
-  margin-top: 8px;
   padding: 2px 0;
 }
+.danmaku-browser-row,
 .danmaku-blocklist-item {
+  height: 26px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 10px;
+  padding: 0 10px;
   font-size: 12px;
-  color: var(--label);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
-.danmaku-blocklist-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+.danmaku-browser-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
 }
 .danmaku-blocklist-item-text {
   flex: 1;
