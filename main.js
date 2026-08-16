@@ -604,14 +604,15 @@ function mergeDuplicateItems(items, windowMs) {
   if (!items || items.length === 0) return items;
   if (!(windowMs > 0)) return items;
   var buckets = new Map();
+  var out = []; // 空文本条目(未解析/无效评论占位)不进桶,原样透传——否则被去重丢弃
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
-    if (!it || typeof it.t !== 'number' || !isFinite(it.t) || !it.text) continue;
+    if (!it || typeof it.t !== 'number' || !isFinite(it.t)) continue;
+    if (!it.text) { out.push(it); continue; }
     var bucket = buckets.get(it.text);
     if (!bucket) { bucket = []; buckets.set(it.text, bucket); }
     bucket.push(it);
   }
-  var out = [];
   buckets.forEach(function (bucket) {
     bucket.sort(function (a, b) { return a.t - b.t; });
     var i = 0;
