@@ -883,7 +883,21 @@ kbd {
   background: rgba(255, 255, 255, 0.22);
 }
 
-/* 屏蔽词列表: 与弹幕列表同款样式(共用规则,仅容器定位不同) ── */
+/* toggle-group 内嵌面板: 与开关行 14px 内边距对齐 */
+.toggle-group .danmaku-browser-list-wrap {
+  margin: 0 14px 12px;
+}
+.toggle-group .danmaku-blocklist-list,
+.toggle-group .danmaku-blocklist-add-row {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+.toggle-group .danmaku-browser-list,
+.toggle-group .danmaku-blocklist-list {
+  margin-top: 0;
+}
+
+/* ── 屏蔽词列表: 与弹幕列表同款样式(共用规则,仅容器定位不同) ── */
 .danmaku-browser-list,
 .danmaku-blocklist-list {
   overflow-y: auto;

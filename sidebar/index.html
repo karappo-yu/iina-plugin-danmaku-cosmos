@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="index.css?v=40" />
+  <link rel="stylesheet" href="index.css?v=41" />
   <title>Danmaku Control</title>
 </head>
 
@@ -295,9 +295,8 @@
     </div>
 
     <!-- ==================== Filter tab ==================== -->
-    <!-- 弹幕列表在上(固定位置,不被下方屏蔽词面板展开挤动);屏蔽词在列表下方 -->
     <div id="tab-filter" style="display:none">
-      <div class="section" style="margin-top:12px">
+      <div class="toggle-group" style="margin-top:12px">
         <div class="toggle-row">
           <div class="toggle-row-left">
             <span class="toggle-label" data-i18n="filter_title">弹幕列表</span>
@@ -315,9 +314,6 @@
           </div>
           <button id="danmaku-browser-follow-btn" class="danmaku-browser-follow-float" data-i18n="filter_back_live" style="display:none">回到实时</button>
         </div>
-      </div>
-      <div class="adv-separator"></div>
-      <div class="section">
         <div class="toggle-row">
           <span class="toggle-label" data-i18n="blocklist_title">屏蔽词</span>
           <label class="switch" data-clickable>
@@ -333,9 +329,6 @@
             <button id="danmaku-blocklist-add-btn" class="danmaku-file-action-btn" data-i18n="blocklist_add">添加</button>
           </div>
         </div>
-      </div>
-      <div class="adv-separator"></div>
-      <div class="section">
         <div class="toggle-row">
           <span class="toggle-label" data-i18n="dedupe_title">弹幕去重</span>
           <label class="switch" data-clickable>
