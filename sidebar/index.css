@@ -833,6 +833,17 @@ kbd {
   text-overflow: ellipsis;
   color: var(--label);
 }
+.danmaku-time-link {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+  text-underline-offset: 2px;
+}
+.danmaku-time-link:hover {
+  color: #fff;
+}
 .danmaku-browser-empty {
   position: absolute;
   inset: 0;

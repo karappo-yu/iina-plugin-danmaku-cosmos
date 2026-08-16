@@ -1300,6 +1300,32 @@ function browserRowForVpos(vpos, items) {
   return ans;
 }
 
+// 弹幕内容里的时间(m:ss / h:mm:ss)→ 可点击链接,点击 seek 到该时间。
+// 普通文本保留为文本节点(可复制),时间部分拆成独立 span。
+function browserRenderTextWithLinks(text, container) {
+  var re = /(\d{1,2}):(\d{2})(?::(\d{2}))?/g;
+  var last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) container.appendChild(document.createTextNode(text.slice(last, m.index)));
+    var sec = m[3] !== undefined
+      ? parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10)
+      : parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    var link = document.createElement("span");
+    link.className = "danmaku-time-link";
+    link.textContent = m[0];
+    (function (vpos) {
+      link.addEventListener("click", function (e) {
+        e.stopPropagation(); // 不干扰行内文本选择
+        iina.postMessage("danmaku-seek", { vpos: vpos });
+      });
+    })(sec * 100);
+    container.appendChild(link);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) container.appendChild(document.createTextNode(text.slice(last)));
+  if (last === 0 && container.childNodes.length === 0) container.textContent = text;
+}
+
 // 渲染一个列表容器的可视窗口(虚拟滚动)。容器滚动位置自洽:
 // scrollTop 被 clamp 到自身数据范围,渲染窗口永远跟随视口。
 function browserRenderList(list) {
@@ -1348,7 +1374,8 @@ function browserRenderList(list) {
     })(item.t);
     var text = document.createElement("span");
     text.className = "danmaku-browser-text";
-    text.textContent = item.text;
+    // 弹幕内容里的时间(m:ss / h:mm:ss,如"空降 01:39")渲染为可点击跳转
+    browserRenderTextWithLinks(item.text, text);
     div.appendChild(time);
     div.appendChild(text);
     list.spacerEl.appendChild(div);
@@ -1409,12 +1436,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v21';
+    el.textContent = 'browser v22';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v21 watch→' + browserDiag.watchSent
+  el.textContent = 'v22 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
