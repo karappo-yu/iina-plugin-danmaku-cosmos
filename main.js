@@ -1743,13 +1743,17 @@ overlay.onMessage("danmaku-type", function (data) {
 });
 
 // 过滤 tab 弹幕列表: 全量数据始终转发(供 sidebar 预存),实时在屏集合只在监听时转发
+// IINA 的 sidebar 桥把数据拼进 JS 模板字符串(String.raw`...`),文本里出现 ${ 或反引号
+// 会让整条消息被 JS 异常静默丢弃 —— 因此 items 以 base64 编码后投递,字母表与模板
+// 字符串元字符不相交,任何弹幕文本都安全;sidebar 端 atob 解码还原。
 overlay.onMessage("danmaku-browser-data", function (data) {
   if (data && data.items) {
-    for (var i = 0; i < data.items.length; i++) {
-      if (data.items[i] && typeof data.items[i].text === 'string') {
-        data.items[i].text = sanitizeIPCString(data.items[i].text);
-      }
+    try {
+      data.payload = btoa(unescape(encodeURIComponent(JSON.stringify(data.items))));
+    } catch (e) {
+      data.payload = '';
     }
+    delete data.items;
   }
   sidebar.postMessage("danmaku-browser-data", data);
 });

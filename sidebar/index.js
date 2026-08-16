@@ -1308,8 +1308,30 @@ function requestBrowserDataRefresh() {
   iina.postMessage("danmaku-browser-watch", { watch: true, refresh: true });
 }
 
+// main.js 以 base64 编码投递(绕开 IINA 桥的模板字符串注入);解码失败返回 null
+function browserDecodePayload(payload) {
+  try {
+    var bin = atob(payload);
+    var str = decodeURIComponent(escape(bin));
+    return JSON.parse(str);
+  } catch (e) {
+    return null;
+  }
+}
+
 iina.onMessage("danmaku-browser-data", function (data) {
-  if (!data || !data.items) return;
+  if (!data) return;
+  var items = null;
+  if (typeof data.payload === 'string') {
+    items = browserDecodePayload(data.payload);
+    if (items === null) {
+      requestBrowserDataRefresh(); // 解码失败: 请求重发
+      return;
+    }
+  } else if (Array.isArray(data.items)) {
+    items = data.items;
+  }
+  if (items === null) return;
   if (data.chunkIndex === 0) {
     // 新数据或 refresh 重发: 重置状态
     browserItems = [];
@@ -1328,8 +1350,8 @@ iina.onMessage("danmaku-browser-data", function (data) {
   }
   // 追加本块并增量建立 index→行号 映射
   var base = browserItems.length;
-  for (var i = 0; i < data.items.length; i++) {
-    var item = data.items[i];
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
     if (!item) continue;
     browserItems.push(item);
     if (item.index !== undefined) browserRowOfIndex.set(item.index, base + i);
