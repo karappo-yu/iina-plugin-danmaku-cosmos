@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="index.css?v=23" />
+  <link rel="stylesheet" href="index.css?v=24" />
   <title>Danmaku Control</title>
 </head>
 
@@ -300,26 +300,12 @@
       <div class="section" style="margin-top:12px">
         <div class="section-title">
           <span data-i18n="filter_title">弹幕列表</span>
-          <select id="danmaku-browser-view-select" data-clickable
-            style="margin-left:8px;max-width:110px;padding:2px 24px 2px 8px;font-size:11px">
-            <option value="all" data-i18n="filter_view_all">全部</option>
-            <option value="blocked" data-i18n="filter_view_blocked">已屏蔽</option>
-            <option value="merged" data-i18n="filter_view_merged">已合并</option>
-          </select>
           <span id="danmaku-browser-total" class="browser-total"></span>
         </div>
         <div class="danmaku-browser-list-wrap">
           <div id="danmaku-browser-list-all" class="danmaku-browser-list" data-clickable>
             <div class="danmaku-browser-spacer"></div>
             <div class="danmaku-browser-empty" style="display:none">未加载弹幕</div>
-          </div>
-          <div id="danmaku-browser-list-blocked" class="danmaku-browser-list" data-clickable style="display:none">
-            <div class="danmaku-browser-spacer"></div>
-            <div class="danmaku-browser-empty" style="display:none">无已屏蔽弹幕</div>
-          </div>
-          <div id="danmaku-browser-list-merged" class="danmaku-browser-list" data-clickable style="display:none">
-            <div class="danmaku-browser-spacer"></div>
-            <div class="danmaku-browser-empty" style="display:none">无已合并弹幕</div>
           </div>
         </div>
         <div class="danmaku-file-list-footer" style="margin-top:6px;padding-top:4px">
@@ -364,7 +350,7 @@
     </div>
 
   </div>
-  <script src="index.js?v=23"></script>
+  <script src="index.js?v=24"></script>
 </body>
 
 </html>

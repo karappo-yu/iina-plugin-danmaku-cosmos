@@ -228,9 +228,6 @@ var i18n = {
     tab_filter: "Filter",
     filter_title: "Danmaku List",
     filter_back_live: "Back to Live",
-    filter_view_all: "All",
-    filter_view_blocked: "Blocked",
-    filter_view_merged: "Merged",
     filter_empty: "No danmaku loaded",
     filter_empty_blocked: "No blocked danmaku",
     filter_empty_merged: "No merged danmaku",
@@ -283,9 +280,6 @@ var i18n = {
     tab_filter: "\u30d5\u30a3\u30eb\u30bf\u30fc",
     filter_title: "\u30b3\u30e1\u30f3\u30c8\u4e00\u89a7",
     filter_back_live: "\u6700\u65b0\u3078",
-    filter_view_all: "\u3059\u3079\u3066",
-    filter_view_blocked: "\u30d6\u30ed\u30c3\u30af",
-    filter_view_merged: "\u5408\u4f75",
     filter_empty: "\u30b3\u30e1\u30f3\u30c8\u672a\u8aad\u8fbc",
     filter_empty_blocked: "\u30d6\u30ed\u30c3\u30af\u3055\u308c\u305f\u30b3\u30e1\u30f3\u30c8\u306f\u3042\u308a\u307e\u305b\u3093",
     filter_empty_merged: "\u5408\u4f75\u3055\u308c\u305f\u30b3\u30e1\u30f3\u30c8\u306f\u3042\u308a\u307e\u305b\u3093",
@@ -338,9 +332,6 @@ var i18n = {
     tab_filter: "\u8fc7\u6ee4",
     filter_title: "\u5f39\u5e55\u5217\u8868",
     filter_back_live: "\u56de\u5230\u5b9e\u65f6",
-    filter_view_all: "\u5168\u90e8",
-    filter_view_blocked: "\u5df2\u5c4f\u853d",
-    filter_view_merged: "\u5df2\u5408\u5e76",
     filter_empty: "\u672a\u52a0\u8f7d\u5f39\u5e55",
     filter_empty_blocked: "\u65e0\u5df2\u5c4f\u853d\u5f39\u5e55",
     filter_empty_merged: "\u65e0\u5df2\u5408\u5e76\u5f39\u5e55",
@@ -1237,27 +1228,18 @@ iina.onMessage("dandanplay-bangumi-result", function (data) {
    main 侧按与 overlay 相同的过滤(切片/密度/强制简体)构建,保证列表与渲染一致。 */
 var BROWSER_ROW_H = 26;
 var browserItems = [];         // [{t, text, blocked, merged}] 按 t 升序(全量,接收原样)
-var browserViewMode = 'all';   // 列表视图: all | blocked | merged
 var browserVpos = -1;          // 最近一次时间消息的 vpos(1/100s)
 var browserFollowLive = true;  // 跟随模式: 锚定 vpos 行滚动(用户手动翻阅时退出)
 var totalEl = document.getElementById("danmaku-browser-total");
 
-// 三个列表容器,各自的数据/渲染缓存/滚动位置完全独立。
-// 数据到达时三个都渲染好;切换视图只是改 display——不重建、不碰滚动、无副作用。
-var browserLists = {
-  all:     { el: document.getElementById("danmaku-browser-list-all"),     items: [], rowNodes: new Map() },
-  blocked: { el: document.getElementById("danmaku-browser-list-blocked"), items: [], rowNodes: new Map() },
-  merged:  { el: document.getElementById("danmaku-browser-list-merged"),  items: [], rowNodes: new Map() }
+// 弹幕时间线列表(单容器): 数据/渲染缓存/滚动位置独立持有
+var browserList = {
+  el: document.getElementById("danmaku-browser-list-all"),
+  items: [],
+  rowNodes: new Map()
 };
-Object.keys(browserLists).forEach(function (kind) {
-  var list = browserLists[kind];
-  list.spacerEl = list.el.querySelector(".danmaku-browser-spacer");
-  list.emptyEl = list.el.querySelector(".danmaku-browser-empty");
-});
-
-function browserCurrentList() {
-  return browserLists[browserViewMode];
-}
+browserList.spacerEl = browserList.el.querySelector(".danmaku-browser-spacer");
+browserList.emptyEl = browserList.el.querySelector(".danmaku-browser-empty");
 
 // sidebar 自身的 file:// 根目录,上报给 main 用于读 overlay/lib/opencc.min.js
 function browserPluginRoot() {
@@ -1344,14 +1326,13 @@ function browserRenderList(list) {
   list.rowNodes.forEach(function (el, row) {
     if (row < first || row > last) { el.remove(); list.rowNodes.delete(row); }
   });
-  // 已屏蔽视图整列表都是屏蔽弹幕,不画删除线(视图本身表明身份)
-  var isBlockedView = list === browserLists.blocked;
+  // 被屏蔽弹幕划线标注(全部视图)
   for (var row = first; row <= last; row++) {
     var node = list.rowNodes.get(row);
     if (node) continue;
     var item = items[row];
     var div = document.createElement("div");
-    div.className = "danmaku-browser-row" + (item.blocked && !isBlockedView ? " blocked" : "");
+    div.className = "danmaku-browser-row" + (item.blocked ? " blocked" : "");
     div.style.top = (row * BROWSER_ROW_H) + "px";
     var time = document.createElement("span");
     time.className = "danmaku-browser-time";
@@ -1374,22 +1355,10 @@ function browserRenderList(list) {
   }
 }
 
-// 切换列表视图(全部/已屏蔽/已合并): 三个列表早已渲染好,只切 display
-function browserSetViewMode(mode) {
-  if (mode !== 'all' && mode !== 'blocked' && mode !== 'merged') return;
-  browserViewMode = mode;
-  if (browserViewSelect) browserViewSelect.value = mode;
-  browserLists.all.el.style.display = mode === 'all' ? "" : "none";
-  browserLists.blocked.el.style.display = mode === 'blocked' ? "" : "none";
-  browserLists.merged.el.style.display = mode === 'merged' ? "" : "none";
-  browserUpdateTotal();
-  browserUpdateDiag();
-}
-
-// 当前视图条数显示
+// 列表条数显示
 function browserUpdateTotal() {
   if (!totalEl) return;
-  var n = browserCurrentList().items.length;
+  var n = browserList.items.length;
   totalEl.textContent = n > 0 ? n.toLocaleString() : "";
 }
 
@@ -1406,8 +1375,8 @@ function browserUpdateLiveUI() {
 
 // 聊天栏式跟随: 锚定 vpos 对应行并保持其在可视区底部,新弹幕到点在底部"推出"
 function browserFollowToLive() {
-  var list = browserCurrentList();
-  if (!list || list.items.length === 0) return;
+  var list = browserList;
+  if (list.items.length === 0) return;
   var anchorRow = browserRowForVpos(browserVpos, list.items);
   if (anchorRow < 0) return;
   var viewH = list.el.clientHeight;
@@ -1427,12 +1396,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v23';
+    el.textContent = 'browser v24';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v23 watch→' + browserDiag.watchSent
+  el.textContent = 'v24 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
@@ -1516,12 +1485,9 @@ iina.onMessage("danmaku-browser-data", function (data) {
     browserItems = [];
     browserVpos = -1;
     browserNextChunk = 1;
-    Object.keys(browserLists).forEach(function (kind) {
-      var list = browserLists[kind];
-      list.items = [];
-      list.rowNodes.forEach(function (el) { el.remove(); });
-      list.rowNodes.clear();
-    });
+    browserList.items = [];
+    browserList.rowNodes.forEach(function (el) { el.remove(); });
+    browserList.rowNodes.clear();
   } else if (chunkIndex === browserNextChunk) {
     browserNextChunk = chunkIndex + 1;
   } else {
@@ -1536,22 +1502,14 @@ iina.onMessage("danmaku-browser-data", function (data) {
     browserItems.push({ t: item.t, text: item.text, blocked: !!item.blocked, merged: !!item.merged });
   }
   if (!isDone) {
-    // 传输中不渲染(三个容器在 done 时一次性渲染)
+    // 传输中不渲染(done 时一次性渲染)
     browserUpdateDiag();
     return;
   }
-  // 全部收齐: 按标记一次性分类给三个容器并各自渲染(切换只切 display)
+  // 全部收齐: 单容器渲染
   debugLog('danmaku-browser: data complete, total=' + browserItems.length + ', chunks=' + (chunkIndex + 1));
-  browserLists.all.items = browserItems;
-  browserLists.blocked.items = [];
-  browserLists.merged.items = [];
-  for (var bi = 0; bi < browserItems.length; bi++) {
-    if (browserItems[bi].blocked) browserLists.blocked.items.push(browserItems[bi]);
-    if (browserItems[bi].merged) browserLists.merged.items.push(browserItems[bi]);
-  }
-  browserRenderList(browserLists.all);
-  browserRenderList(browserLists.blocked);
-  browserRenderList(browserLists.merged);
+  browserList.items = browserItems;
+  browserRenderList(browserList);
   browserUpdateTotal();
   browserUpdateLiveUI();
   browserUpdateDiag();
@@ -1572,22 +1530,19 @@ iina.onMessage("danmaku-visible-time", function (data) {
 
 var browserProgramScrollTop = -1; // 程序滚动目标(跟随锚定);scroll 事件据此区分手动/程序滚动
 
-// 每个列表容器独立监听滚动: 虚拟渲染重算窗口;手动滚动退出跟随
-Object.keys(browserLists).forEach(function (kind) {
-  var list = browserLists[kind];
-  list.el.addEventListener("scroll", function () {
-    if (browserProgramScrollTop >= 0 && Math.abs(list.el.scrollTop - browserProgramScrollTop) < 1) {
-      browserProgramScrollTop = -1;
-      browserRenderList(list); // 程序滚动(跟随锚定): 重渲染,不退出跟随
-      return;
-    }
+// 列表容器监听滚动: 虚拟渲染重算窗口;手动滚动退出跟随
+browserList.el.addEventListener("scroll", function () {
+  if (browserProgramScrollTop >= 0 && Math.abs(browserList.el.scrollTop - browserProgramScrollTop) < 1) {
     browserProgramScrollTop = -1;
-    if (browserFollowLive && kind === browserViewMode) {
-      browserFollowLive = false; // 用户手动翻阅: 暂停跟随
-      browserUpdateLiveUI();
-    }
-    browserRenderList(list);
-  });
+    browserRenderList(browserList); // 程序滚动(跟随锚定): 重渲染,不退出跟随
+    return;
+  }
+  browserProgramScrollTop = -1;
+  if (browserFollowLive) {
+    browserFollowLive = false; // 用户手动翻阅: 暂停跟随
+    browserUpdateLiveUI();
+  }
+  browserRenderList(browserList);
 });
 
 var browserFollowBtn = document.getElementById("danmaku-browser-follow-btn");
@@ -1606,14 +1561,6 @@ browserUpdateDiag();
 
 // 加载即上报插件根目录(main 的简繁转换器初始化不依赖过滤 tab 打开)
 iina.postMessage("danmaku-sidebar-ready", { pluginRoot: browserPluginRoot() });
-
-// 弹幕列表视图下拉(原生 select,样式与字体选择器一致)
-var browserViewSelect = document.getElementById("danmaku-browser-view-select");
-if (browserViewSelect) {
-  browserViewSelect.addEventListener("change", function () {
-    browserSetViewMode(this.value);
-  });
-}
 
 /* ========== 屏蔽词(tag 列表 + 开关 + 添加/删除) ========== */
 var blocklistToggle = document.getElementById("danmaku-blocklist-toggle");
