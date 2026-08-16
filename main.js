@@ -2103,6 +2103,18 @@ function registerSidebarHandlers() {
     sidebar.postMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
   });
 
+  // 点击列表时间戳 → 跳转到该弹幕时间(弹幕 vpos 换算为视频秒,考虑弹幕偏移)
+  sidebar.onMessage("danmaku-seek", function (data) {
+    if (!data || typeof data.vpos !== 'number' || !isFinite(data.vpos)) return;
+    var sec = data.vpos / 100 - (danmakuTimeOffsetSec || 0);
+    if (sec < 0) sec = 0;
+    try {
+      core.player.seekTo(sec);
+    } catch (e) {
+      debugLog('danmaku-seek failed: ' + e);
+    }
+  });
+
   sidebar.onMessage("danmaku-dedupe-set", function (data) {
     if (data.enabled !== undefined) danmakuDedupeEnabled = !!data.enabled;
     if (data.window !== undefined) {

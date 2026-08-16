@@ -1339,6 +1339,12 @@ function browserRenderList(list) {
     var time = document.createElement("span");
     time.className = "danmaku-browser-time";
     time.textContent = browserFmtTime(item.t);
+    // 点击时间戳 → 跳转到该弹幕时间(main 做 seek,含弹幕偏移换算)
+    (function (vpos) {
+      time.addEventListener("click", function () {
+        iina.postMessage("danmaku-seek", { vpos: vpos });
+      });
+    })(item.t);
     var text = document.createElement("span");
     text.className = "danmaku-browser-text";
     text.textContent = item.text;
@@ -1402,12 +1408,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v16';
+    el.textContent = 'browser v17';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v16 watch→' + browserDiag.watchSent
+  el.textContent = 'v17 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length

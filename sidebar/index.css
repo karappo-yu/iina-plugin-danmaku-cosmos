@@ -816,6 +816,11 @@ kbd {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   color: var(--tertiary-label);
+  cursor: pointer; /* 点击跳转到该弹幕时间 */
+}
+.danmaku-browser-time:hover {
+  color: var(--accent);
+  text-decoration: underline;
 }
 .danmaku-browser-text {
   flex: 1;
