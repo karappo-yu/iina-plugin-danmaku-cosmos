@@ -2181,8 +2181,9 @@ function registerSidebarHandlers() {
     });
   });
 
-  sidebar.onMessage("select-danmaku-file", function (data) {
-    var filePath = data.path;
+  // 加载选中弹幕文件(danmaku-file-add 添加后也会自动调用——添加即显示)
+  function selectDanmakuFile(filePath) {
+    if (!filePath) return;
 
     var encodedContent = danmakuCache[filePath];
     if (!encodedContent && filePath.indexOf('dandanplay://') === 0) {
@@ -2254,6 +2255,10 @@ function registerSidebarHandlers() {
     overlay.postMessage("load-danmaku", selectPayload);
     core.osd(t('loaded') + (fileInfo ? fileInfo.filename : fileName));
     ensureDanmakuEnabled();
+  }
+
+  sidebar.onMessage("select-danmaku-file", function (data) {
+    if (data && data.path) selectDanmakuFile(data.path);
   });
 
   sidebar.onMessage("danmaku-file-add", function () {
@@ -2279,7 +2284,8 @@ function registerSidebarHandlers() {
       var content = file.read(path);
       if (content) {
         danmakuCache[path] = encodeContent(content);
-        core.osd(t('added_click_to_load', { name: fname }));
+        selectDanmakuFile(path); // 添加即加载: 不用再在列表里手动点选
+        core.osd(t('loaded') + fname);
       } else {
         core.osd(t('read_failed_name') + fname);
         sidebar.postMessage("danmaku-file-error", { path: path, message: t('read_failed') });
