@@ -709,6 +709,8 @@ function dedupeNicoJson(encodedContent) {
   var filteredData = [];
   for (var i = 0; i < data.length; i++) {
     var thread = data[i];
+    // owner 线程(fork==='owner')压根不进过滤器: 原样透传,不参与去重
+    if (thread && thread.fork === 'owner') { filteredData.push(thread); continue; }
     // legacy nico-json(thread.chat)与现代表格(thread.comments)都处理
     var srcComments = thread ? (Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null)) : null;
     if (!srcComments) { filteredData.push(thread); continue; }
@@ -718,8 +720,6 @@ function dedupeNicoJson(encodedContent) {
       if (!c) { entries.push({ t: 0, text: '', _c: c, _skip: true }); continue; }
       var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
       var text = c.body !== undefined ? c.body : c.content;
-      // owner 弹幕(isMyPost)不参与去重: 原样透传,不被合并
-      if (c.isMyPost) { entries.push({ t: t, text: text, _c: c, _skip: true }); continue; }
       if (!isFinite(t) || !text) { entries.push({ t: 0, text: '', _c: c, _skip: true }); continue; }
       entries.push({ t: t, text: text, _c: c });
     }
@@ -840,7 +840,7 @@ function dedupeContent(encodedContent, ft) {
   return encodeContent(parts.join(''));
 }
 
-// nico-json: 过滤所有 thread 的 comments(含 owner/easy——屏蔽词对渲染的全部弹幕生效)
+// nico-json: 过滤所有 thread 的 comments(owner 线程 fork==='owner' 压根不进过滤器)
 function filterBlockedNicoJson(encodedContent) {
   if (blockRegexes.length === 0) return encodedContent;
   var rawStr;
@@ -852,6 +852,8 @@ function filterBlockedNicoJson(encodedContent) {
   var filteredData = [];
   for (var i = 0; i < data.length; i++) {
     var thread = data[i];
+    // owner 线程(fork==='owner')压根不进过滤器: 原样透传,屏蔽词不影响 owner 弹幕
+    if (thread && thread.fork === 'owner') { filteredData.push(thread); continue; }
     // legacy nico-json(thread.chat)与现代表格(thread.comments)都处理
     var srcComments = thread ? (Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null)) : null;
     if (!srcComments) { filteredData.push(thread); continue; }
