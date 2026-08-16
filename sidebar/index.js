@@ -161,20 +161,11 @@ function renderFileList() {
   var container = document.getElementById('danmaku-file-list-container');
   if (!container) return;
   container.innerHTML = '';
-
-  var lang = getBrowserLang();
-  var xmlTitle = lang === 'zh' ? 'XML 弹幕' : lang === 'ja' ? 'XML\u30b3\u30e1\u30f3\u30c8' : 'XML Danmaku';
-  var jsonTitle = lang === 'zh' ? 'JSON 弹幕' : lang === 'ja' ? 'JSON\u30b3\u30e1\u30f3\u30c8' : 'JSON Danmaku';
-
-  if (fileListState.xmlFiles.length > 0) {
-    var xmlGroup = createFileGroup(xmlTitle, fileListState.xmlFiles, fileListState.selectedPaths);
-    if (xmlGroup) container.appendChild(xmlGroup);
-  }
-  if (fileListState.jsonFiles.length > 0) {
-    var jsonGroup = createFileGroup(jsonTitle, fileListState.jsonFiles, fileListState.selectedPaths);
-    if (jsonGroup) container.appendChild(jsonGroup);
-  }
-
+  // XML/JSON 弹幕合并为一个列表(按文件名排序)——不按类型分区块隔开
+  var allFiles = fileListState.xmlFiles.concat(fileListState.jsonFiles);
+  allFiles.sort(function (a, b) { return String(a.filename).localeCompare(String(b.filename)); });
+  var group = createFileGroup('', allFiles, fileListState.selectedPaths);
+  if (group) container.appendChild(group);
 }
 
 function updateDanmakuInfoUI() {
@@ -1436,12 +1427,12 @@ function browserUpdateDiag() {
   var el = document.getElementById("danmaku-browser-status");
   if (!el) return;
   if (browserItems.length > 0) {
-    el.textContent = 'browser v22';
+    el.textContent = 'browser v23';
     el.classList.remove('broken');
     return;
   }
   el.classList.add('broken');
-  el.textContent = 'v22 watch→' + browserDiag.watchSent
+  el.textContent = 'v23 watch→' + browserDiag.watchSent
     + ' data←' + browserDiag.dataMsgs
     + ' time←' + browserDiag.timeMsgs
     + ' items=' + browserItems.length
