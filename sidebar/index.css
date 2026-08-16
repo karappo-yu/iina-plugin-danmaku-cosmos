@@ -864,7 +864,26 @@ kbd {
   pointer-events: none;
 }
 
-/* ── 屏蔽词列表: 与弹幕列表同款样式(共用规则,仅容器定位不同) ── */
+/* 回到实时: 悬浮在列表右下角(跟随模式退出时显示) */
+.danmaku-browser-follow-float {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 5;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--label);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+.danmaku-browser-follow-float:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* 屏蔽词列表: 与弹幕列表同款样式(共用规则,仅容器定位不同) ── */
 .danmaku-browser-list,
 .danmaku-blocklist-list {
   overflow-y: auto;
