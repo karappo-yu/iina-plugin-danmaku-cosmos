@@ -890,7 +890,7 @@ kbd {
 }
 /* 面板内行内容(添加按钮/去重区间标签)与开关行 14px 内边距对齐,不贴框边缘 */
 .toggle-group .danmaku-blocklist-add-row,
-.toggle-group .danmaku-dedupe-row {
+.toggle-group #danmaku-dedupe-row {
   padding-left: 14px;
   padding-right: 14px;
 }
