@@ -35,6 +35,65 @@ let openccLoadPromise = null;
 let lastLoadRawStr = null;   // 最近一次 load-danmaku 的原始内容，供 OpenCC 异步就绪后重建
 let lastLoadType = null;
 
+// ── 过滤 tab: 弹幕列表数据源 ──────────────────────────────────────────
+// 数据来自引擎统一解析后的 comments 实例 (index/vpos/content 对所有格式一致)。
+// sidebar 的过滤 tab 需要: 全量时间线列表(手动翻阅) + 实时在屏弹幕(跟随播放)。
+let browserData = [];        // 按 vpos 排序的 [{index, t, text}]，t 为 vpos(1/100s)
+let browserWatch = false;    // sidebar 过滤 tab 是否在监听
+let lastBrowserVisibleSent = 0;
+
+function buildBrowserData() {
+  const items = [];
+  if (niconiComments && Array.isArray(niconiComments.comments)) {
+    const cs = niconiComments.comments;
+    for (let i = 0; i < cs.length; i++) {
+      const c = cs[i];
+      if (!c || typeof c.vpos !== 'number' || !isFinite(c.vpos)) continue;
+      items.push({
+        index: c.index,
+        t: Math.round(c.vpos),
+        text: typeof c.content === 'string' ? c.content : ''
+      });
+    }
+    items.sort((a, b) => a.t - b.t || a.index - b.index);
+  }
+  browserData = items;
+}
+
+function sendBrowserData() {
+  iina.postMessage("danmaku-browser-data", { items: browserData, total: browserData.length });
+}
+
+// 当前在屏弹幕的 index 集合。CSS 模式直接读渲染器的 activeElements(精确)；
+// Canvas 模式用 timeline[vpos] 候选集(近似,含 commentLimit 截断)。
+function collectVisibleIndices() {
+  const vpos = Math.floor(canvasGetCurrentTime() * 100);
+  if (!niconiComments) return { indices: [], vpos: vpos };
+  if (canvasNicoMode === 'css' && niconiComments.cssRenderer &&
+      typeof niconiComments.cssRenderer.getVisibleCommentIndices === 'function') {
+    return { indices: niconiComments.cssRenderer.getVisibleCommentIndices(), vpos: vpos };
+  }
+  const tl = niconiComments.timeline ? niconiComments.timeline[vpos] : null;
+  const indices = [];
+  if (tl) {
+    let end = tl.length;
+    if (commentLimit > 0 && commentLimit < end) end = commentLimit;
+    for (let i = 0; i < end; i++) {
+      const c = tl[i];
+      if (c && !c.invisible && c.index !== undefined) indices.push(c.index);
+    }
+  }
+  return { indices: indices, vpos: vpos };
+}
+
+function sendBrowserVisible(force) {
+  if (!browserWatch) return;
+  const now = performance.now();
+  if (!force && now - lastBrowserVisibleSent < 400) return;
+  lastBrowserVisibleSent = now;
+  iina.postMessage("danmaku-visible", collectVisibleIndices());
+}
+
 function ensureOpenCCLoaded() {
   if (window.OpenCC) return Promise.resolve(window.OpenCC);
   if (!openccLoadPromise) {
@@ -377,6 +436,7 @@ function canvasRenderLoop() {
   canvasRafId = null;
   if (!shouldRunCanvasLoop()) return;
   drawCanvasAtVpos(canvasGetCurrentTime() * 100, false);
+  sendBrowserVisible(false);
   startCanvasLoop();
 }
 
@@ -401,6 +461,7 @@ iina.onMessage("time-update", (data) => {
   if (isSeek && niconiComments) {
     niconiComments.clear();
     drawCanvasAtVpos(t, true);
+    sendBrowserVisible(true);
   }
   startCanvasLoop();
 });
@@ -465,6 +526,9 @@ iina.onMessage("load-danmaku", (data) => {
     }
     initCanvasRenderer(nicoRawData);
     startCanvasLoop();
+    buildBrowserData();
+    if (browserWatch) sendBrowserData();
+    sendBrowserVisible(true);
   }
 });
 
@@ -489,6 +553,7 @@ iina.onMessage("pause-state", (data) => {
       startCanvasLoop();
     }
   }
+  sendBrowserVisible(true);
 });
 
 iina.onMessage("playback-speed", (data) => {
@@ -510,6 +575,7 @@ iina.onMessage("toggle-danmaku", (data) => {
   if (!data.enabled) {
     stopCanvasLoop();
     if (niconiComments) niconiComments.clear();
+    sendBrowserVisible(true);
   } else {
     startCanvasLoop();
   }
@@ -603,7 +669,21 @@ iina.onMessage("clear-danmaku", () => {
   currentDanmakuType = 'none';
   lastLoadRawStr = null;
   lastLoadType = null;
+  browserData = [];
+  if (browserWatch) sendBrowserData();
+  sendBrowserVisible(true);
   iina.postMessage("danmaku-type", { type: 'none' });
+});
+
+// 过滤 tab 的监听开关: watch 控制实时推送;refresh 时重发全量列表
+// (sidebar 每次切入过滤 tab 都会带 refresh,避免错过加载期间的数据)
+iina.onMessage("danmaku-browser-watch", (data) => {
+  browserWatch = !!data.watch;
+  if (data.refresh) {
+    buildBrowserData();
+    sendBrowserData();
+  }
+  if (browserWatch) sendBrowserVisible(true);
 });
 
 iina.onMessage("apply-settings", (data) => {

@@ -36,6 +36,7 @@ var densityValue = document.getElementById("density-value");
 var densityCount = document.getElementById("density-count");
 var tabBasic = document.getElementById("tab-basic");
 var tabAdvanced = document.getElementById("tab-advanced");
+var tabFilter = document.getElementById("tab-filter");
 var tabButtons = document.querySelectorAll(".tabbar .tab");
 var fileAddBtn = document.getElementById("danmaku-file-add-btn");
 
@@ -232,7 +233,12 @@ var i18n = {
     episodes_count: "{n} episodes",
     match_type_hash: "(hash)",
     match_type_filename: "(filename match)",
-    match_type_filename_title: "Hash match failed; showing filename-related matches"
+    match_type_filename_title: "Hash match failed; showing filename-related matches",
+    tab_filter: "Filter",
+    filter_title: "Danmaku List",
+    filter_live: "Live {n}",
+    filter_back_live: "Back to Live",
+    filter_empty: "No danmaku loaded"
   },
   ja: {
     danmaku_visible: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a",
@@ -271,7 +277,12 @@ var i18n = {
     episodes_count: "{n}\u8a71",
     match_type_hash: "\uff08hash\uff09",
     match_type_filename: "\uff08\u30d5\u30a1\u30a4\u30eb\u540d\u4e00\u81f4\uff09",
-    match_type_filename_title: "hash \u30de\u30c3\u30c1\u5931\u6557\u3001\u30d5\u30a1\u30a4\u30eb\u540d\u95a2\u9023\u30ea\u30b9\u30c8\u3092\u8868\u793a"
+    match_type_filename_title: "hash \u30de\u30c3\u30c1\u5931\u6557\u3001\u30d5\u30a1\u30a4\u30eb\u540d\u95a2\u9023\u30ea\u30b9\u30c8\u3092\u8868\u793a",
+    tab_filter: "\u30d5\u30a3\u30eb\u30bf\u30fc",
+    filter_title: "\u30b3\u30e1\u30f3\u30c8\u4e00\u89a7",
+    filter_live: "\u30ea\u30a2\u30eb\u30bf\u30a4\u30e0 {n}",
+    filter_back_live: "\u6700\u65b0\u3078",
+    filter_empty: "\u30b3\u30e1\u30f3\u30c8\u672a\u8aad\u8fbc"
   },
   zh: {
     danmaku_visible: "\u5f39\u5e55\u663e\u793a",
@@ -310,7 +321,12 @@ var i18n = {
     episodes_count: "{n} \u96c6",
     match_type_hash: "\uff08hash\uff09",
     match_type_filename: "\uff08\u6587\u4ef6\u540d\u5173\u8054\uff09",
-    match_type_filename_title: "hash \u672a\u5339\u914d\u5230\u7f51\u7edc\u5f39\u5e55\uff0c\u663e\u793a\u6587\u4ef6\u540d\u5173\u8054\u5217\u8868"
+    match_type_filename_title: "hash \u672a\u5339\u914d\u5230\u7f51\u7edc\u5f39\u5e55\uff0c\u663e\u793a\u6587\u4ef6\u540d\u5173\u8054\u5217\u8868",
+    tab_filter: "\u8fc7\u6ee4",
+    filter_title: "\u5f39\u5e55\u5217\u8868",
+    filter_live: "\u5b9e\u65f6 {n}",
+    filter_back_live: "\u56de\u5230\u5b9e\u65f6",
+    filter_empty: "\u672a\u52a0\u8f7d\u5f39\u5e55"
   }
 };
 
@@ -523,7 +539,7 @@ toggleDanmaku.addEventListener("change", function () {
   iina.postMessage("toggle-danmaku");
 });
 
-// Tab switching (basic / advanced)
+// Tab switching (basic / advanced / filter)
 if (tabButtons.length) {
   tabButtons.forEach(function (tab) {
     tab.addEventListener("click", function () {
@@ -533,6 +549,12 @@ if (tabButtons.length) {
       });
       if (tabBasic) tabBasic.style.display = name === "basic" ? "" : "none";
       if (tabAdvanced) tabAdvanced.style.display = name === "advanced" ? "" : "none";
+      if (tabFilter) {
+        var showFilter = name === "filter";
+        tabFilter.style.display = showFilter ? "" : "none";
+        // 过滤 tab 激活时开启实时弹幕推送并请求全量列表;离开时停止推送
+        iina.postMessage("danmaku-browser-watch", { watch: showFilter, refresh: showFilter });
+      }
     });
   });
 }
@@ -1173,3 +1195,177 @@ iina.onMessage("dandanplay-bangumi-result", function (data) {
     }
   } catch (e) {}
 });
+
+/* ========== Filter tab: danmaku browser list ==========
+   全量时间线列表(按 vpos 排序)+ 实时在屏高亮。列表是虚拟滚动:
+   只渲染视口附近的 ~几十行,滚动时重算,因此几万条弹幕也不卡。 */
+var BROWSER_ROW_H = 26;
+var browserItems = [];       // [{index, t, text}] 按 t 升序
+var browserRowOfIndex = null; // index -> 行号
+var browserLiveRows = [];    // 当前在屏弹幕的行号(升序)
+var browserLiveSet = null;
+var browserVpos = -1;        // 最近一次 visible 消息里的 vpos(1/100s)
+var browserFollowLive = true;
+var browserDataKey = '';
+var browserListEl = document.getElementById("danmaku-browser-list");
+var browserSpacerEl = document.getElementById("danmaku-browser-spacer");
+var browserRowNodes = new Map(); // 行号 -> 已渲染节点
+var browserExpectedScrollTop = -1;
+
+function browserFmtTime(vpos) {
+  var sec = Math.floor((vpos || 0) / 100);
+  var h = Math.floor(sec / 3600);
+  var m = Math.floor((sec % 3600) / 60);
+  var s = sec % 60;
+  var p = function (n) { return n < 10 ? "0" + n : String(n); };
+  return h > 0 ? h + ":" + p(m) + ":" + p(s) : p(m) + ":" + p(s);
+}
+
+// 二分查找: 最后一个 t <= vpos 的行号(用于无在屏弹幕时锚定当前位置)
+function browserRowForVpos(vpos) {
+  var lo = 0, hi = browserItems.length - 1, ans = -1;
+  while (lo <= hi) {
+    var mid = (lo + hi) >> 1;
+    if (browserItems[mid].t <= vpos) { ans = mid; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+  return ans;
+}
+
+function browserRenderWindow() {
+  if (!browserListEl) return;
+  var total = browserItems.length;
+  if (browserSpacerEl) browserSpacerEl.style.height = (total * BROWSER_ROW_H) + "px";
+  if (total === 0) {
+    browserRowNodes.forEach(function (el) { el.remove(); });
+    browserRowNodes.clear();
+    return;
+  }
+  var scrollTop = browserListEl.scrollTop;
+  var viewH = browserListEl.clientHeight;
+  var first = Math.max(0, Math.floor(scrollTop / BROWSER_ROW_H) - 8);
+  var last = Math.min(total - 1, Math.ceil((scrollTop + viewH) / BROWSER_ROW_H) + 8);
+  browserRowNodes.forEach(function (el, row) {
+    if (row < first || row > last) { el.remove(); browserRowNodes.delete(row); }
+  });
+  for (var row = first; row <= last; row++) {
+    var node = browserRowNodes.get(row);
+    if (node) {
+      node.classList.toggle("live", browserLiveSet && browserLiveSet.has(browserItems[row].index));
+      continue;
+    }
+    var item = browserItems[row];
+    var div = document.createElement("div");
+    div.className = "danmaku-browser-row" + (browserLiveSet && browserLiveSet.has(item.index) ? " live" : "");
+    div.style.top = (row * BROWSER_ROW_H) + "px";
+    var time = document.createElement("span");
+    time.className = "danmaku-browser-time";
+    time.textContent = browserFmtTime(item.t);
+    var text = document.createElement("span");
+    text.className = "danmaku-browser-text";
+    text.textContent = item.text;
+    div.appendChild(time);
+    div.appendChild(text);
+    browserSpacerEl.appendChild(div);
+    browserRowNodes.set(row, div);
+  }
+}
+
+function browserUpdateLiveUI() {
+  var liveEl = document.getElementById("danmaku-browser-live");
+  if (liveEl) {
+    liveEl.textContent = browserVpos >= 0 && browserItems.length > 0
+      ? browserFmtTime(browserVpos) + " \u00b7 " + t('filter_live').replace('{n}', browserLiveRows.length)
+      : '';
+  }
+  var btn = document.getElementById("danmaku-browser-follow-btn");
+  if (btn) btn.style.display = (browserFollowLive || browserItems.length === 0) ? "none" : "";
+}
+
+function browserScrollTo(top) {
+  if (!browserListEl) return;
+  browserListEl.scrollTop = top;
+  browserExpectedScrollTop = top;
+  browserRenderWindow(); // 立即按新位置渲染,不等浏览器派发 scroll 事件
+}
+
+function browserFollowToLive() {
+  if (!browserListEl || browserItems.length === 0) return;
+  var anchorRow = browserLiveRows.length > 0 ? browserLiveRows[0] : browserRowForVpos(browserVpos);
+  if (anchorRow < 0) return;
+  browserScrollTo(Math.max(0, anchorRow * BROWSER_ROW_H - 48));
+}
+
+iina.onMessage("danmaku-browser-data", function (data) {
+  browserItems = (data && data.items) || [];
+  var key = browserItems.length + ':' +
+    (browserItems.length > 0 ? browserItems[0].t + ':' + browserItems[browserItems.length - 1].t : '');
+  browserRowOfIndex = new Map();
+  for (var i = 0; i < browserItems.length; i++) {
+    if (browserItems[i] && browserItems[i].index !== undefined) browserRowOfIndex.set(browserItems[i].index, i);
+  }
+  browserLiveSet = new Set();
+  browserLiveRows = [];
+  browserVpos = -1;
+  browserRowNodes.forEach(function (el) { el.remove(); });
+  browserRowNodes.clear();
+  var totalEl = document.getElementById("danmaku-browser-total");
+  if (totalEl) totalEl.textContent = browserItems.length > 0 ? browserItems.length.toLocaleString() : "";
+  var emptyEl = document.getElementById("danmaku-browser-empty");
+  if (emptyEl) emptyEl.style.display = browserItems.length > 0 ? "none" : "";
+  // 数据没变(比如切入切出过滤 tab 触发的 refresh)时保留滚动位置
+  if (key !== browserDataKey) {
+    browserDataKey = key;
+    if (browserListEl) browserListEl.scrollTop = 0;
+  }
+  browserUpdateLiveUI();
+  browserRenderWindow();
+});
+
+iina.onMessage("danmaku-visible", function (data) {
+  if (!data || !data.indices) return;
+  if (data.vpos !== undefined) browserVpos = data.vpos;
+  browserLiveSet = new Set();
+  browserLiveRows = [];
+  var seen = {};
+  for (var i = 0; i < data.indices.length; i++) {
+    var idx = data.indices[i];
+    if (seen[idx]) continue;
+    seen[idx] = true;
+    browserLiveSet.add(idx);
+    var row = browserRowOfIndex ? browserRowOfIndex.get(idx) : undefined;
+    if (row !== undefined && row >= 0) browserLiveRows.push(row);
+  }
+  browserLiveRows.sort(function (a, b) { return a - b; });
+  browserUpdateLiveUI();
+  browserRenderWindow();
+  if (browserFollowLive) browserFollowToLive();
+});
+
+if (browserListEl) {
+  browserListEl.addEventListener("scroll", function () {
+    if (browserExpectedScrollTop >= 0 && Math.abs(browserListEl.scrollTop - browserExpectedScrollTop) < 1) {
+      browserExpectedScrollTop = -1;
+      browserRenderWindow(); // 跟随滚动(程序触发): 渲染新窗口,但不当作手动翻阅
+      return;
+    }
+    browserExpectedScrollTop = -1;
+    if (browserFollowLive) {
+      browserFollowLive = false; // 用户手动翻阅: 暂停跟随
+      browserUpdateLiveUI();
+    }
+    browserRenderWindow();
+  });
+}
+
+var browserFollowBtn = document.getElementById("danmaku-browser-follow-btn");
+if (browserFollowBtn) {
+  browserFollowBtn.addEventListener("click", function () {
+    browserFollowLive = true;
+    browserUpdateLiveUI();
+    browserFollowToLive();
+  });
+}
+
+// 侧栏初始在基础 tab: 显式关掉监听,清除 main.js 侧可能残留的 watch 状态
+iina.postMessage("danmaku-browser-watch", { watch: false });

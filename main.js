@@ -193,6 +193,7 @@ var nicoJsonTotalCount = 0;
 var danmakuFilterOffset = 0;
 var danmakuFilterLimit = 0;
 var danmakuFilterDensity = 0;
+var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听实时弹幕
 
 function sanitizeIPCString(value) {
   return String(value || '').replace(/[`\u2018\u2019]/g, "'");
@@ -1706,6 +1707,11 @@ function registerSidebarHandlers() {
       ddpAutoMatchAndLoad(currentVideoUrl);
     }
   });
+
+  sidebar.onMessage("danmaku-browser-watch", function (data) {
+    danmakuBrowserWatch = !!data.watch;
+    overlay.postMessage("danmaku-browser-watch", { watch: danmakuBrowserWatch, refresh: !!data.refresh });
+  });
 }
 
 event.on("iina.window-loaded", function () {
@@ -1734,6 +1740,23 @@ event.on("mpv.pause.changed", function () {
 overlay.onMessage("danmaku-type", function (data) {
   currentDanmakuStatus.fileType = data.type;
   sidebar.postMessage("danmaku-type", currentDanmakuStatus);
+});
+
+// 过滤 tab 弹幕列表: 全量数据始终转发(供 sidebar 预存),实时在屏集合只在监听时转发
+overlay.onMessage("danmaku-browser-data", function (data) {
+  if (data && data.items) {
+    for (var i = 0; i < data.items.length; i++) {
+      if (data.items[i] && typeof data.items[i].text === 'string') {
+        data.items[i].text = sanitizeIPCString(data.items[i].text);
+      }
+    }
+  }
+  sidebar.postMessage("danmaku-browser-data", data);
+});
+
+overlay.onMessage("danmaku-visible", function (data) {
+  if (!danmakuBrowserWatch) return;
+  sidebar.postMessage("danmaku-visible", data);
 });
 
 overlay.onMessage("seek-disable", function () { core.osd(t('seek_disable')); });

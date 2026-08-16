@@ -764,3 +764,79 @@ kbd {
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   margin: 16px -16px;
 }
+
+/* ========== Filter tab: danmaku browser list ========== */
+.browser-total {
+  opacity: 0.6;
+  font-weight: normal;
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.danmaku-browser-list {
+  position: relative;
+  height: min(46vh, 460px);
+  min-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  margin-top: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+.danmaku-browser-spacer {
+  position: relative;
+  width: 100%;
+}
+.danmaku-browser-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.danmaku-browser-row.live {
+  background: var(--bg-selected);
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+}
+.danmaku-browser-time {
+  flex-shrink: 0;
+  min-width: 40px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--tertiary-label);
+}
+.danmaku-browser-row.live .danmaku-browser-time {
+  color: var(--accent);
+}
+.danmaku-browser-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--label);
+}
+.danmaku-browser-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--tertiary-label);
+  pointer-events: none;
+}
+.danmaku-browser-live {
+  font-size: 11px;
+  color: var(--secondary-label);
+  font-variant-numeric: tabular-nums;
+}
