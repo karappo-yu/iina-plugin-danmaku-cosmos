@@ -1043,9 +1043,9 @@ function sendDanmakuBrowserData(items) {
 }
 
 // 播放时间推送(300ms 节流),sidebar 据此计算在屏弹幕窗口
-function pushBrowserTime(timeSec) {
+function pushBrowserTime(timeSec, force) {
   var now = Date.now();
-  if (now - lastBrowserTimeSent < 300) return;
+  if (!force && now - lastBrowserTimeSent < 300) return;
   lastBrowserTimeSent = now;
   sidebar.postMessage("danmaku-visible-time", { time: timeSec, offset: danmakuTimeOffsetSec });
 }
@@ -2371,7 +2371,9 @@ function registerSidebarHandlers() {
     danmakuBrowserWatch = !!data.watch;
     if (danmakuBrowserWatch) {
       var t = mpv.getNumber("time-pos");
-      if (t !== undefined && t !== null) pushBrowserTime(t);
+      // force: 播种锚点必须送达——若被 300ms 节流吞掉,暂停播放时不再有
+      // time-pos 事件,sidebar 的 browserVpos 保持 -1,列表永不锚定
+      if (t !== undefined && t !== null) pushBrowserTime(t, true);
     }
   });
 }
