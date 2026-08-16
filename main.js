@@ -556,7 +556,8 @@ function ensureBrowserSimplifier() {
 }
 
 function browserSimplifyText(text) {
-  if (!text || !openccSimplifier) return text;
+  // 转换器构建后缓存复用,但必须同时检查开关当前状态——关闭后不再转换(原文)
+  if (!text || !openccSimplifier || !danmakuForceSimplified) return text;
   return openccSimplifier(text);
 }
 
