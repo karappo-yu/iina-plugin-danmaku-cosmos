@@ -897,6 +897,10 @@ kbd {
   right: 0;
   top: 0;
 }
+/* 屏蔽词列表全量渲染: 最后一行不画底部分隔线(弹幕列表是虚拟渲染,不可用 :last-child) */
+.danmaku-blocklist-item:last-child {
+  border-bottom: none;
+}
 .danmaku-blocklist-item-text {
   flex: 1;
   min-width: 0;
