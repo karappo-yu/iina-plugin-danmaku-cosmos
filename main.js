@@ -991,7 +991,7 @@ function buildDanmakuBrowserList() {
             var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
             var text = c.body !== undefined ? c.body : c.content;
             if (!isFinite(t) || !text) continue;
-            items.push({ t: t, text: text, blocked: isBlockedText(text) });
+            items.push({ t: t, text: text, blocked: danmakuBlocklistEnabled && isBlockedText(text) });
           }
         }
       }
@@ -1002,7 +1002,7 @@ function buildDanmakuBrowserList() {
           var d = list[k];
           if (!d || typeof d.t !== 'number' || !isFinite(d.t) || !d.text) continue;
           var st = simplifyText(d.text);
-          items.push({ t: Math.round(d.t), text: st, blocked: isBlockedText(st) });
+          items.push({ t: Math.round(d.t), text: st, blocked: danmakuBlocklistEnabled && isBlockedText(st) });
         }
       }
     } else {
@@ -1012,7 +1012,7 @@ function buildDanmakuBrowserList() {
         while ((m = reChat.exec(rawStr)) !== null) {
           if (!m[2]) continue;
           var ct = simplifyText(decodeXmlText(m[2]));
-          items.push({ t: parseInt(m[1], 10) || 0, text: ct, blocked: isBlockedText(ct) });
+          items.push({ t: parseInt(m[1], 10) || 0, text: ct, blocked: danmakuBlocklistEnabled && isBlockedText(ct) });
         }
       } else {
         var reD = /<d\s+p="([^"]*)"[^>]*>([\s\S]*?)<\/d>/g;
@@ -1022,7 +1022,7 @@ function buildDanmakuBrowserList() {
           var sec = parseFloat(parts[0]);
           if (!isFinite(sec) || !m2[2]) continue;
           var bt = simplifyText(decodeXmlText(m2[2]));
-          items.push({ t: Math.round(sec * 100), text: bt, blocked: isBlockedText(bt) });
+          items.push({ t: Math.round(sec * 100), text: bt, blocked: danmakuBlocklistEnabled && isBlockedText(bt) });
         }
       }
     }
