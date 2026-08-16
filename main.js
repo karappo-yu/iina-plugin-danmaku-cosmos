@@ -694,10 +694,12 @@ function dedupeNicoJson(encodedContent) {
   var filteredData = [];
   for (var i = 0; i < data.length; i++) {
     var thread = data[i];
-    if (!thread || !Array.isArray(thread.comments)) { filteredData.push(thread); continue; }
+    // legacy nico-json(thread.chat)与现代表格(thread.comments)都处理
+    var srcComments = thread ? (Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null)) : null;
+    if (!srcComments) { filteredData.push(thread); continue; }
     var entries = [];
-    for (var j = 0; j < thread.comments.length; j++) {
-      var c = thread.comments[j];
+    for (var j = 0; j < srcComments.length; j++) {
+      var c = srcComments[j];
       if (!c) { entries.push({ t: 0, text: '', _c: c, _skip: true }); continue; }
       var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
       var text = c.body !== undefined ? c.body : c.content;
@@ -720,11 +722,11 @@ function dedupeNicoJson(encodedContent) {
       else e._c.content = e.text;
       newComments.push(e._c);
     }
-    if (newComments.length !== thread.comments.length) {
+    if (newComments.length !== srcComments.length) {
       changed = true;
       var newObj = {};
       for (var p in thread) { if (thread.hasOwnProperty(p)) newObj[p] = thread[p]; }
-      newObj.comments = newComments;
+      newObj[Array.isArray(thread.comments) ? 'comments' : 'chat'] = newComments;
       newObj.commentCount = newComments.length;
       filteredData.push(newObj);
     } else {
@@ -833,19 +835,21 @@ function filterBlockedNicoJson(encodedContent) {
   var filteredData = [];
   for (var i = 0; i < data.length; i++) {
     var thread = data[i];
-    if (!thread || !Array.isArray(thread.comments)) { filteredData.push(thread); continue; }
+    // legacy nico-json(thread.chat)与现代表格(thread.comments)都处理
+    var srcComments = thread ? (Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null)) : null;
+    if (!srcComments) { filteredData.push(thread); continue; }
     var kept = [];
-    for (var j = 0; j < thread.comments.length; j++) {
-      var c = thread.comments[j];
+    for (var j = 0; j < srcComments.length; j++) {
+      var c = srcComments[j];
       if (!c) { kept.push(c); continue; }
       var text = c.body !== undefined ? c.body : c.content;
       if (isBlockedText(text)) changed = true;
       else kept.push(c);
     }
-    if (kept.length !== thread.comments.length) {
+    if (kept.length !== srcComments.length) {
       var newObj = {};
       for (var k in thread) { if (thread.hasOwnProperty(k)) newObj[k] = thread[k]; }
-      newObj.comments = kept;
+      newObj[Array.isArray(thread.comments) ? 'comments' : 'chat'] = kept;
       newObj.commentCount = kept.length;
       filteredData.push(newObj);
     } else {
