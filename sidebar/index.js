@@ -1645,11 +1645,11 @@ function renderBlocklist() {
     x.textContent = "\u00d7";
     x.title = t('blocklist_remove');
     x.setAttribute("data-clickable", "");
-    (function (idx) {
+    (function (word) {
       x.addEventListener("click", function () {
-        iina.postMessage("danmaku-blocklist-remove", { index: idx });
+        iina.postMessage("danmaku-blocklist-remove", { word: word }); // 按词值删除,防下标错位
       });
-    })(i);
+    })(blocklistWords[i]);
     chip.appendChild(label);
     chip.appendChild(x);
     blocklistTags.appendChild(chip);

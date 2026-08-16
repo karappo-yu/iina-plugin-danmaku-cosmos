@@ -2085,9 +2085,11 @@ function registerSidebarHandlers() {
     sidebar.postMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
   });
 
+  // 按词值删除(不按下标): 渲染与点击之间列表可能变化,下标会删错词
   sidebar.onMessage("danmaku-blocklist-remove", function (data) {
-    var idx = parseInt(data.index, 10);
-    if (isNaN(idx) || idx < 0 || idx >= danmakuBlocklist.length) return;
+    var word = data && data.word !== undefined ? String(data.word) : null;
+    var idx = word !== null ? danmakuBlocklist.indexOf(word) : -1;
+    if (idx < 0) return;
     danmakuBlocklist.splice(idx, 1);
     preferences.set("danmakuBlocklist", JSON.stringify(danmakuBlocklist));
     syncPreferencesSoon();
