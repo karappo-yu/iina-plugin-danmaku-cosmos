@@ -367,14 +367,14 @@ function clearNicoJsonDuration() {
 }
 
 // nico-json 加载时自动检测时长差: diff = 视频时长 - 弹幕源时长
-// |diff| < 0.5 视为一致(不做事);不一致则提醒,并(开关开启时)自动设置偏移
+// |diff| < 1 视为一致(弹幕源时长只能精确到秒,1s 以内的差值忽略);否则提醒,并(开关开启时)自动设置偏移
 // 返回 true 表示本次比较有效(拿到了视频时长)
 function runDurationCompare(danmakuDuration) {
   var videoDuration;
   try { videoDuration = mpv.getNumber("duration"); } catch (e) { videoDuration = NaN; }
   if (!videoDuration || !isFinite(videoDuration) || videoDuration <= 0) return false;
   var diff = videoDuration - danmakuDuration;
-  if (Math.abs(diff) < 0.5) return true;
+  if (Math.abs(diff) < 1) return true;
   setNicoJsonDurationDiff(diff);
   var offset = Math.round(-diff * 10) / 10;
   if (danmakuAutoOffset) {
