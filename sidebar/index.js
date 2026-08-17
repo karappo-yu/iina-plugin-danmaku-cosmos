@@ -238,7 +238,6 @@ var i18n = {
     filter_empty_merged: "No merged danmaku",
     blocklist_title: "Block Words",
     blocklist_add: "Add",
-    blocklist_empty: "No block words yet",
     blocklist_placeholder: "word or regex...",
     blocklist_remove: "Remove",
     dedupe_title: "Deduplicate",
@@ -293,7 +292,6 @@ var i18n = {
     filter_empty_merged: "\u5408\u4f75\u3055\u308c\u305f\u30b3\u30e1\u30f3\u30c8\u306f\u3042\u308a\u307e\u305b\u3093",
     blocklist_title: "\u30d6\u30ed\u30c3\u30af\u8a9e",
     blocklist_add: "\u8ffd\u52a0",
-    blocklist_empty: "\u307e\u3060\u30d6\u30ed\u30c3\u30af\u8a9e\u306f\u3042\u308a\u307e\u305b\u3093",
     blocklist_placeholder: "\u5358\u8a9e\u307e\u305f\u306f\u6b63\u898f\u8868\u73fe...",
     blocklist_remove: "\u524a\u9664",
     dedupe_title: "\u91cd\u8907\u30b3\u30e1\u30f3\u30c8\u5408\u4f75",
@@ -348,7 +346,6 @@ var i18n = {
     filter_empty_merged: "\u65e0\u5df2\u5408\u5e76\u5f39\u5e55",
     blocklist_title: "\u5c4f\u853d\u8bcd",
     blocklist_add: "\u6dfb\u52a0",
-    blocklist_empty: "\u6682\u65e0\u5c4f\u853d\u8bcd",
     blocklist_placeholder: "\u5c4f\u853d\u8bcd\u6216\u6b63\u5219...",
     blocklist_remove: "\u5220\u9664",
     dedupe_title: "\u5f39\u5e55\u53bb\u91cd",
@@ -1609,13 +1606,11 @@ iina.postMessage("danmaku-sidebar-ready", { pluginRoot: browserPluginRoot() });
 var blocklistToggle = document.getElementById("danmaku-blocklist-toggle");
 var blocklistPanel = document.getElementById("danmaku-blocklist-panel");
 var blocklistList = document.getElementById("danmaku-blocklist-list");
-var blocklistEmpty = document.getElementById("danmaku-blocklist-empty");
 var blocklistWords = [];
 
 function renderBlocklist() {
   if (!blocklistList) return;
   blocklistList.innerHTML = '';
-  if (blocklistEmpty) blocklistEmpty.style.display = blocklistWords.length === 0 ? "" : "none";
   for (var i = 0; i < blocklistWords.length; i++) {
     var item = document.createElement("div");
     item.className = "danmaku-blocklist-item";

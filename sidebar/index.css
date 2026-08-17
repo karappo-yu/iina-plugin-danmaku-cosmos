@@ -963,11 +963,6 @@ kbd {
   color: var(--label);
   background: rgba(255, 255, 255, 0.15);
 }
-.danmaku-blocklist-empty {
-  font-size: 11px;
-  color: var(--tertiary-label);
-  margin-top: 8px;
-}
 /* + 号添加行: 点击进入内联编辑 */
 .danmaku-blocklist-add-item {
   color: var(--tertiary-label);
