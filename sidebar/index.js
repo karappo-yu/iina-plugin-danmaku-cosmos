@@ -335,7 +335,7 @@ var i18n = {
     ddp_auto_network: "\u81ea\u52a8\u52a0\u8f7d\u7f51\u7edc\u5f39\u5e55",
     canvas_renderer: "\u4f7f\u7528 Canvas \u6e32\u67d3",
     danmaku_force_simplified: "\u5f3a\u5236\u8f6c\u6362\u7b80\u4f53", 
-    danmaku_auto_offset: "\u81ea\u52d8\u504f\u79fb\u6aa2\u6e2c", 
+    danmaku_auto_offset: "\u81ea\u52a8\u504f\u79fb\u68c0\u6d4b", 
     search_results: "\u641c\u7d22\u7ed3\u679c",
     click_load_episodes: "\u70b9\u51fb\u52a0\u8f7d\u96c6\u6570\u5217\u8868",
     loading_episodes: "\u6b63\u5728\u52a0\u8f7d\u96c6\u6570...",
