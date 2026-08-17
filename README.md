@@ -28,6 +28,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **手动加载弹幕**：通过菜单或侧边栏手动选择弹幕文件
 - **侧边栏控制面板**：实时调整弹幕开关、渲染模式、繁简转换、透明度、字体缩放、滚动速度等
 - **弹幕时间偏移**：在高级设置中可手动输入偏移秒数，或按 A / D 键快速回退/前进，用于调整弹幕显示时间
+- **弹幕过滤面板**：侧边栏新增「过滤」tab——弹幕时间轴浏览、屏蔽词、去重合并、点击跳转
 - **快捷键**：`Shift + D` 显示/隐藏弹幕
 - **弹幕字体设置**：在高级设置中可选择字体预设（日文/中文字体）或自定义字体，并可调节粗细，用于调整弹幕的显示效果
 - **滚动速度控制**：在高级设置中可调节滚动弹幕的速度（25%~100%，仅调慢），固定弹幕不受影响
@@ -90,6 +91,15 @@ CA 弹幕：
 
 在侧边栏「高级设置」中切换渲染模式。
 
+### 弹幕过滤
+
+侧边栏新增「过滤」tab，提供弹幕时间轴浏览与过滤功能：
+
+- **时间轴列表**：虚拟滚动，数万条弹幕流畅浏览；跟随播放位置实时滚动，高亮当前屏幕上的弹幕
+- **屏蔽词**：标签式屏蔽词列表，支持正则；被屏蔽的弹幕在列表中以删除线标记，且不参与渲染
+- **去重**：将设定时间窗内的相同弹幕合并为「原文xN」并自动配色；固定弹幕支持渐进合并（x2/x3）
+- **点击跳转**：点击时间戳跳转视频到对应位置；弹幕文本内的时间（如「空降 01:39」）也可点击跳转
+
 ### 弹幕文件加载
 
 #### 自动加载
@@ -139,6 +149,7 @@ CA 弹幕：
 - **手動読み込み**：メニューやサイドバーからコメントファイルを選択
 - **サイドバーコントロール**：コメント表示、描画モード、繁簡変換、透明度、フォント倍率、スクロール速度などをリアルタイム調整
 - **コメントタイムオフセット**：詳細設定で秒数を入力したり、A / D キーで素早く巻き戻し／進めることができ、コメントの表示時間を調整できます
+- **コメントフィルタパネル**：サイドバーに新しい「フィルター」タブを追加——コメントタイムライン表示、NGワード、重複マージ、クリックでジャンプ
 - **ショートカット**：`Shift + D` でコメントの表示/非表示を切り替え
 - **コメントフォント設定**：詳細設定でフォント（日本語・中国語フォントのプリセットやカスタム）と太さを選択でき、コメントの表示効果を調整できます
 - **スクロール速度調整**：詳細設定でスクロールコメントの速度を調整できます（25%〜100%、減速のみ）。固定コメントには影響しません
@@ -157,6 +168,15 @@ CA 弹幕：
 - **Bilibili**：フォント倍率 35%、太さ 200、縁取り 2.5px、スクロール速度 40%
 
 「フォント倍率」「スクロール速度」「フォントの太さ」などのオプションで手動微調整も可能です。
+
+### コメントフィルター
+
+サイドバーの新しい「フィルター」タブで、コメントタイムラインの表示とフィルターを提供します：
+
+- **タイムライン一覧**：仮想スクロールにより数万件のコメントもスムーズに表示。再生位置に追従してスクロールし、現在画面上のコメントをハイライト
+- **NGワード**：タグ形式のNGワード一覧、正規表現対応。NG判定されたコメントは一覧上で取り消し線表示となり、描画からも除外
+- **重複排除**：設定した時間窓内の同一コメントを「原文xN」に統合して自動着色。固定コメントは段階的マージ（x2/x3）に対応
+- **クリックでジャンプ**：タイムスタンプをクリックすると動画の該当位置へジャンプ。コメント本文内の時刻（例：「空降 01:39」）もクリックでジャンプ可能
 
 ### ネットワークコメント
 
@@ -212,6 +232,7 @@ CA 弹幕：
 - **Manual load**: Select danmaku files via menu or sidebar
 - **Sidebar control panel**: Real-time adjustment of danmaku visibility, render mode, Chinese conversion, opacity, font scale, scroll speed, and more
 - **Danmaku time offset**: Adjust timing in Advanced settings by entering a seconds offset, or use A / D keys to quickly rewind or advance to change the display timing of danmaku
+- **Danmaku filter panel**: New "Filter" tab in the sidebar — danmaku timeline browser, blocklist, dedupe merging, click-to-seek
 - **Shortcut**: Press `Shift + D` to show/hide danmaku
 - **Danmaku font settings**: Choose a font (Japanese/Chinese presets or custom) and weight in Advanced settings to adjust the danmaku appearance
 - **Scroll speed control**: Adjust the scrolling danmaku speed in Advanced settings (25%–100%, slow-down only); fixed comments are unaffected
@@ -251,6 +272,15 @@ The plugin integrates the dandanplay open platform API for automatic network dan
 | **Canvas** | Canvas 2D rendering via niconicomments engine | When CSS mode doesn't suit |
 
 Toggle between modes in the sidebar's Advanced settings.
+
+### Danmaku Filter
+
+A new **Filter** tab in the sidebar provides a danmaku timeline browser with filtering:
+
+- **Timeline list**: Virtual scrolling keeps tens of thousands of danmaku smooth; live-follows playback position and highlights danmaku currently on screen
+- **Block words**: Tag-list blocklist with regex support; blocked danmaku are shown with strikethrough in the list and excluded from rendering
+- **Dedupe**: Merges identical danmaku within a configurable time window into `text xN` with auto-coloring; fixed comments support progressive merging (x2/x3)
+- **Click-to-seek**: Click a timestamp to seek the video to that position; times inside danmaku text (e.g. `空降 01:39`) are also clickable
 
 ### Loading Comment Files
 
