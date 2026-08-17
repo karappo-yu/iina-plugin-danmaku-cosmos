@@ -36,6 +36,7 @@
     "dandanplayAutoNetwork": true,
     "dandanplayChConvert": 0,
     "dandanplayWithRelated": true,
-    "danmakuForceSimplified": false
+    "danmakuForceSimplified": false,
+    "danmakuAutoOffset": true
   }
 }

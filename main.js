@@ -10,6 +10,8 @@ var mpv = iina.mpv;
 
 var danmakuEnabled = preferences.get("danmakuEnabled");
 var danmakuForceSimplified = preferences.get("danmakuForceSimplified") !== undefined ? preferences.get("danmakuForceSimplified") : true;
+// 弹幕时长自动偏移检测(nico-json): 加载时对比弹幕源时长与视频时长,自动设置偏移
+var danmakuAutoOffset = preferences.get("danmakuAutoOffset") !== undefined ? preferences.get("danmakuAutoOffset") : true;
 // 屏蔽词过滤(正则支持)——列表与开关都持久化;过滤在 getEffectiveContent 单源出口执行
 var danmakuBlocklist = [];
 try { danmakuBlocklist = JSON.parse(preferences.get("danmakuBlocklist") || '[]') || []; } catch (e) { danmakuBlocklist = []; }
@@ -379,6 +381,7 @@ function runDurationCompare(danmakuDuration) {
 
 function checkNicoJsonDuration(encodedContent) {
   setNicoJsonDurationDiff(null);
+  if (!danmakuAutoOffset) return;
   var danmakuDuration = extractNicoJsonDuration(encodedContent);
   if (danmakuDuration === null) return;
   if (runDurationCompare(danmakuDuration)) return;
@@ -2142,6 +2145,19 @@ function registerSidebarHandlers() {
     notifyBrowserDataChanged();
   });
 
+  sidebar.onMessage("set-danmaku-auto-offset", function (data) {
+    danmakuAutoOffset = !!data.value;
+    preferences.set("danmakuAutoOffset", danmakuAutoOffset);
+    syncPreferencesSoon();
+    // 开启时: 若当前已加载 nico-json,补做一次时长检测
+    if (danmakuAutoOffset && currentDanmakuStatus.fileType === 'nico-json') {
+      var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+      if (selectedPath && danmakuCache[selectedPath]) {
+        checkNicoJsonDuration(danmakuCache[selectedPath]);
+      }
+    }
+  });
+
   sidebar.onMessage("set-stroke-opacity", function (data) {
     strokeOpacity = data.opacity;
     preferences.set("strokeOpacity", strokeOpacity);
@@ -2334,6 +2350,7 @@ function registerSidebarHandlers() {
       danmakuFontWeight: danmakuFontWeight,
       stylePreset: stylePreset,
       danmakuForceSimplified: danmakuForceSimplified,
+      danmakuAutoOffset: danmakuAutoOffset,
       danmakuFileType: currentDanmakuStatus.fileType,
       danmakuFileName: currentDanmakuStatus.fileName,
       danmakuRelativePath: currentDanmakuStatus.relativePath,
