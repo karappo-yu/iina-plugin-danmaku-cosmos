@@ -2223,8 +2223,11 @@ function registerSidebarHandlers() {
     danmakuBlocklistEnabled = !!data.enabled;
     preferences.set("danmakuBlocklistEnabled", danmakuBlocklistEnabled);
     syncPreferencesSoon();
-    notifyBrowserDataChanged();
-    resendDanmakuToOverlay();
+    // 屏蔽词为零时开关不影响弹幕内容,跳过重建以省性能
+    if (danmakuBlocklist.length > 0) {
+      notifyBrowserDataChanged();
+      resendDanmakuToOverlay();
+    }
     sidebar.postMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
   });
 
