@@ -364,7 +364,7 @@ function clearNicoJsonDuration() {
 }
 
 // nico-json 加载时自动检测时长差: diff = 视频时长 - 弹幕源时长
-// |diff| < 0.5 视为一致(不做事);不一致则偏移设为 -diff(视频多出的片头部分)
+// |diff| < 0.5 视为一致(不做事);不一致则提醒,并(开关开启时)自动设置偏移
 // 返回 true 表示本次比较有效(拿到了视频时长)
 function runDurationCompare(danmakuDuration) {
   var videoDuration;
@@ -374,14 +374,15 @@ function runDurationCompare(danmakuDuration) {
   if (Math.abs(diff) < 0.5) return true;
   setNicoJsonDurationDiff(diff);
   var offset = Math.round(-diff * 10) / 10;
-  applyDanmakuOffset(offset);
+  if (danmakuAutoOffset) {
+    applyDanmakuOffset(offset);
+  }
   core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
   return true;
 }
 
 function checkNicoJsonDuration(encodedContent) {
   setNicoJsonDurationDiff(null);
-  if (!danmakuAutoOffset) return;
   var danmakuDuration = extractNicoJsonDuration(encodedContent);
   if (danmakuDuration === null) return;
   if (runDurationCompare(danmakuDuration)) return;
