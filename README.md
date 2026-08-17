@@ -28,6 +28,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **手动加载弹幕**：通过菜单或侧边栏手动选择弹幕文件
 - **侧边栏控制面板**：实时调整弹幕开关、渲染模式、繁简转换、透明度、字体缩放、滚动速度等
 - **弹幕时间偏移**：在高级设置中可手动输入偏移秒数，或按 A / D 键快速回退/前进，用于调整弹幕显示时间
+- **自动设置片头偏移**：加载 Niconico V1 JSON 弹幕时，自动检测弹幕源时长与当前视频时长的差异。当片源开头包含 Aniplex 等供应商片头导致视频比原始弹幕源更长时，自动设置偏移量跳过片头。差值 1 秒以内视为一致（弹幕源时长仅精确到秒）。可在高级设置中关闭自动设置——关闭后仍会检测并在侧边栏以红字提醒时长不一致，但不再自动设置偏移。**仅对 Niconico V1 JSON 格式有效**，且弹幕文件中需包含 `thread` 的 `fork: "main"` 和 `duration` 字段（Niconico 官方导出的 JSON 不含 `duration`，需由自定义下载器写入）。这是对 V1 JSON 格式的可选增强，不影响标准 V1 JSON 的正常读取，也不影响其他弹幕格式——不使用 Niconico JSON 的用户无需关注此开关
 - **弹幕过滤面板**：侧边栏新增「过滤」tab——弹幕时间轴浏览、屏蔽词、去重合并、点击跳转
 - **快捷键**：`Shift + D` 显示/隐藏弹幕
 - **弹幕字体设置**：在高级设置中可选择字体预设（日文/中文字体）或自定义字体，并可调节粗细，用于调整弹幕的显示效果
@@ -149,6 +150,7 @@ CA 弹幕：
 - **手動読み込み**：メニューやサイドバーからコメントファイルを選択
 - **サイドバーコントロール**：コメント表示、描画モード、繁簡変換、透明度、フォント倍率、スクロール速度などをリアルタイム調整
 - **コメントタイムオフセット**：詳細設定で秒数を入力したり、A / D キーで素早く巻き戻し／進めることができ、コメントの表示時間を調整できます
+- **オフセット自動設定**：Niconico V1 JSON コメント読み込み時に、コメントソースの長さと現在の動画の長さの差異を自動検出します。Aniplex などの配給ロゴにより動画が元のコメントソースより長い場合、オフセットを自動設定して冒頭をスキップします。差が 1 秒未満は一致とみなします（コメントソースの長さは秒単位まで）。詳細設定で自動設定をオフにできます——オフでも検出とサイドバーの赤字による長さ不一致の通知は行われますが、オフセットの自動設定は行いません。**Niconico V1 JSON フォーマットのみ対応**。コメントファイルの `thread` に `fork: "main"` と `duration` フィールドが必要です（Niconico 公式のエクスポート JSON には `duration` が含まれず、カスタムダウンローダーで書き込む必要があります）。これは V1 JSON フォーマットに対するオプションの拡張であり、標準 V1 JSON の読み込みや他のコメントフォーマットには影響しません——Niconico JSON を使用しないユーザーはこのトグルを気にする必要はありません
 - **コメントフィルタパネル**：サイドバーに新しい「フィルター」タブを追加——コメントタイムライン表示、NGワード、重複マージ、クリックでジャンプ
 - **ショートカット**：`Shift + D` でコメントの表示/非表示を切り替え
 - **コメントフォント設定**：詳細設定でフォント（日本語・中国語フォントのプリセットやカスタム）と太さを選択でき、コメントの表示効果を調整できます
@@ -232,6 +234,7 @@ CA 弹幕：
 - **Manual load**: Select danmaku files via menu or sidebar
 - **Sidebar control panel**: Real-time adjustment of danmaku visibility, render mode, Chinese conversion, opacity, font scale, scroll speed, and more
 - **Danmaku time offset**: Adjust timing in Advanced settings by entering a seconds offset, or use A / D keys to quickly rewind or advance to change the display timing of danmaku
+- **Auto set intro offset**: When loading Niconico V1 JSON danmaku, automatically detects the duration difference between the danmaku source and the current video. When the video is longer than the original danmaku source (e.g. due to Aniplex distributor logos at the start), automatically sets an offset to skip the intro. Differences under 1 second are treated as consistent (danmaku source duration is only second-precision). Auto-setting can be disabled in Advanced settings — when disabled, detection and a red-text warning in the sidebar still occur, but the offset is no longer applied automatically. **Only works with Niconico V1 JSON format**, and requires the danmaku file's `thread` to contain `fork: "main"` and `duration` fields (Niconico's official export JSON does not include `duration`; it must be injected by a custom downloader). This is an optional enhancement to the V1 JSON format — it does not affect standard V1 JSON loading or other danmaku formats, so users not using Niconico JSON can ignore this toggle
 - **Danmaku filter panel**: New "Filter" tab in the sidebar — danmaku timeline browser, blocklist, dedupe merging, click-to-seek
 - **Shortcut**: Press `Shift + D` to show/hide danmaku
 - **Danmaku font settings**: Choose a font (Japanese/Chinese presets or custom) and weight in Advanced settings to adjust the danmaku appearance
