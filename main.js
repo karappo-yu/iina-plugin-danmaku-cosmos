@@ -89,7 +89,8 @@ var PLUGIN_I18N = {
     ddp_api_error: "DanDanPlay: API response error",
     ddp_no_comments: "DanDanPlay: no danmaku for this video",
     ddp_load_failed: "DanDanPlay: failed to load danmaku",
-    duration_mismatch: "Duration mismatch with danmaku file: offset set to {offset}s"
+    duration_mismatch: "Duration mismatch with danmaku file: offset set to {offset}s",
+    duration_mismatch_no_offset: "Duration mismatch with danmaku file"
   },
   ja: {
     menu_toggle: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a\u3092\u5207\u308a\u66ff\u3048",
@@ -117,7 +118,8 @@ var PLUGIN_I18N = {
     ddp_api_error: "\u5f3e\u5f3ePlay: API\u5fdc\u7b54\u30a8\u30e9\u30fc",
     ddp_no_comments: "\u5f3e\u5f3ePlay: \u3053\u306e\u52d5\u753b\u306b\u30b3\u30e1\u30f3\u30c8\u304c\u3042\u308a\u307e\u305b\u3093",
     ddp_load_failed: "\u5f3e\u5f3ePlay: \u30b3\u30e1\u30f3\u30c8\u306e\u8aad\u307f\u8fbc\u307f\u306b\u5931\u6557\u3057\u307e\u3057\u305f",
-    duration_mismatch: "\u52d5\u753b\u306e\u9577\u3055\u304c\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u3068\u4e00\u81f4\u3057\u307e\u305b\u3093: \u30aa\u30d5\u30bb\u30c3\u30c8\u3092 {offset}s \u306b\u81ea\u52d5\u8abf\u6574"
+    duration_mismatch: "\u52d5\u753b\u306e\u9577\u3055\u304c\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u3068\u4e00\u81f4\u3057\u307e\u305b\u3093: \u30aa\u30d5\u30bb\u30c3\u30c8\u3092 {offset}s \u306b\u81ea\u52d5\u8abf\u6574",
+    duration_mismatch_no_offset: "\u52d5\u753b\u306e\u9577\u3055\u304c\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u3068\u4e00\u81f4\u3057\u307e\u305b\u3093"
   },
   zh: {
     menu_toggle: "\u5207\u6362\u5f39\u5e55\u663e\u793a",
@@ -145,7 +147,8 @@ var PLUGIN_I18N = {
     ddp_api_error: "\u5f39\u5f39play: API\u54cd\u5e94\u9519\u8bef",
     ddp_no_comments: "\u5f39\u5f39play: \u8be5\u89c6\u9891\u65e0\u5f39\u5e55",
     ddp_load_failed: "\u5f39\u5f39play: \u52a0\u8f7d\u5f39\u5e55\u5931\u8d25",
-    duration_mismatch: "\u89c6\u9891\u65f6\u957f\u4e0e\u5f39\u5e55\u6587\u4ef6\u4e0d\u4e00\u81f4: \u5df2\u81ea\u52a8\u8bbe\u7f6e\u504f\u79fb {offset} \u79d2"
+    duration_mismatch: "\u89c6\u9891\u65f6\u957f\u4e0e\u5f39\u5e55\u6587\u4ef6\u4e0d\u4e00\u81f4: \u5df2\u81ea\u52a8\u8bbe\u7f6e\u504f\u79fb {offset} \u79d2",
+    duration_mismatch_no_offset: "\u89c6\u9891\u65f6\u957f\u4e0e\u5f39\u5e55\u6587\u4ef6\u4e0d\u4e00\u81f4"
   }
 };
 
@@ -376,8 +379,10 @@ function runDurationCompare(danmakuDuration) {
   var offset = Math.round(-diff * 10) / 10;
   if (danmakuAutoOffset) {
     applyDanmakuOffset(offset);
+    core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
+  } else {
+    core.osd(t('duration_mismatch_no_offset'));
   }
-  core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
   return true;
 }
 
@@ -398,8 +403,12 @@ function checkNicoJsonDuration(encodedContent) {
 // 加载弹幕后的 OSD: 若时长检测发现不一致,优先提醒(避免被"已加载"覆盖)
 function osdAfterDanmakuLoad(loadedName) {
   if (nicoJsonDurationDiff !== null) {
-    var offset = Math.round(-nicoJsonDurationDiff * 10) / 10;
-    core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
+    if (danmakuAutoOffset) {
+      var offset = Math.round(-nicoJsonDurationDiff * 10) / 10;
+      core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
+    } else {
+      core.osd(t('duration_mismatch_no_offset'));
+    }
   } else {
     core.osd(t('loaded') + loadedName);
   }
