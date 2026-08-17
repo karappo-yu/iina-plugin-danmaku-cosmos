@@ -86,7 +86,8 @@ var PLUGIN_I18N = {
     ddp_network_error: "DanDanPlay: network error",
     ddp_api_error: "DanDanPlay: API response error",
     ddp_no_comments: "DanDanPlay: no danmaku for this video",
-    ddp_load_failed: "DanDanPlay: failed to load danmaku"
+    ddp_load_failed: "DanDanPlay: failed to load danmaku",
+    duration_mismatch: "Duration mismatch with danmaku file: offset set to {offset}s"
   },
   ja: {
     menu_toggle: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a\u3092\u5207\u308a\u66ff\u3048",
@@ -113,7 +114,8 @@ var PLUGIN_I18N = {
     ddp_network_error: "\u5f3e\u5f3ePlay: \u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u30a8\u30e9\u30fc",
     ddp_api_error: "\u5f3e\u5f3ePlay: API\u5fdc\u7b54\u30a8\u30e9\u30fc",
     ddp_no_comments: "\u5f3e\u5f3ePlay: \u3053\u306e\u52d5\u753b\u306b\u30b3\u30e1\u30f3\u30c8\u304c\u3042\u308a\u307e\u305b\u3093",
-    ddp_load_failed: "\u5f3e\u5f3ePlay: \u30b3\u30e1\u30f3\u30c8\u306e\u8aad\u307f\u8fbc\u307f\u306b\u5931\u6557\u3057\u307e\u3057\u305f"
+    ddp_load_failed: "\u5f3e\u5f3ePlay: \u30b3\u30e1\u30f3\u30c8\u306e\u8aad\u307f\u8fbc\u307f\u306b\u5931\u6557\u3057\u307e\u3057\u305f",
+    duration_mismatch: "\u52d5\u753b\u306e\u9577\u3055\u304c\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u3068\u4e00\u81f4\u3057\u307e\u305b\u3093: \u30aa\u30d5\u30bb\u30c3\u30c8\u3092 {offset}s \u306b\u81ea\u52d5\u8abf\u6574"
   },
   zh: {
     menu_toggle: "\u5207\u6362\u5f39\u5e55\u663e\u793a",
@@ -140,7 +142,8 @@ var PLUGIN_I18N = {
     ddp_network_error: "\u5f39\u5f39play: \u7f51\u7edc\u9519\u8bef",
     ddp_api_error: "\u5f39\u5f39play: API\u54cd\u5e94\u9519\u8bef",
     ddp_no_comments: "\u5f39\u5f39play: \u8be5\u89c6\u9891\u65e0\u5f39\u5e55",
-    ddp_load_failed: "\u5f39\u5f39play: \u52a0\u8f7d\u5f39\u5e55\u5931\u8d25"
+    ddp_load_failed: "\u5f39\u5f39play: \u52a0\u8f7d\u5f39\u5e55\u5931\u8d25",
+    duration_mismatch: "\u89c6\u9891\u65f6\u957f\u4e0e\u5f39\u5e55\u6587\u4ef6\u4e0d\u4e00\u81f4: \u5df2\u81ea\u52a8\u8bbe\u7f6e\u504f\u79fb {offset} \u79d2"
   }
 };
 
@@ -201,6 +204,9 @@ var danmakuFileList = {
 var danmakuCache = {};
 
 var nicoJsonTotalCount = 0;
+// 时长检测: nico-json main 线程的 duration(下载弹幕时原视频长度,秒)与当前视频时长的差值
+// null = 无检测结果(非 nico-json / 无 duration 字段 / 时长一致)
+var nicoJsonDurationDiff = null;
 var danmakuFilterOffset = 0;
 var danmakuFilterLimit = 0;
 var danmakuFilterDensity = 0;
@@ -319,6 +325,80 @@ function computeNicoJsonCount(encodedContent) {
     return count;
   } catch (e) {}
   return 0;
+}
+
+// 读取 nico-json 中 main 线程的 duration 字段(下载弹幕时原视频的长度,单位秒)
+function extractNicoJsonDuration(encodedContent) {
+  if (!encodedContent) return null;
+  try {
+    var raw = decodeURIComponent(encodedContent);
+    var data = JSON.parse(raw);
+    if (!Array.isArray(data)) return null;
+    for (var i = 0; i < data.length; i++) {
+      var th = data[i];
+      if (th && th.fork === 'main' && typeof th.duration === 'number' && isFinite(th.duration) && th.duration > 0) {
+        return th.duration;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+function formatSecondsShort(sec) {
+  var n = Math.round(sec * 10) / 10;
+  return (n % 1 === 0) ? String(Math.round(n)) : String(n);
+}
+
+// 时长检测: nico-json main 线程的 duration(下载弹幕时原视频长度,秒)与当前视频时长的差值
+// null = 无检测结果(非 nico-json / 无 duration 字段 / 时长一致)
+function setNicoJsonDurationDiff(diff) {
+  if (nicoJsonDurationDiff === diff) return;
+  nicoJsonDurationDiff = diff;
+  sidebar.postMessage("danmaku-state", { nicoJsonDurationDiff: diff });
+}
+
+function clearNicoJsonDuration() {
+  setNicoJsonDurationDiff(null);
+}
+
+// nico-json 加载时自动检测时长差: diff = 视频时长 - 弹幕源时长
+// |diff| < 0.5 视为一致(不做事);不一致则偏移设为 -diff(视频多出的片头部分)
+// 返回 true 表示本次比较有效(拿到了视频时长)
+function runDurationCompare(danmakuDuration) {
+  var videoDuration;
+  try { videoDuration = mpv.getNumber("duration"); } catch (e) { videoDuration = NaN; }
+  if (!videoDuration || !isFinite(videoDuration) || videoDuration <= 0) return false;
+  var diff = videoDuration - danmakuDuration;
+  if (Math.abs(diff) < 0.5) return true;
+  setNicoJsonDurationDiff(diff);
+  var offset = Math.round(-diff * 10) / 10;
+  applyDanmakuOffset(offset);
+  core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
+  return true;
+}
+
+function checkNicoJsonDuration(encodedContent) {
+  setNicoJsonDurationDiff(null);
+  var danmakuDuration = extractNicoJsonDuration(encodedContent);
+  if (danmakuDuration === null) return;
+  if (runDurationCompare(danmakuDuration)) return;
+  // file-loaded 瞬间 mpv duration 可能还没就绪,延迟重试一次(仅当仍选中同一弹幕文件)
+  var savedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+  setTimeout(function () {
+    if (savedPath && danmakuFileList.selectedPaths.length > 0 && danmakuFileList.selectedPaths[0] === savedPath) {
+      runDurationCompare(danmakuDuration);
+    }
+  }, 800);
+}
+
+// 加载弹幕后的 OSD: 若时长检测发现不一致,优先提醒(避免被"已加载"覆盖)
+function osdAfterDanmakuLoad(loadedName) {
+  if (nicoJsonDurationDiff !== null) {
+    var offset = Math.round(-nicoJsonDurationDiff * 10) / 10;
+    core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
+  } else {
+    core.osd(t('loaded') + loadedName);
+  }
 }
 
 function sendDanmakuFilterInfo() {
@@ -1625,6 +1705,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
     danmakuFileList.selectedPaths = [virtualPath];
     updateDanmakuStatus({ fileType: 'dandanplay', fileName: displayName, relativePath: 'DanDanPlay #' + episodeId, isLoaded: true });
     nicoJsonTotalCount = 0;
+    clearNicoJsonDuration();
     danmakuFilterOffset = 0;
     danmakuFilterLimit = 0;
     danmakuFilterDensity = 0;
@@ -1744,6 +1825,7 @@ function loadDanmakuForVideo(url) {
   ddpResetState();
   currentDanmakuStatus = { fileType: null, fileName: null, relativePath: null, isLoaded: false };
   nicoJsonTotalCount = 0;
+  clearNicoJsonDuration();
   danmakuFilterOffset = 0;
   danmakuFilterLimit = 0;
   danmakuFilterDensity = 0;
@@ -1842,8 +1924,10 @@ function loadLocalDanmaku(fileInfo) {
 
   if (fileType === 'nico-json') {
     nicoJsonTotalCount = computeNicoJsonCount(encodedContent);
+    checkNicoJsonDuration(encodedContent);
   } else {
     nicoJsonTotalCount = 0;
+    clearNicoJsonDuration();
   }
   danmakuFilterOffset = 0;
   danmakuFilterLimit = 0;
@@ -1873,7 +1957,7 @@ function loadLocalDanmaku(fileInfo) {
 
   if (overlayReady) {
     overlay.postMessage("load-danmaku", payload);
-    core.osd(t('loaded') + fileInfo.filename);
+    osdAfterDanmakuLoad(fileInfo.filename);
     setObserver(true);
   } else {
     pendingDanmaku = payload;
@@ -1909,7 +1993,7 @@ function markOverlayReady() {
     var pendingPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : "";
     var pendingInfo = pendingPath ? findDanmakuFileByPath(pendingPath) : null;
     var loadedName = pendingInfo ? pendingInfo.filename : (pendingPath ? pendingPath.split("/").pop() : "");
-    core.osd(t('loaded') + loadedName);
+    osdAfterDanmakuLoad(loadedName);
     pendingDanmaku = null;
     setObserver(true);
   } else if (danmakuEnabled && !core.status.idle && currentVideoUrl) {
@@ -1980,8 +2064,10 @@ function loadManualDanmakuFile(path) {
 
   if (manualFileType === 'nico-json') {
     nicoJsonTotalCount = computeNicoJsonCount(encodedContent);
+    checkNicoJsonDuration(encodedContent);
   } else {
     nicoJsonTotalCount = 0;
+    clearNicoJsonDuration();
   }
   danmakuFilterOffset = 0;
   danmakuFilterLimit = 0;
@@ -2007,7 +2093,7 @@ function loadManualDanmakuFile(path) {
 
   if (overlayReady) {
     overlay.postMessage("load-danmaku", manualPayload);
-    core.osd(t('loaded') + manualFileName);
+    osdAfterDanmakuLoad(manualFileName);
     ensureDanmakuEnabled();
   } else {
     pendingDanmaku = manualPayload;
@@ -2250,6 +2336,7 @@ function registerSidebarHandlers() {
       danmakuRelativePath: currentDanmakuStatus.relativePath,
       danmakuLoaded: currentDanmakuStatus.isLoaded,
       danmakuFilterDensity: danmakuFilterDensity,
+      nicoJsonDurationDiff: nicoJsonDurationDiff,
     });
     sidebar.postMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
@@ -2311,8 +2398,10 @@ function registerSidebarHandlers() {
 
     if (fileType === 'nico-json') {
       nicoJsonTotalCount = computeNicoJsonCount(encodedContent);
+      checkNicoJsonDuration(encodedContent);
     } else {
       nicoJsonTotalCount = 0;
+      clearNicoJsonDuration();
     }
     danmakuFilterOffset = 0;
     danmakuFilterLimit = 0;
@@ -2339,7 +2428,7 @@ function registerSidebarHandlers() {
     };
 
     overlay.postMessage("load-danmaku", selectPayload);
-    core.osd(t('loaded') + (fileInfo ? fileInfo.filename : fileName));
+    osdAfterDanmakuLoad(fileInfo ? fileInfo.filename : fileName);
     ensureDanmakuEnabled();
   }
 
@@ -2371,7 +2460,7 @@ function registerSidebarHandlers() {
       if (content) {
         danmakuCache[path] = encodeContent(content);
         selectDanmakuFile(path); // 添加即加载: 不用再在列表里手动点选
-        core.osd(t('loaded') + fname);
+        osdAfterDanmakuLoad(fname);
       } else {
         core.osd(t('read_failed_name') + fname);
         sidebar.postMessage("danmaku-file-error", { path: path, message: t('read_failed') });

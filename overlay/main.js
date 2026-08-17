@@ -317,7 +317,9 @@ iina.onMessage("time-update", (data) => {
   lastTime = t;
   if (isSeek && niconiComments) {
     niconiComments.clear();
-    drawCanvasAtVpos(t, true);
+    // 必须用偏移后时间: 裸视频时间会在负偏移时把本该延后的弹幕提前生成,
+    // CSS 模式弹幕是 DOM 动画,生成后会完整飘完一遍再出现第二次(重复)
+    drawCanvasAtVpos(canvasGetCurrentTime() * 100, true);
   }
   startCanvasLoop();
 });
@@ -388,7 +390,9 @@ iina.onMessage("resize", () => {
 });
 
 iina.onMessage("pause-state", (data) => {
-  const anchoredTime = canvasGetCurrentTime();
+  // canvasGetCurrentTime() 返回的是含偏移的时间,而锚点存的是裸视频时间——
+  // 回写前必须剥离偏移,否则下次读取会二次叠加偏移
+  const anchoredTime = canvasGetCurrentTime() - danmakuTimeOffsetSec;
   isPaused = !!data.paused;
   canvasIsPlaying = !isPaused;
   canvasSyncAnchor(anchoredTime);
@@ -404,7 +408,8 @@ iina.onMessage("pause-state", (data) => {
 });
 
 iina.onMessage("playback-speed", (data) => {
-  const anchoredTime = canvasGetCurrentTime();
+  // 同 pause-state: 锚点存裸视频时间,回写前剥离偏移
+  const anchoredTime = canvasGetCurrentTime() - danmakuTimeOffsetSec;
   playbackSpeed = data && data.speed ? data.speed : 1.0;
   canvasSyncAnchor(anchoredTime);
   // 通知 CSS 渲染器:速度变化时重设滚动动画时长(1x 无操作)

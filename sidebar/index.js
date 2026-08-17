@@ -16,6 +16,7 @@ var commentLimitValue = document.getElementById("comment-limit-value");
 var speedSlider = document.getElementById("speed-slider");
 var speedValue = document.getElementById("speed-value");
 var offsetInput = document.getElementById("danmaku-offset-input");
+var durationMismatchHint = document.getElementById("duration-mismatch-hint");
 var fontSelect = document.getElementById("danmaku-font-select");
 var fontCustomRow = document.getElementById("danmaku-font-custom-row");
 var fontCustomInput = document.getElementById("danmaku-font-custom");
@@ -85,6 +86,7 @@ var state = {
   commentLimit: 0,
   scrollSpeed: 1.0,
   danmakuOffsetSeconds: 0,
+  nicoJsonDurationDiff: null,
   danmakuFontFamily: "",
   danmakuFontWeight: "400",
   stylePreset: "nico",
@@ -200,6 +202,9 @@ var i18n = {
     style_preset: "Style Preset",
     style_balanced: "Balanced",
     danmaku_offset: "Danmaku Offset (s)",
+    duration_diff_label: "Duration diff:",
+    duration_diff_longer: "video is {diff}s longer than danmaku source",
+    duration_diff_shorter: "video is {diff}s shorter than danmaku source",
     danmaku_font_family: "Font Family",
     danmaku_font_custom: "Custom Font",
     danmaku_font_weight: "Weight",
@@ -252,6 +257,9 @@ var i18n = {
     style_preset: "\u30b9\u30bf\u30a4\u30eb\u30d7\u30ea\u30bb\u30c3\u30c8",
     style_balanced: "\u30d0\u30e9\u30f3\u30b9",
     danmaku_offset: "\u30b3\u30e1\u30f3\u30c8\u6642\u9593\u30aa\u30d5\u30bb\u30c3\u30c8 (\u79d2)",
+    duration_diff_label: "\u6642\u9593\u5dee:",
+    duration_diff_longer: "\u52d5\u753b\u304c\u30b3\u30e1\u30f3\u30c8\u30bd\u30fc\u30b9\u3088\u308a {diff}\u79d2\u9577\u3044",
+    duration_diff_shorter: "\u52d5\u753b\u304c\u30b3\u30e1\u30f3\u30c8\u30bd\u30fc\u30b9\u3088\u308a {diff}\u79d2\u77ed\u3044",
     danmaku_font_family: "\u30d5\u30a9\u30f3\u30c8",
     danmaku_font_custom: "\u30ab\u30b9\u30bf\u30e0\u30d5\u30a9\u30f3\u30c8",
     danmaku_font_weight: "\u592a\u3055",
@@ -304,6 +312,9 @@ var i18n = {
     style_preset: "\u98ce\u683c\u9884\u8bbe",
     style_balanced: "\u5e73\u8861",
     danmaku_offset: "\u5f39\u5e55\u65f6\u95f4\u504f\u79fb (\u79d2)",
+    duration_diff_label: "\u5f53\u524d\u5dee\u503c:",
+    duration_diff_longer: "\u89c6\u9891\u6bd4\u5f39\u5e55\u6e90\u957f {diff} \u79d2",
+    duration_diff_shorter: "\u89c6\u9891\u6bd4\u5f39\u5e55\u6e90\u77ed {diff} \u79d2",
     danmaku_font_family: "\u5b57\u4f53",
     danmaku_font_custom: "\u81ea\u5b9a\u4e49\u5b57\u4f53",
     danmaku_font_weight: "\u7c97\u7ec6",
@@ -374,6 +385,21 @@ function updateOffsetUI() {
   if (offsetInput) {
     offsetInput.value = state.danmakuOffsetSeconds;
   }
+}
+
+function updateDurationDiffUI() {
+  if (!durationMismatchHint) return;
+  var diff = state.nicoJsonDurationDiff;
+  if (diff === null || diff === undefined || !isFinite(diff)) {
+    durationMismatchHint.style.display = "none";
+    durationMismatchHint.textContent = "";
+    return;
+  }
+  var abs = Math.round(Math.abs(diff) * 10) / 10;
+  var absStr = (abs % 1 === 0) ? String(Math.round(abs)) : String(abs);
+  var msgKey = diff > 0 ? 'duration_diff_longer' : 'duration_diff_shorter';
+  durationMismatchHint.textContent = t('duration_diff_label') + ' ' + t(msgKey).replace('{diff}', absStr);
+  durationMismatchHint.style.display = "";
 }
 
 var FONT_PRESETS = {
@@ -468,6 +494,7 @@ function updateUI() {
   if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
   if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified; 
   updateOffsetUI();
+  updateDurationDiffUI();
   updateFontUI();
   syncStylePresetUI();
   updateFilterUI();
@@ -901,6 +928,7 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.commentLimit !== undefined) state.commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) state.scrollSpeed = data.scrollSpeed;
   if (data.danmakuTimeOffsetSec !== undefined) state.danmakuOffsetSeconds = data.danmakuTimeOffsetSec;
+  if (data.nicoJsonDurationDiff !== undefined) state.nicoJsonDurationDiff = data.nicoJsonDurationDiff;
   if (data.danmakuFontFamily !== undefined) state.danmakuFontFamily = data.danmakuFontFamily;
   if (data.danmakuFontWeight !== undefined) state.danmakuFontWeight = data.danmakuFontWeight;
   if (data.stylePreset !== undefined) state.stylePreset = data.stylePreset;
