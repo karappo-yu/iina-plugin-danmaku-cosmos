@@ -125,7 +125,7 @@ Three data paths in `overlay/main.js`:
 
 ### Time Offset
 
-`set-danmaku-offset` → `applyDanmakuOffset()` (persist + forward). Overlay adds `danmakuTimeOffsetSec` inside `canvasGetCurrentTime()` (base time + offset), so both CSS and Canvas modes shift instantly. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; step = |current offset|, fallback 1 — quirky but works; `adjust-danmaku-offset` handler in main.js is dead code, never sent).
+`set-danmaku-offset` → `applyDanmakuOffset()` (persist + forward). Overlay adds `danmakuTimeOffsetSec` inside `canvasGetCurrentTime()` (base time + offset), so both CSS and Canvas modes shift instantly. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; step = |current offset|, fallback 1 — quirky but works); both send `set-danmaku-offset`.
 
 ## Dandanplay Network Danmaku
 
