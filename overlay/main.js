@@ -21,7 +21,6 @@ let nicoRawData = null;
 let rawFormattedData = null; // 未注入滚动速度 long 命令的原始 formatted 数据
 let rawNicoJsonData = null; // 未注入滚动速度 long 命令的原始 nico-json 数据
 let nicoRawFormat = 'legacy';
-let currentDanmakuType = 'none';
 let canvasRafId = null;
 let canvasVideoAnchorTime = 0;
 let canvasSystemAnchorTime = 0;
@@ -352,7 +351,6 @@ iina.onMessage("load-danmaku", (data) => {
   }
 
   var danmakuType = data.danmakuType || detectRawDanmakuType(rawStr);
-  currentDanmakuType = danmakuType;
 
   if (danmakuType === 'dandanplay') {
     try {
@@ -517,7 +515,6 @@ iina.onMessage("clear-danmaku", () => {
   allDanmaku = [];
   nicoRawData = null;
   nicoRawFormat = 'legacy';
-  currentDanmakuType = 'none';
   iina.postMessage("danmaku-type", { type: 'none' });
 });
 

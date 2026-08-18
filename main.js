@@ -36,7 +36,6 @@ var danmakuTimeOffsetSec = 0; // 弹幕偏移不做持久化: 偏移量因视频
 var danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
 var danmakuFontWeight = preferences.get("danmakuFontWeight") || "400";
 var stylePreset = preferences.get("stylePreset") || "nico";
-var currentPlaybackSpeed = 1.0;
 var overlayReady = false;
 var preferencesSyncTimer = null;
 var ddpCacheDirPath = null;
@@ -79,7 +78,6 @@ var PLUGIN_I18N = {
     read_failed_name: "Cannot read danmaku file: ",
     content_unavailable: "Danmaku content unavailable",
     file_already_in_list: "File already in list",
-    added_click_to_load: "Danmaku added: {name} — click to load",
     seek_disable: "Danmaku: seek disabled",
     seek_enable: "Danmaku: seek enabled",
     jump: "Danmaku jump: ",
@@ -108,7 +106,6 @@ var PLUGIN_I18N = {
     read_failed_name: "\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u3092\u8aad\u307f\u8fbc\u3081\u307e\u305b\u3093: ",
     content_unavailable: "\u30b3\u30e1\u30f3\u30c8\u5185\u5bb9\u3092\u5229\u7528\u3067\u304d\u307e\u305b\u3093",
     file_already_in_list: "\u30d5\u30a1\u30a4\u30eb\u306f\u3059\u3067\u306b\u30ea\u30b9\u30c8\u306b\u3042\u308a\u307e\u3059",
-    added_click_to_load: "\u30b3\u30e1\u30f3\u30c8\u3092\u8ffd\u52a0: {name}\u3001\u30af\u30ea\u30c3\u30af\u3067\u8aad\u307f\u8fbc\u307f",
     seek_disable: "\u30b3\u30e1\u30f3\u30c8: \u30b7\u30fc\u30af\u7981\u6b62",
     seek_enable: "\u30b3\u30e1\u30f3\u30c8: \u30b7\u30fc\u30af\u8a31\u53ef",
     jump: "\u30b3\u30e1\u30f3\u30c8\u30b8\u30e3\u30f3\u30d7: ",
@@ -137,7 +134,6 @@ var PLUGIN_I18N = {
     read_failed_name: "\u65e0\u6cd5\u8bfb\u53d6\u5f39\u5e55\u6587\u4ef6: ",
     content_unavailable: "\u5f39\u5e55\u5185\u5bb9\u4e0d\u53ef\u7528",
     file_already_in_list: "\u6587\u4ef6\u5df2\u5728\u5217\u8868\u4e2d",
-    added_click_to_load: "\u5df2\u6dfb\u52a0\u5f39\u5e55: {name}\uff0c\u70b9\u51fb\u52a0\u8f7d",
     seek_disable: "\u5f39\u5e55\uff1a\u7981\u6b62\u8df3\u8f6c",
     seek_enable: "\u5f39\u5e55\uff1a\u5141\u8bb8\u8df3\u8f6c",
     jump: "\u5f39\u5e55\u8df3\u8f6c: ",
@@ -1712,9 +1708,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
     });
   }
 
-  var shouldAutoLoad = forceLoad;
-
-  if (shouldAutoLoad) {
+  if (forceLoad) {
     danmakuFileList.selectedPaths = [virtualPath];
     updateDanmakuStatus({ fileType: 'dandanplay', fileName: displayName, relativePath: 'DanDanPlay #' + episodeId, isLoaded: true });
     nicoJsonTotalCount = 0;
@@ -1982,8 +1976,6 @@ function markOverlayReady() {
   if (overlayReady) return;
   overlayReady = true;
   overlay.show();
-  overlay.postMessage("ack", {});
-
   overlay.postMessage("apply-settings", {
     opacity: canvasOpacity,
     canvasFontScale: canvasFontScale,
@@ -2030,14 +2022,12 @@ function setObserver(start) {
       overlay.postMessage("resize", {});
     });
     speedListenerID = event.on("mpv.speed.changed", function (speed) {
-      currentPlaybackSpeed = speed;
       overlay.postMessage("playback-speed", { speed: speed });
     });
     var t = mpv.getNumber("time-pos");
     if (t !== undefined && t !== null) overlay.postMessage("time-update", { time: t });
     var speed = mpv.getNumber("speed");
     if (speed !== undefined && speed !== null) {
-      currentPlaybackSpeed = speed;
       overlay.postMessage("playback-speed", { speed: speed });
     }
     overlay.postMessage("resize", {});
@@ -2224,12 +2214,6 @@ function registerSidebarHandlers() {
     syncPreferencesSoon();
   });
 
-  sidebar.onMessage("adjust-danmaku-offset", function (data) {
-    var delta = parseFloat(data.delta);
-    if (isNaN(delta)) delta = 0;
-    applyDanmakuOffset((danmakuTimeOffsetSec || 0) + delta);
-  });
-
   sidebar.onMessage("set-danmaku-filter", function (data) {
     applyDanmakuFilter(data.offset || 0, data.limit);
     notifyBrowserDataChanged(); // 范围切片变化 → 列表与 overlay 同步重建
@@ -2375,12 +2359,6 @@ function registerSidebarHandlers() {
 
   sidebar.onMessage("sidebar-log", function (data) {
     console.log('[sidebar] ' + data.msg);
-  });
-
-  sidebar.onMessage("manual-load-danmaku", function () {
-    iina.utils.chooseFile(t('choose_file_title'), { allowedFileTypes: ["json", "xml"] }).then(function(path) {
-      loadManualDanmakuFile(path);
-    });
   });
 
   // 加载选中弹幕文件(danmaku-file-add 添加后也会自动调用——添加即显示)

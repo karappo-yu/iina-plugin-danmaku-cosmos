@@ -62,16 +62,6 @@ body::-webkit-scrollbar {
   font-weight: 400;
 }
 
-.secondary {
-  color: var(--secondary-label);
-}
-
-.hint-text {
-  font-size: 11px;
-  color: var(--tertiary-label);
-  margin-top: 4px;
-}
-
 .value-text {
   font-size: 12px;
   min-width: 42px;
@@ -83,10 +73,6 @@ body::-webkit-scrollbar {
 /* ========== Layout ========== */
 .section {
   margin-bottom: 18px;
-}
-
-.pref-section {
-  margin-bottom: 12px;
 }
 
 .toggle-row {
@@ -157,22 +143,6 @@ body::-webkit-scrollbar {
 .switch input:disabled + .switch-slider {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-.switch-small {
-  width: 36px;
-  height: 22px;
-}
-
-.switch-small .switch-slider:before {
-  height: 18px;
-  width: 18px;
-  left: 2px;
-  bottom: 2px;
-}
-
-.switch-small input:checked + .switch-slider:before {
-  transform: translateX(14px);
 }
 
 /* ========== Grouped toggle panel (like image's 硬件解码 group) ========== */
@@ -318,15 +288,6 @@ input[type="color"]::-webkit-color-swatch {
   background: rgba(10, 132, 255, 0.3);
 }
 
-.danmaku-file-action-btn.delete-btn {
-  color: var(--danger);
-  background: rgba(255, 69, 58, 0.12);
-}
-
-.danmaku-file-action-btn.delete-btn:hover {
-  background: rgba(255, 69, 58, 0.22);
-}
-
 /* ========== Segmented control style (for presets etc) ========== */
 .segmented {
   display: flex;
@@ -411,14 +372,6 @@ input[type="color"]::-webkit-color-swatch {
   margin-bottom: 8px;
 }
 
-.danmaku-file-group-title {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--secondary-label);
-  margin-bottom: 6px;
-  padding: 0 2px;
-}
-
 /* Track-style list item (IINA danmaku file tracks) */
 .danmaku-file-item {
   display: flex;
@@ -468,21 +421,6 @@ input[type="color"]::-webkit-color-swatch {
   color: var(--label);
 }
 
-/* Source badge after the name (icon + label) */
-.danmaku-file-item-source {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.55);
-  flex-shrink: 0;
-}
-.danmaku-file-item-source svg {
-  width: 11px;
-  height: 11px;
-  fill: rgba(255, 255, 255, 0.55);
-}
-
 .danmaku-file-item.disabled {
   opacity: 0.45;
   pointer-events: none;
@@ -499,32 +437,6 @@ input[type="color"]::-webkit-color-swatch {
   transition: transform 0.2s;
   font-size: 9px;
   color: var(--tertiary-label);
-}
-
-.toggle-arrow.expanded {
-  transform: rotate(90deg);
-}
-
-/* File info card */
-.danmaku-file-info {
-  margin-top: 6px;
-  padding: 8px 10px;
-  background: var(--bg-group);
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.danmaku-file-name {
-  font-weight: 500;
-  word-break: break-all;
-}
-
-.danmaku-file-path {
-  color: var(--tertiary-label);
-  font-size: 10px;
-  word-break: break-all;
-  margin-top: 2px;
 }
 
 /* ========== Range selector ========== */
@@ -660,8 +572,7 @@ input[type="color"]::-webkit-color-swatch {
   margin-left: 4px;
 }
 
-.dandanplay-search-result-episodes,
-.dandanplay-match-sub {
+.dandanplay-search-result-episodes {
   color: var(--tertiary-label);
   font-size: 11px;
 }
@@ -697,11 +608,6 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 /* ========== Misc ========== */
-.canvas-unsupported {
-  color: var(--danger);
-  opacity: 0.85;
-}
-
 kbd {
   display: inline-block;
   padding: 2px 6px;
@@ -766,8 +672,7 @@ kbd {
 }
 
 /* ========== Filter tab: danmaku browser list ========== */
-.browser-total,
-.danmaku-browser-live {
+.browser-total {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--secondary-label);
@@ -988,15 +893,4 @@ kbd {
 .danmaku-blocklist-add-item .danmaku-blocklist-input:focus {
   border-color: transparent;
   box-shadow: none; /* 去掉全局 input:focus 的蓝色光晕 */
-}
-/* 诊断状态行: 数据异常时显示消息计数器,用于定位断点;正常时只显示版本 */
-.danmaku-browser-status {
-  margin-top: 6px;
-  font-size: 10px;
-  color: var(--tertiary-label);
-  font-variant-numeric: tabular-nums;
-  user-select: text;
-}
-.danmaku-browser-status.broken {
-  color: var(--danger);
 }
