@@ -1257,6 +1257,8 @@ var BROWSER_ROW_H = 26;
 var browserItems = [];         // [{t, text, blocked, merged}] 按 t 升序(全量,接收原样)
 var browserVpos = -1;          // 最近一次时间消息的 vpos(1/100s)
 var browserFollowLive = true;  // 跟随模式: 锚定 vpos 行滚动(用户手动翻阅时退出)
+var browserRenderedSourceKey = ''; // 上次渲染完成时的弹幕源标识(fileListState.selectedPaths[0])
+var browserSourceChanged = false; // 本次列表数据对应的弹幕源是否已切换(切视频/换弹幕)
 var totalEl = document.getElementById("danmaku-browser-total");
 
 // 弹幕时间线列表(单容器): 数据/渲染缓存/滚动位置独立持有
@@ -1481,6 +1483,13 @@ iina.onMessage("danmaku-browser-data", function (data) {
     browserList.items = [];
     browserList.rowNodes.forEach(function (el) { el.remove(); });
     browserList.rowNodes.clear();
+    // 弹幕源切换标记: 当前选中的弹幕文件(danmaku-file-list 消息维护)与
+    // 上次渲染完成时不同 → 切视频/换弹幕,本次渲染完成后恢复实时;
+    // 相同 → 仅过滤/去重/屏蔽词等设置变化,保持当前浏览状态
+    var curSrc = (fileListState.selectedPaths && fileListState.selectedPaths.length > 0)
+      ? fileListState.selectedPaths[0] : '';
+    browserSourceChanged = (curSrc !== browserRenderedSourceKey);
+    browserRenderedSourceKey = curSrc;
   } else if (chunkIndex === browserNextChunk) {
     browserNextChunk = chunkIndex + 1;
   } else {
@@ -1500,9 +1509,28 @@ iina.onMessage("danmaku-browser-data", function (data) {
   // 全部收齐: 单容器渲染
   debugLog('danmaku-browser: data complete, total=' + browserItems.length + ', chunks=' + (chunkIndex + 1));
   browserList.items = browserItems;
+  // 渲染前把 scrollTop 规整到新列表合法范围并标记为程序滚动目标:
+  // 恢复动作不一定锚定(播放位置未推送时跳过),此时滚动位置可能超出
+  // 新列表范围,浏览器渲染时的收紧事件会被误判为手动翻阅;主动规整
+  // 后收紧事件命中程序分支,不退出实时
+  var maxScroll = Math.max(0, browserItems.length * BROWSER_ROW_H - browserList.el.clientHeight);
+  if (browserList.el.scrollTop > maxScroll) {
+    browserProgramScrollTop = maxScroll;
+    browserList.el.scrollTop = maxScroll;
+  }
   browserRenderList(browserList);
   browserUpdateTotal();
   browserUpdateLiveUI();
+  // 弹幕源已切换: 渲染引发的滚动事件在本宏任务前已全部派发,此时恢复实时;
+  // 源未变(设置变化引起的重建)不恢复,保持当前浏览状态
+  if (browserSourceChanged) {
+    browserSourceChanged = false;
+    setTimeout(function () {
+      browserFollowLive = true;
+      browserUpdateLiveUI();
+      if (browserVpos >= 0) browserFollowToLive();
+    }, 0);
+  }
 });
 
 // 播放时间推送(main.js 300ms 节流): 更新锚点;跟随模式下滚动到 vpos 行(聊天栏式)
@@ -1521,8 +1549,10 @@ var browserProgramScrollTop = -1; // 程序滚动目标(跟随锚定);scroll 事
 // 列表容器监听滚动: 虚拟渲染重算窗口;手动滚动退出跟随
 browserList.el.addEventListener("scroll", function () {
   if (browserProgramScrollTop >= 0 && Math.abs(browserList.el.scrollTop - browserProgramScrollTop) < 1) {
-    browserProgramScrollTop = -1;
-    browserRenderList(browserList); // 程序滚动(跟随锚定): 重渲染,不退出跟随
+    // 程序滚动(跟随锚定/渲染规整): 重渲染,不退出跟随。
+    // 标记持续有效不消费: 浏览器可能对一次滚动派发多次事件,后续事件
+    // scrollTop 仍等于程序目标,继续命中;用户滚离目标才走手动分支
+    browserRenderList(browserList);
     return;
   }
   browserProgramScrollTop = -1;
