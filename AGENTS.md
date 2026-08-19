@@ -127,6 +127,15 @@ Three data paths in `overlay/main.js`:
 
 `set-danmaku-offset` → `applyDanmakuOffset()` (persist + forward). Overlay adds `danmakuTimeOffsetSec` inside `canvasGetCurrentTime()` (base time + offset), so both CSS and Canvas modes shift instantly. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; step = |current offset|, fallback 1 — quirky but works); both send `set-danmaku-offset`.
 
+### Danmaku Deduplication (engine-side render merge, plugin-side list merge)
+
+Dedup is split across two sides with the SAME window semantics (greedy from earliest, first-in-group wins, text + `xN` suffix, other members hidden):
+
+- **Render side — engine**: `fixedCombo` (fixed ue/shita progressive combo) + `nakaDedupeWindow` (scroll naka static window merge, 1/100s units, 0 = off). The engine merges AFTER parsing and BEFORE `getCommentPos`, so the merged host width (with `xN`) participates in lane assignment. Naka host keeps its native body style; only the `xN` suffix gets a random color (`comboSuffix`/`comboSuffixColor`, rendered as colored span in CSS mode / dual-color draw in Canvas mode). Owner (fork owner), fixed comments, and empty text never participate. Naka groups are static — no per-frame updates (unlike fixedCombo).
+- **List side — plugin**: `mergeDuplicateItems()` in `main.js` runs only inside `buildDanmakuBrowserList()` (display merge; blocked items merged separately, owners/fixed excluded).
+- `getEffectiveContent()` does NOT dedupe anymore — it applies filters (slices/density/simplified/blocklist) only; the dedupe window reaches the overlay via `nakaDedupeWindow: danmakuDedupeWindow * 100` in every `load-danmaku` payload (next to `fixedCombo: danmakuDedupeEnabled`).
+- Removed render-side plugin pipeline: `dedupeContent`/`dedupeNicoJson`/`pickMergeColor`/`MERGE_COLORS`/`encodeXmlText` no longer exist. `isFixedCommentCommands`/`isFixedCommentMail` remain (used by the list).
+
 ## Dandanplay Network Danmaku
 
 ### Auto-Match Flow
