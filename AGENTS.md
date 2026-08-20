@@ -148,7 +148,8 @@ Dedup is split across two sides with the SAME window semantics (greedy from earl
 
 - Single hash-keyed cache file per video: `@data/danmaku-cache/{pathHash}.json`
 - Contains `{episodeId, animeTitle, episodeTitle, cachedAt, comments}` (converted nico format)
-- 24h TTL; each new DDP load overwrites previous cache for same video path
+- 24h TTL; each new DDP load overwrites previous cache for same video path (same filename, so expired data is replaced on refresh, never deleted explicitly)
+- **Expired cache is NOT deleted on read** — `ddpReadVideoCache()` marks it `stale: true` and keeps the file as a download-failure fallback (`ddpFallbackToLocal()` loads stale cache when no local files exist). It appears in the file list with a `(旧)` suffix but is never auto-loaded, so refresh still happens after TTL expiry; a successful refresh overwrites the file and the suffix is removed (`ddpAddToFileListAndLoad(..., fresh=true)`)
 - **Fresh cache (within TTL) fully skips background auto-match** — no hash recompute, no API call (honors the README "replay within 24h skips re-download" promise). Refresh only happens after TTL expiry, or when the user manually triggers matching via the 网络弹幕 panel (`dandanplay-trigger-match`)
 - Cache is NOT discoverable as a local file — only loaded via `ddpReadVideoCache()`
 
