@@ -16,6 +16,12 @@ var danmakuAutoOffset = preferences.get("danmakuAutoOffset") !== undefined ? pre
 var danmakuBlocklist = [];
 try { danmakuBlocklist = JSON.parse(preferences.get("danmakuBlocklist") || '[]') || []; } catch (e) { danmakuBlocklist = []; }
 if (!Array.isArray(danmakuBlocklist)) danmakuBlocklist = [];
+// 旧版本数据可能含反引号/弯引号(回显会被 IPC 丢弃、按词值删除失配):
+// 载入时统一规范化(与 danmaku-blocklist-add 入口消毒同一规则),保证
+// "存储值永远是干净值"——增删查与回显都基于同一规范形式,顺带去空、去重
+danmakuBlocklist = danmakuBlocklist
+  .map(function (w) { return sanitizeIPCString(String(w)).trim(); })
+  .filter(function (w, i, arr) { return w && arr.indexOf(w) === i; });
 var danmakuBlocklistEnabled = !!preferences.get("danmakuBlocklistEnabled");
 var blockRegexes = []; // 编译缓存(列表变化时重建)
 rebuildBlockRegexes();
