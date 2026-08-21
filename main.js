@@ -2125,7 +2125,7 @@ function registerSidebarHandlers() {
     try {
       core.seekTo(sec); // seekTo 是 core 对象的方法(core.player 不存在)
     } catch (e) {
-      debugLog('danmaku-seek failed: ' + e);
+      console.log('[danmaku-seek] seekTo failed: ' + e);
     }
   });
 

@@ -517,6 +517,8 @@ iina.onMessage("clear-danmaku", () => {
   if (cssContainer) cssContainer.remove();
   allDanmaku = [];
   nicoRawData = null;
+  rawFormattedData = null;
+  rawNicoJsonData = null;
   nicoRawFormat = 'legacy';
   iina.postMessage("danmaku-type", { type: 'none' });
 });
