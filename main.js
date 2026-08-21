@@ -277,8 +277,8 @@ function sanitizeIPCValue(value, key) {
     return value.map(function (item) { return sanitizeIPCValue(item); });
   }
   if (value && typeof value === 'object') {
-    var out = {};
-    for (var k in value) {
+    let out = {};
+    for (let k in value) {
       if (Object.prototype.hasOwnProperty.call(value, k)) out[k] = sanitizeIPCValue(value[k], k);
     }
     return out;
