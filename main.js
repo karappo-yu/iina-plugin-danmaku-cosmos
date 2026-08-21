@@ -244,19 +244,30 @@ function persistPluginRoot(p) {
 var openccSimplifier = null;     // 简繁转换器(hk→cn,懒加载;仅强制简体开启且列表被监听时构建)
 
 function sanitizeIPCString(value) {
-  return String(value || '').replace(/[`\u2018\u2019]/g, "'");
+  return String(value || '').replace(/[`\u2018\u2019\u201C\u201D]/g, "'");
+}
+
+// 路径传输前编码(encodeURIComponent 输出不含反引号/弯引号): 含这些字符的路径
+// 原样传输仍会让整条消息被桥丢弃。sidebar 把路径当不透明字符串回传,
+// main 在入口(select-danmaku-file)解码后查表——两端一致即可,sidebar 无需感知。
+function encodeIPCPath(p) {
+  return encodeURIComponent(String(p));
+}
+
+function decodeIPCPath(p) {
+  try { return decodeURIComponent(String(p)); } catch (e) { return p; }
 }
 
 // sidebar.postMessage 统一出口: 深度消毒消息里的字符串(反引号/弯引号 → ')。
 // 这些字符会让 IINA 的 sidebar 桥把整条消息静默丢弃(文件名/屏蔽词/字体名
 // 都可能携带)。path 类字段是往返标识符——sidebar 点击条目时原样回传,
-// main 据此查表/file.read,改写会导致选中失效,故跳过不改写。
+// main 据此查表/file.read,不能做字符替换,改为编码后传输(见 encodeIPCPath)。
 function sanitizeIPCValue(value, key) {
   if (typeof value === 'string') {
-    return key === 'path' ? value : sanitizeIPCString(value);
+    return key === 'path' ? encodeIPCPath(value) : sanitizeIPCString(value);
   }
   if (Array.isArray(value)) {
-    if (key === 'selectedPaths') return value.slice(); // 路径数组,原样拷贝
+    if (key === 'selectedPaths') return value.map(encodeIPCPath); // 路径数组,逐项编码
     return value.map(function (item) { return sanitizeIPCValue(item); });
   }
   if (value && typeof value === 'object') {
@@ -2319,7 +2330,8 @@ function registerSidebarHandlers() {
   }
 
   sidebar.onMessage("select-danmaku-file", function (data) {
-    if (data && data.path) selectDanmakuFile(data.path);
+    // path 经 encodeIPCPath 编码传输,入口解码后查表
+    if (data && data.path) selectDanmakuFile(decodeIPCPath(data.path));
   });
 
   sidebar.onMessage("danmaku-file-add", function () {
