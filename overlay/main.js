@@ -430,6 +430,9 @@ iina.onMessage("toggle-danmaku", (data) => {
     if (niconiComments) niconiComments.clear();
   } else {
     startCanvasLoop();
+    // 暂停中重开: rAF loop 不会启动(shouldRunCanvasLoop 要求正在播放),
+    // 且关闭分支已 clear() 清空内容——必须强制重绘一次,否则画面空白直到恢复播放
+    drawCanvasAtVpos(canvasGetCurrentTime() * 100, true);
   }
 });
 
