@@ -9,13 +9,19 @@ var preferences = iina.preferences;
 var mpv = iina.mpv;
 
 var danmakuEnabled = preferences.get("danmakuEnabled");
-var danmakuForceSimplified = preferences.get("danmakuForceSimplified") !== undefined ? preferences.get("danmakuForceSimplified") : true;
+var danmakuForceSimplified = !!preferences.get("danmakuForceSimplified"); // 默认 false,与 Info.json preferenceDefaults 一致
 // 弹幕时长自动偏移检测(nico-json): 加载时对比弹幕源时长与视频时长,自动设置偏移
 var danmakuAutoOffset = preferences.get("danmakuAutoOffset") !== undefined ? preferences.get("danmakuAutoOffset") : true;
 // 屏蔽词过滤(正则支持)——列表与开关都持久化;过滤在 getEffectiveContent 单源出口执行
 var danmakuBlocklist = [];
 try { danmakuBlocklist = JSON.parse(preferences.get("danmakuBlocklist") || '[]') || []; } catch (e) { danmakuBlocklist = []; }
 if (!Array.isArray(danmakuBlocklist)) danmakuBlocklist = [];
+// 旧版本数据可能含反引号/弯引号(回显会被 IPC 丢弃、按词值删除失配):
+// 载入时统一规范化(与 danmaku-blocklist-add 入口消毒同一规则),保证
+// "存储值永远是干净值"——增删查与回显都基于同一规范形式,顺带去空、去重
+danmakuBlocklist = danmakuBlocklist
+  .map(function (w) { return sanitizeIPCString(String(w)).trim(); })
+  .filter(function (w, i, arr) { return w && arr.indexOf(w) === i; });
 var danmakuBlocklistEnabled = !!preferences.get("danmakuBlocklistEnabled");
 var blockRegexes = []; // 编译缓存(列表变化时重建)
 rebuildBlockRegexes();
@@ -244,7 +250,44 @@ function persistPluginRoot(p) {
 var openccSimplifier = null;     // 简繁转换器(hk→cn,懒加载;仅强制简体开启且列表被监听时构建)
 
 function sanitizeIPCString(value) {
-  return String(value || '').replace(/[`\u2018\u2019]/g, "'");
+  return String(value || '').replace(/[`\u2018\u2019\u201C\u201D]/g, "'");
+}
+
+// 路径传输前编码(encodeURIComponent 输出不含反引号/弯引号): 含这些字符的路径
+// 原样传输仍会让整条消息被桥丢弃。sidebar 把路径当不透明字符串回传,
+// main 在入口(select-danmaku-file)解码后查表——两端一致即可,sidebar 无需感知。
+function encodeIPCPath(p) {
+  return encodeURIComponent(String(p));
+}
+
+function decodeIPCPath(p) {
+  try { return decodeURIComponent(String(p)); } catch (e) { return p; }
+}
+
+// sidebar.postMessage 统一出口: 深度消毒消息里的字符串(反引号/弯引号 → ')。
+// 这些字符会让 IINA 的 sidebar 桥把整条消息静默丢弃(文件名/屏蔽词/字体名
+// 都可能携带)。path 类字段是往返标识符——sidebar 点击条目时原样回传,
+// main 据此查表/file.read,不能做字符替换,改为编码后传输(见 encodeIPCPath)。
+function sanitizeIPCValue(value, key) {
+  if (typeof value === 'string') {
+    return key === 'path' ? encodeIPCPath(value) : sanitizeIPCString(value);
+  }
+  if (Array.isArray(value)) {
+    if (key === 'selectedPaths') return value.map(encodeIPCPath); // 路径数组,逐项编码
+    return value.map(function (item) { return sanitizeIPCValue(item); });
+  }
+  if (value && typeof value === 'object') {
+    let out = {};
+    for (let k in value) {
+      if (Object.prototype.hasOwnProperty.call(value, k)) out[k] = sanitizeIPCValue(value[k], k);
+    }
+    return out;
+  }
+  return value;
+}
+
+function sidebarPostMessage(key, data) {
+  sidebar.postMessage(key, sanitizeIPCValue(data === undefined ? {} : data));
 }
 
 function applyDanmakuOffset(offsetSec) {
@@ -254,11 +297,12 @@ function applyDanmakuOffset(offsetSec) {
   if (overlayReady) {
     overlay.postMessage("set-danmaku-offset", { offset: danmakuTimeOffsetSec });
   }
-  sidebar.postMessage("danmaku-state", { danmakuTimeOffsetSec: danmakuTimeOffsetSec });
+  sidebarPostMessage("danmaku-state", { danmakuTimeOffsetSec: danmakuTimeOffsetSec });
 }
 
 function applyDanmakuFont(fontFamily, fontWeight) {
-  danmakuFontFamily = fontFamily || "";
+  // 字体名来自 sidebar 自由输入,会持久化并经 danmaku-state 回显: 入口消毒
+  danmakuFontFamily = sanitizeIPCString(fontFamily || "");
   danmakuFontWeight = fontWeight || "";
   preferences.set("danmakuFontFamily", danmakuFontFamily);
   preferences.set("danmakuFontWeight", danmakuFontWeight);
@@ -266,7 +310,7 @@ function applyDanmakuFont(fontFamily, fontWeight) {
   if (overlayReady) {
     overlay.postMessage("set-danmaku-font", { fontFamily: danmakuFontFamily, fontWeight: danmakuFontWeight });
   }
-  sidebar.postMessage("danmaku-state", { danmakuFontFamily: danmakuFontFamily, danmakuFontWeight: danmakuFontWeight });
+  sidebarPostMessage("danmaku-state", { danmakuFontFamily: danmakuFontFamily, danmakuFontWeight: danmakuFontWeight });
 }
 
 function findDanmakuFileByPath(path) {
@@ -285,7 +329,7 @@ function updateDanmakuStatus(status) {
     status.fileName = sanitizeIPCString(status.fileName);
   }
   currentDanmakuStatus = status;
-  sidebar.postMessage("danmaku-type", currentDanmakuStatus);
+  sidebarPostMessage("danmaku-type", currentDanmakuStatus);
 }
 
 function danmakuNotFound() {
@@ -358,7 +402,7 @@ function formatSecondsShort(sec) {
 function setNicoJsonDurationDiff(diff) {
   if (nicoJsonDurationDiff === diff) return;
   nicoJsonDurationDiff = diff;
-  sidebar.postMessage("danmaku-state", { nicoJsonDurationDiff: diff });
+  sidebarPostMessage("danmaku-state", { nicoJsonDurationDiff: diff });
 }
 
 function clearNicoJsonDuration() {
@@ -462,7 +506,7 @@ function sendDanmakuFilterInfo() {
     }
   }
 
-  sidebar.postMessage("danmaku-filter-info", {
+  sidebarPostMessage("danmaku-filter-info", {
     fileType: ft,
     totalCount: nicoJsonTotalCount,
     filterOffset: danmakuFilterOffset,
@@ -989,12 +1033,12 @@ function sendDanmakuBrowserData(items) {
   var CHUNK = 2000;
   var total = items.length;
   if (total === 0) {
-    sidebar.postMessage("danmaku-browser-data", { payload: b64Encode('[]'), total: 0, chunkIndex: 0, done: true });
+    sidebarPostMessage("danmaku-browser-data", { payload: b64Encode('[]'), total: 0, chunkIndex: 0, done: true });
     return;
   }
   var n = Math.ceil(total / CHUNK);
   for (var c = 0; c < n; c++) {
-    sidebar.postMessage("danmaku-browser-data", {
+    sidebarPostMessage("danmaku-browser-data", {
       payload: b64Encode(JSON.stringify(items.slice(c * CHUNK, (c + 1) * CHUNK))),
       total: total,
       chunkIndex: c,
@@ -1008,7 +1052,7 @@ function pushBrowserTime(timeSec, force) {
   var now = Date.now();
   if (!force && now - lastBrowserTimeSent < 300) return;
   lastBrowserTimeSent = now;
-  sidebar.postMessage("danmaku-visible-time", { time: timeSec, offset: danmakuTimeOffsetSec });
+  sidebarPostMessage("danmaku-visible-time", { time: timeSec, offset: danmakuTimeOffsetSec });
 }
 
 var browserDataPending = false; // 列表开关关闭期间数据变化: 不构建不发送,打开时补发一次
@@ -1395,7 +1439,7 @@ function ddpReadVideoCache(videoPath) {
 }
 
 function ddpSyncState() {
-  sidebar.postMessage("dandanplay-status", {
+  sidebarPostMessage("dandanplay-status", {
     status: dandanplayState.status,
     animeTitle: sanitizeIPCString(dandanplayState.animeTitle),
     episodeTitle: sanitizeIPCString(dandanplayState.episodeTitle),
@@ -1537,7 +1581,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
     danmakuFilterOffset = 0;
     danmakuFilterLimit = 0;
     danmakuFilterDensity = 0;
-    sidebar.postMessage("danmaku-file-list", danmakuFileList);
+    sidebarPostMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
     notifyBrowserDataChanged();
 
@@ -1565,7 +1609,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
       pendingDanmaku = payload;
     }
   } else {
-    sidebar.postMessage("danmaku-file-list", danmakuFileList);
+    sidebarPostMessage("danmaku-file-list", danmakuFileList);
   }
 }
 
@@ -1681,7 +1725,7 @@ function loadDanmakuForVideo(url) {
     core.osd(t('network_skip_local'));
     danmakuNotFound();
     danmakuFileList = { xmlFiles: [], jsonFiles: [], unknownFiles: [], selectedPaths: [] };
-    sidebar.postMessage("danmaku-file-list", danmakuFileList);
+    sidebarPostMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
     notifyBrowserDataChanged();
     if (overlayReady) overlay.postMessage("clear-danmaku", {});
@@ -1709,7 +1753,7 @@ function loadDanmakuForVideo(url) {
   }
 
   // === Step 2: Send file list (all available sources, regardless of priority) ===
-  sidebar.postMessage("danmaku-file-list", danmakuFileList);
+  sidebarPostMessage("danmaku-file-list", danmakuFileList);
   sendDanmakuFilterInfo();
   notifyBrowserDataChanged();
 
@@ -1742,7 +1786,7 @@ function loadDanmakuForVideo(url) {
   // Re-send file list after a tick to catch up sidebar WebView that might
   // have been suspended during video switch (IINA drops messages otherwise)
   setTimeout(function() {
-    sidebar.postMessage("danmaku-file-list", danmakuFileList);
+    sidebarPostMessage("danmaku-file-list", danmakuFileList);
   }, 0);
 }
 
@@ -1784,7 +1828,7 @@ function loadLocalDanmaku(fileInfo) {
 
   updateDanmakuStatus({ fileType: fileType, fileName: fileInfo.filename, relativePath: fileInfo.relativePath, isLoaded: true });
 
-  sidebar.postMessage("danmaku-file-list", danmakuFileList);
+  sidebarPostMessage("danmaku-file-list", danmakuFileList);
   sendDanmakuFilterInfo();
   notifyBrowserDataChanged();
 
@@ -1885,7 +1929,7 @@ function toggleDanmaku() {
   overlay.postMessage("toggle-danmaku", { enabled: danmakuEnabled });
   if (danmakuEnabled) { overlay.show(); setObserver(true); core.osd(t('danmaku_on')); }
   else { setObserver(false); core.osd(t('danmaku_off')); }
-  sidebar.postMessage("danmaku-state", { enabled: danmakuEnabled, canvasMode: currentCanvasMode });
+  sidebarPostMessage("danmaku-state", { enabled: danmakuEnabled, canvasMode: currentCanvasMode });
 }
 
 function ensureDanmakuEnabled() {
@@ -1896,7 +1940,7 @@ function ensureDanmakuEnabled() {
   overlay.postMessage("toggle-danmaku", { enabled: true });
   overlay.show();
   setObserver(true);
-  sidebar.postMessage("danmaku-state", { enabled: true, canvasMode: currentCanvasMode });
+  sidebarPostMessage("danmaku-state", { enabled: true, canvasMode: currentCanvasMode });
 }
 
 function loadManualDanmakuFile(path) {
@@ -2071,7 +2115,7 @@ function registerSidebarHandlers() {
 
   // ── 屏蔽词 ──
   sidebar.onMessage("danmaku-blocklist-request", function () {
-    sidebar.postMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
+    sidebarPostMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
   });
 
   sidebar.onMessage("danmaku-blocklist-set-enabled", function (data) {
@@ -2083,11 +2127,13 @@ function registerSidebarHandlers() {
       notifyBrowserDataChanged();
       resendDanmakuToOverlay();
     }
-    sidebar.postMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
+    sidebarPostMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
   });
 
   sidebar.onMessage("danmaku-blocklist-add", function (data) {
-    var w = String(data.word || '').trim();
+    // 入库前消毒: 含反引号的词会让 danmaku-blocklist-state 回显被 IPC 丢弃,
+    // 且列表按词值回传删除时永远匹配不上——必须在源头杜绝
+    var w = sanitizeIPCString(String(data.word || '')).trim();
     if (!w) return;
     if (danmakuBlocklist.indexOf(w) === -1) danmakuBlocklist.push(w);
     preferences.set("danmakuBlocklist", JSON.stringify(danmakuBlocklist));
@@ -2095,7 +2141,7 @@ function registerSidebarHandlers() {
     rebuildBlockRegexes();
     notifyBrowserDataChanged();
     resendDanmakuToOverlay();
-    sidebar.postMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
+    sidebarPostMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
   });
 
   // 按词值删除(不按下标): 渲染与点击之间列表可能变化,下标会删错词
@@ -2109,12 +2155,12 @@ function registerSidebarHandlers() {
     rebuildBlockRegexes();
     notifyBrowserDataChanged();
     resendDanmakuToOverlay();
-    sidebar.postMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
+    sidebarPostMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
   });
 
   // ── 弹幕去重 ──
   sidebar.onMessage("danmaku-dedupe-request", function () {
-    sidebar.postMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
+    sidebarPostMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
   });
 
   // 点击列表时间戳 → 跳转到该弹幕时间(弹幕 vpos 换算为视频秒,考虑弹幕偏移)
@@ -2140,7 +2186,7 @@ function registerSidebarHandlers() {
     syncPreferencesSoon();
     notifyBrowserDataChanged();
     resendDanmakuToOverlay();
-    sidebar.postMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
+    sidebarPostMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
   });
 
   // 弹幕列表显示开关(持久化,与其他设置一致)
@@ -2149,7 +2195,7 @@ function registerSidebarHandlers() {
       danmakuBrowserVisible = !!data.visible;
       preferences.set("danmakuBrowserVisible", danmakuBrowserVisible);
       syncPreferencesSoon();
-      sidebar.postMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible });
+      sidebarPostMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible });
       if (danmakuBrowserVisible && browserDataPending) {
         browserDataPending = false; // 关闭期间数据有变化: 打开时补发一次
         sendDanmakuBrowserData(buildDanmakuBrowserList());
@@ -2173,7 +2219,7 @@ function registerSidebarHandlers() {
         addDDPToFileList(cached.episodeId, cached.animeTitle, cached.episodeTitle, cached.comments, cached.stale);
       }
     }
-    sidebar.postMessage("danmaku-state", {
+    sidebarPostMessage("danmaku-state", {
       enabled: danmakuEnabled,
       canvasMode: currentCanvasMode,
       canvasOpacity: canvasOpacity,
@@ -2197,7 +2243,7 @@ function registerSidebarHandlers() {
       danmakuFilterDensity: danmakuFilterDensity,
       nicoJsonDurationDiff: nicoJsonDurationDiff,
     });
-    sidebar.postMessage("danmaku-file-list", danmakuFileList);
+    sidebarPostMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
     ddpSyncState();
   });
@@ -2212,9 +2258,12 @@ function registerSidebarHandlers() {
 
     var encodedContent = danmakuCache[filePath];
     if (!encodedContent && filePath.indexOf('dandanplay://') === 0) {
-      // Reconstruct from disk cache for DDP virtual paths
+      // Reconstruct from disk cache for DDP virtual paths.
+      // 仅当磁盘缓存就是所选这一集时才重建: 缓存每视频只存最后一集,
+      // 错位重建会把另一集的弹幕挂到该条目名下
       var cached = ddpReadVideoCache(currentVideoUrl);
-      if (cached && cached.comments && cached.comments.length > 0) {
+      if (cached && cached.comments && cached.comments.length > 0 &&
+          String(cached.episodeId) === filePath.substring('dandanplay://'.length)) {
         encodedContent = encodeContent(JSON.stringify(cached.comments));
         danmakuCache[filePath] = encodedContent;
       }
@@ -2260,7 +2309,7 @@ function registerSidebarHandlers() {
     danmakuFilterLimit = 0;
     danmakuFilterDensity = 0;
 
-    sidebar.postMessage("danmaku-file-list", danmakuFileList);
+    sidebarPostMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
     notifyBrowserDataChanged();
 
@@ -2287,7 +2336,8 @@ function registerSidebarHandlers() {
   }
 
   sidebar.onMessage("select-danmaku-file", function (data) {
-    if (data && data.path) selectDanmakuFile(data.path);
+    // path 经 encodeIPCPath 编码传输,入口解码后查表
+    if (data && data.path) selectDanmakuFile(decodeIPCPath(data.path));
   });
 
   sidebar.onMessage("danmaku-file-add", function () {
@@ -2313,14 +2363,13 @@ function registerSidebarHandlers() {
       var content = file.read(path);
       if (content) {
         danmakuCache[path] = encodeContent(content);
-        selectDanmakuFile(path); // 添加即加载: 不用再在列表里手动点选
-        osdAfterDanmakuLoad(fname);
+        selectDanmakuFile(path); // 添加即加载: 不用再在列表里手动点选(内部已 OSD)
       } else {
         core.osd(t('read_failed_name') + fname);
-        sidebar.postMessage("danmaku-file-error", { path: path, message: t('read_failed') });
+        sidebarPostMessage("danmaku-file-error", { path: path, message: t('read_failed') });
       }
 
-      sidebar.postMessage("danmaku-file-list", danmakuFileList);
+      sidebarPostMessage("danmaku-file-list", danmakuFileList);
     });
   });
 
@@ -2337,16 +2386,16 @@ function registerSidebarHandlers() {
     ddpSearchAnime(keyword).then(function(res) {
       var result = ddpParseBody(res);
       if (!result || !result.animes || result.animes.length === 0) {
-        sidebar.postMessage("dandanplay-search-result", { animes: [], error: 'No results found' });
+        sidebarPostMessage("dandanplay-search-result", { animes: [], error: 'No results found' });
         return;
       }
       for (var i = 0; i < result.animes.length; i++) {
         if (result.animes[i].animeTitle) result.animes[i].animeTitle = sanitizeIPCString(result.animes[i].animeTitle);
       }
-      sidebar.postMessage("dandanplay-search-result", { animes: result.animes, error: null });
+      sidebarPostMessage("dandanplay-search-result", { animes: result.animes, error: null });
     }).catch(function(err) {
       console.log('[search] API error: ' + ddpErrStr(err));
-      sidebar.postMessage("dandanplay-search-result", { animes: [], error: ddpErrStr(err) });
+      sidebarPostMessage("dandanplay-search-result", { animes: [], error: ddpErrStr(err) });
     });
   });
 
@@ -2356,17 +2405,17 @@ function registerSidebarHandlers() {
     ddpGetBangumi(bangumiId).then(function(res) {
       var result = ddpParseBody(res);
       if (!result || !result.bangumi) {
-        sidebar.postMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: [], error: 'Parse error' });
+        sidebarPostMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: [], error: 'Parse error' });
         return;
       }
       var episodes = result.bangumi.episodes || [];
       for (var i = 0; i < episodes.length; i++) {
         if (episodes[i].episodeTitle) episodes[i].episodeTitle = sanitizeIPCString(episodes[i].episodeTitle);
       }
-      sidebar.postMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: episodes });
+      sidebarPostMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: episodes });
     }).catch(function(err) {
       console.log('[bangumi] API error: ' + ddpErrStr(err));
-      sidebar.postMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: [], error: ddpErrStr(err) });
+      sidebarPostMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: [], error: ddpErrStr(err) });
     });
   });
 
@@ -2398,7 +2447,7 @@ function registerSidebarHandlers() {
   sidebar.onMessage("danmaku-browser-request", function (data) {
     // sidebar 上报插件根目录(file:// 定位),供 main 读 overlay/lib/opencc.min.js
     if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
-    sidebar.postMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible }); // 列表开关回显
+    sidebarPostMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible }); // 列表开关回显
     if (danmakuBrowserVisible) {
       sendDanmakuBrowserData(buildDanmakuBrowserList());
     } else {
@@ -2448,7 +2497,7 @@ event.on("mpv.pause.changed", function () {
 
 overlay.onMessage("danmaku-type", function (data) {
   currentDanmakuStatus.fileType = data.type;
-  sidebar.postMessage("danmaku-type", currentDanmakuStatus);
+  sidebarPostMessage("danmaku-type", currentDanmakuStatus);
 });
 
 overlay.onMessage("seek-disable", function () { core.osd(t('seek_disable')); });

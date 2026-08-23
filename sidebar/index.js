@@ -73,7 +73,7 @@ var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closes
 var state = {
   enabled: true,
   useCanvasRenderer: false,
-  danmakuForceSimplified: true,
+  danmakuForceSimplified: false, // 与 Info.json preferenceDefaults 一致
   danmakuAutoOffset: true,
   danmakuType: 'none',
   danmakuFileName: null,
