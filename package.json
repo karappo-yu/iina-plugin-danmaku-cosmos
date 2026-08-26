@@ -1,4 +1,7 @@
 {
   "private": true,
-  "description": "No build tools — this file is a stub only. @xmldom/xmldom is not used."
+  "description": "No build tools — this file is a stub only. @xmldom/xmldom is not used.",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
 }
