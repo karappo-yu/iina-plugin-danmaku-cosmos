@@ -33,7 +33,8 @@ jobs:
             -x "README.md" \
             -x "package.json" \
             -x "package-lock.json" \
-            -x "png/*"
+            -x "png/*" \
+            -x "test/*"
           echo "Package created:"
           ls -lh dist/
 
