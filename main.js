@@ -1962,7 +1962,11 @@ function toggleDanmaku() {
 }
 
 function ensureDanmakuEnabled() {
-  if (danmakuEnabled) return;
+  // 弹幕已开启时也必须确保 time-pos 观察者在位: 会话首个视频若无本地弹幕,
+  // 观察者从未注册,网络/手动路径此时加载弹幕后 overlay 收不到 time-update,
+  // 弹幕按自身墙钟盲跑、seek 失效。setObserver(true) 重复调用安全(先注销
+  // 再注册,并补发一次时间同步,与 loadLocalDanmaku 的既有行为一致)。
+  if (danmakuEnabled) { setObserver(true); return; }
   danmakuEnabled = true;
   preferences.set("danmakuEnabled", true);
   syncPreferencesSoon();
