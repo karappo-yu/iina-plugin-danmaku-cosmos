@@ -45,7 +45,6 @@ var stylePreset = preferences.get("stylePreset") || "nico";
 var overlayReady = false;
 var preferencesSyncTimer = null;
 var ddpCacheDirPath = null;
-var ddpCacheDirChecked = false;
 
 var DDP_APP_ID = preferences.get("dandanplayAppId") || 't43832ky57';
 var DDP_APP_SECRET = preferences.get("dandanplayAppSecret") || 'IDnPEdEKDIziKeYVxm6VcaJE4Bv2fnzT';
@@ -210,7 +209,6 @@ var currentDanmakuStatus = {
 var danmakuFileList = {
   xmlFiles: [],
   jsonFiles: [],
-  unknownFiles: [],
   selectedPaths: []
 };
 
@@ -317,7 +315,7 @@ function applyDanmakuFont(fontFamily, fontWeight) {
 }
 
 function findDanmakuFileByPath(path) {
-  var groups = [danmakuFileList.xmlFiles, danmakuFileList.jsonFiles, danmakuFileList.unknownFiles];
+  var groups = [danmakuFileList.xmlFiles, danmakuFileList.jsonFiles];
   for (var g = 0; g < groups.length; g++) {
     var files = groups[g] || [];
     for (var i = 0; i < files.length; i++) {
@@ -629,7 +627,6 @@ function buildLoadDanmakuPayload(xmlContent, path, danmakuType) {
     danmakuTimeOffsetSec: danmakuTimeOffsetSec,
     danmakuFontFamily: danmakuFontFamily,
     danmakuFontWeight: danmakuFontWeight,
-    preservePosition: true,
     fixedCombo: danmakuDedupeEnabled,
     nakaDedupeWindow: danmakuDedupeEnabled ? danmakuDedupeWindow * 100 : 0,
   };
@@ -1123,7 +1120,7 @@ function extractDanmakuNumber(filename) {
 
 function findDanmakuByEpisode(videoUrl) {
   var path = filePathFromUrl(videoUrl);
-  if (!path) return { xmlFiles: [], jsonFiles: [], unknownFiles: [] };
+  if (!path) return { xmlFiles: [], jsonFiles: [] };
 
   var videoDir = path.replace(/[/\\][^/\\]+$/, '');
   var videoEpNum = extractEpisodeNumber(path);
@@ -1190,7 +1187,7 @@ function findDanmakuByEpisode(videoUrl) {
 
   var xmlFiles = exactXmlFiles.concat(prefixXmlFiles).concat(epNumXmlFiles);
   var jsonFiles = exactJsonFiles.concat(prefixJsonFiles).concat(epNumJsonFiles);
-  return { xmlFiles: xmlFiles, jsonFiles: jsonFiles, unknownFiles: [] };
+  return { xmlFiles: xmlFiles, jsonFiles: jsonFiles };
 }
 
 function encodeContent(str) {
@@ -1350,7 +1347,7 @@ function ddpConvertComments(ddpComments) {
 
 function ensureCacheDir() {
   try {
-    if (ddpCacheDirChecked && ddpCacheDirPath) return ddpCacheDirPath;
+    if (ddpCacheDirPath) return ddpCacheDirPath;
     var cacheDir = iina.utils.resolvePath('@data/danmaku-cache/');
     if (!cacheDir) return null;
     if (!file.exists(cacheDir)) {
@@ -1369,7 +1366,6 @@ function ensureCacheDir() {
       try { file.delete(oldMap); } catch(e) {}
     }
     ddpCacheDirPath = cacheDir;
-    ddpCacheDirChecked = true;
     return cacheDir;
   } catch (e) {
     return null;
@@ -1706,7 +1702,7 @@ function loadDanmakuForVideo(url) {
   if (core.status.isNetworkResource) {
     core.osd(t('network_skip_local'));
     danmakuNotFound();
-    danmakuFileList = { xmlFiles: [], jsonFiles: [], unknownFiles: [], selectedPaths: [] };
+    danmakuFileList = { xmlFiles: [], jsonFiles: [], selectedPaths: [] };
     sidebarPostMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
     notifyBrowserDataChanged();
@@ -1722,7 +1718,6 @@ function loadDanmakuForVideo(url) {
   danmakuFileList = {
     xmlFiles: discovered.xmlFiles,
     jsonFiles: discovered.jsonFiles,
-    unknownFiles: discovered.unknownFiles,
     selectedPaths: []
   };
 
@@ -1845,7 +1840,6 @@ function markOverlayReady() {
     danmakuTimeOffsetSec: danmakuTimeOffsetSec,
     danmakuFontFamily: danmakuFontFamily,
     danmakuFontWeight: danmakuFontWeight,
-    danmakuForceSimplified: danmakuForceSimplified,
     fixedCombo: danmakuDedupeEnabled,
     nakaDedupeWindow: danmakuDedupeEnabled ? danmakuDedupeWindow * 100 : 0
   });
@@ -1964,25 +1958,27 @@ function loadManualDanmakuFile(path) {
 function registerSidebarHandlers() {
   sidebar.onMessage("toggle-danmaku", function () { toggleDanmaku(); });
 
-  sidebar.onMessage("set-opacity", function (data) {
-    canvasOpacity = data.opacity;
-    preferences.set("danmakuCanvasOpacity", canvasOpacity);
-    syncPreferencesSoon();
-    overlay.postMessage("set-opacity", { opacity: data.opacity });
-  });
-
-  sidebar.onMessage("set-fontscale", function (data) {
-    canvasFontScale = data.scale;
-    preferences.set("niconicommentsFontScale", canvasFontScale);
-    syncPreferencesSoon();
-    overlay.postMessage("set-fontscale", { scale: data.scale });
-  });
-
-  sidebar.onMessage("set-canvas-mode", function (data) {
-    currentCanvasMode = data.mode;
-    preferences.set("canvasMode", currentCanvasMode);
-    syncPreferencesSoon();
-    overlay.postMessage("set-canvas-mode", { mode: data.mode });
+  // 同构设置处理器: 更新全局变量 → 持久化 → 原样转发给 overlay。
+  // [消息名, 偏好键, 载荷字段, 全局变量赋值]
+  var simpleSettings = [
+    ["set-opacity", "danmakuCanvasOpacity", "opacity", function (v) { canvasOpacity = v; }],
+    ["set-fontscale", "niconicommentsFontScale", "scale", function (v) { canvasFontScale = v; }],
+    ["set-canvas-mode", "canvasMode", "mode", function (v) { currentCanvasMode = v; }],
+    ["set-stroke-opacity", "strokeOpacity", "opacity", function (v) { strokeOpacity = v; }],
+    ["set-stroke-width", "strokeWidth", "width", function (v) { strokeWidth = v; }],
+    ["set-stroke-color", "strokeColor", "color", function (v) { strokeColor = v; }],
+    ["set-stroke-inversion-color", "strokeInversionColor", "color", function (v) { strokeInversionColor = v; }],
+    ["set-comment-limit", "commentLimit", "limit", function (v) { commentLimit = v; }],
+    ["set-scroll-speed", "scrollSpeed", "speed", function (v) { scrollSpeed = v; }]
+  ];
+  simpleSettings.forEach(function (entry) {
+    sidebar.onMessage(entry[0], function (data) {
+      var value = data[entry[2]];
+      entry[3](value);
+      preferences.set(entry[1], value);
+      syncPreferencesSoon();
+      overlay.postMessage(entry[0], data);
+    });
   });
 
   sidebar.onMessage("set-danmaku-force-simplified", function (data) {
@@ -2013,48 +2009,6 @@ function registerSidebarHandlers() {
         checkNicoJsonDuration(danmakuCache[selectedPath]);
       }
     }
-  });
-
-  sidebar.onMessage("set-stroke-opacity", function (data) {
-    strokeOpacity = data.opacity;
-    preferences.set("strokeOpacity", strokeOpacity);
-    syncPreferencesSoon();
-    overlay.postMessage("set-stroke-opacity", { opacity: data.opacity });
-  });
-
-  sidebar.onMessage("set-stroke-width", function (data) {
-    strokeWidth = data.width;
-    preferences.set("strokeWidth", strokeWidth);
-    syncPreferencesSoon();
-    overlay.postMessage("set-stroke-width", { width: data.width });
-  });
-
-  sidebar.onMessage("set-stroke-color", function (data) {
-    strokeColor = data.color;
-    preferences.set("strokeColor", strokeColor);
-    syncPreferencesSoon();
-    overlay.postMessage("set-stroke-color", { color: data.color });
-  });
-
-  sidebar.onMessage("set-stroke-inversion-color", function (data) {
-    strokeInversionColor = data.color;
-    preferences.set("strokeInversionColor", strokeInversionColor);
-    syncPreferencesSoon();
-    overlay.postMessage("set-stroke-inversion-color", { color: data.color });
-  });
-
-  sidebar.onMessage("set-comment-limit", function (data) {
-    commentLimit = data.limit;
-    preferences.set("commentLimit", commentLimit);
-    syncPreferencesSoon();
-    overlay.postMessage("set-comment-limit", { limit: data.limit });
-  });
-
-  sidebar.onMessage("set-scroll-speed", function (data) {
-    scrollSpeed = data.speed;
-    preferences.set("scrollSpeed", scrollSpeed);
-    syncPreferencesSoon();
-    overlay.postMessage("set-scroll-speed", { speed: data.speed });
   });
 
   sidebar.onMessage("set-danmaku-offset", function (data) {
@@ -2179,7 +2133,6 @@ function registerSidebarHandlers() {
       danmakuFileList = {
         xmlFiles: discovered.xmlFiles,
         jsonFiles: discovered.jsonFiles,
-        unknownFiles: discovered.unknownFiles,
         selectedPaths: danmakuFileList.selectedPaths || []
       };
       var cached = ddpReadVideoCache(currentVideoUrl);

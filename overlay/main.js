@@ -9,7 +9,7 @@ let strokeInversionColor = '#ffffff';
 let strokeOpacity = 0.4;
 let strokeWidth = 2.8;
 let commentLimit = 0;
-let scrollSpeed = 1.0; // 滚动速度倍率 (0.5 ~ 2.0), 通过 naka 弹幕 long 命令实现
+let scrollSpeed = 1.0; // 滚动速度倍率 (0.25 ~ 1.0), 通过 naka 弹幕 long 命令实现
 let danmakuTimeOffsetSec = 0;
 let danmakuFontFamily = "";
 let danmakuFontWeight = "";
@@ -92,7 +92,6 @@ function prepareCanvasSource(rawStr, parsedList, sourceType) {
   nicoRawData = null;
   rawFormattedData = null;
   rawNicoJsonData = null;
-  nicoRawFormat = 'formatted';
   if (sourceType === 'nico-json') {
     try {
       rawNicoJsonData = JSON.parse(rawStr);
@@ -275,11 +274,6 @@ function initCanvasRenderer(data) {
   }
 }
 
-function destroyCanvasRenderer() {
-  stopCanvasLoop();
-  disposeCanvasRenderer();
-}
-
 function shouldRunCanvasLoop() {
   return !!(niconiComments && danmakuVisible && canvasIsPlaying);
 }
@@ -309,6 +303,32 @@ function stopCanvasLoop() {
   }
 }
 
+// 不透明度同时作用于 canvas(canvas 模式)与 CSS 容器(css 模式)
+function applyOpacityToDom() {
+  const canvas = document.getElementById('niconicomments-canvas');
+  if (canvas && canvasNicoMode !== 'css') canvas.style.opacity = canvasOpacity;
+  const cssContainer = document.querySelector('[data-dm-css-container]');
+  if (cssContainer) cssContainer.style.opacity = canvasOpacity;
+}
+
+// load-danmaku 与 apply-settings 共用的逐字段幂等设置应用(重复携带无副作用)
+function applyOverlaySettings(data) {
+  if (data.opacity !== undefined) { canvasOpacity = data.opacity; applyOpacityToDom(); }
+  if (data.canvasFontScale !== undefined) canvasFontScale = data.canvasFontScale;
+  if (data.canvasMode !== undefined) canvasNicoMode = data.canvasMode;
+  if (data.strokeColor !== undefined) strokeColor = data.strokeColor;
+  if (data.strokeInversionColor !== undefined) strokeInversionColor = data.strokeInversionColor;
+  if (data.strokeOpacity !== undefined) strokeOpacity = data.strokeOpacity;
+  if (data.strokeWidth !== undefined) strokeWidth = data.strokeWidth;
+  if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
+  if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
+  if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
+  if (data.danmakuFontFamily !== undefined) danmakuFontFamily = data.danmakuFontFamily || "";
+  if (data.danmakuFontWeight !== undefined) danmakuFontWeight = data.danmakuFontWeight || "";
+  if (data.fixedCombo !== undefined) fixedComboEnabled = !!data.fixedCombo;
+  if (data.nakaDedupeWindow !== undefined) nakaDedupeWindow = Number(data.nakaDedupeWindow) || 0;
+}
+
 iina.onMessage("time-update", (data) => {
   let t = data.time * 100;
   const isSeek = Math.abs(t - lastTime) > 150;
@@ -325,25 +345,7 @@ iina.onMessage("time-update", (data) => {
 });
 
 iina.onMessage("load-danmaku", (data) => {
-  if (data.canvasFontScale !== undefined) canvasFontScale = data.canvasFontScale;
-  if (data.strokeOpacity !== undefined) strokeOpacity = data.strokeOpacity;
-  if (data.strokeWidth !== undefined) strokeWidth = data.strokeWidth;
-  if (data.strokeColor !== undefined) strokeColor = data.strokeColor;
-  if (data.strokeInversionColor !== undefined) strokeInversionColor = data.strokeInversionColor;
-  if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
-  if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
-  if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
-  if (data.danmakuFontFamily !== undefined) danmakuFontFamily = data.danmakuFontFamily || "";
-  if (data.danmakuFontWeight !== undefined) danmakuFontWeight = data.danmakuFontWeight || "";
-  if (data.fixedCombo !== undefined) fixedComboEnabled = !!data.fixedCombo;
-  if (data.nakaDedupeWindow !== undefined) nakaDedupeWindow = Number(data.nakaDedupeWindow) || 0;
-  if (data.opacity !== undefined) {
-    canvasOpacity = data.opacity;
-    const canvas = document.getElementById('niconicomments-canvas');
-    if (canvas && canvasNicoMode !== 'css') canvas.style.opacity = data.opacity;
-    const cssContainer = document.querySelector('[data-dm-css-container]');
-    if (cssContainer) cssContainer.style.opacity = data.opacity;
-  }
+  applyOverlaySettings(data);
 
   const encodedStr = data.xmlContent;
   let rawStr;
@@ -374,9 +376,6 @@ iina.onMessage("load-danmaku", (data) => {
 
   if (nicoRawData) {
     canvasIsPlaying = !isPaused;
-    if (!data.preservePosition) {
-      canvasSyncAnchor(0);
-    }
     initCanvasRenderer(nicoRawData);
     startCanvasLoop();
   }
@@ -437,10 +436,7 @@ iina.onMessage("toggle-danmaku", (data) => {
 
 iina.onMessage("set-opacity", (data) => {
   canvasOpacity = data.opacity;
-  const canvas = document.getElementById('niconicomments-canvas');
-  if (canvas && canvasNicoMode !== 'css') canvas.style.opacity = data.opacity;
-  const cssContainer = document.querySelector('[data-dm-css-container]');
-  if (cssContainer) cssContainer.style.opacity = data.opacity;
+  applyOpacityToDom();
 });
 
 iina.onMessage("set-fontscale", (data) => {
@@ -514,7 +510,8 @@ iina.onMessage("set-danmaku-font", (data) => {
 });
 
 iina.onMessage("clear-danmaku", () => {
-  destroyCanvasRenderer();
+  stopCanvasLoop();
+  disposeCanvasRenderer();
   const cssContainer = document.querySelector('[data-dm-css-container]');
   if (cssContainer) cssContainer.remove();
   nicoRawData = null;
@@ -525,26 +522,7 @@ iina.onMessage("clear-danmaku", () => {
 });
 
 iina.onMessage("apply-settings", (data) => {
-  if (data.opacity !== undefined) {
-    canvasOpacity = data.opacity;
-    const canvas = document.getElementById('niconicomments-canvas');
-    if (canvas && canvasNicoMode !== 'css') canvas.style.opacity = data.opacity;
-    const cssContainer = document.querySelector('[data-dm-css-container]');
-    if (cssContainer) cssContainer.style.opacity = data.opacity;
-  }
-  if (data.canvasFontScale !== undefined) canvasFontScale = data.canvasFontScale;
-  if (data.canvasMode !== undefined) canvasNicoMode = data.canvasMode;
-  if (data.strokeColor !== undefined) strokeColor = data.strokeColor;
-  if (data.strokeInversionColor !== undefined) strokeInversionColor = data.strokeInversionColor;
-  if (data.strokeOpacity !== undefined) strokeOpacity = data.strokeOpacity;
-  if (data.strokeWidth !== undefined) strokeWidth = data.strokeWidth;
-  if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
-  if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
-  if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
-  if (data.danmakuFontFamily !== undefined) danmakuFontFamily = data.danmakuFontFamily || "";
-  if (data.danmakuFontWeight !== undefined) danmakuFontWeight = data.danmakuFontWeight || "";
-  if (data.fixedCombo !== undefined) fixedComboEnabled = !!data.fixedCombo;
-  if (data.nakaDedupeWindow !== undefined) nakaDedupeWindow = Number(data.nakaDedupeWindow) || 0;
+  applyOverlaySettings(data);
 });
 
 // overlay 自身的 file:// 根目录(插件启动即加载,上报给 main 用于读 opencc.min.js
