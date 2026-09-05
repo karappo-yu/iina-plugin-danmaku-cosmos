@@ -21,7 +21,6 @@ jobs:
           zip -r dist/danmaku-cosmos.iinaplgz \
             Info.json \
             main.js \
-            global.js \
             overlay \
             sidebar \
             -x "*.DS_Store" \

@@ -7,7 +7,6 @@
     "name": "karappo-yu"
   },
   "entry": "main.js",
-  "globalEntry": "global.js",
   "permissions": [
     "show-osd",
     "video-overlay",
