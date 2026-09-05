@@ -157,7 +157,7 @@ Dedup is split across two sides with the SAME window semantics (greedy from earl
 | Setting | Behavior |
 |---------|----------|
 | **ON** (`dandanplayAutoNetwork=true`) | Network-first: fresh DDP cache auto-loads without any network traffic; no cache → auto-match |
-| **OFF** (`dandanplayAutoNetwork=false`) | Local-first: load local files, DDP cache shown in list but not auto-loaded |
+| **OFF** (`dandanplayAutoNetwork=false`) | Local-first: load local files; no local files → fall back to auto-loading a fresh DDP cache (stale cache is listed but never auto-loaded) |
 
 ### DDP Comment Conversion
 
