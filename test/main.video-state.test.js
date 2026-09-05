@@ -134,17 +134,17 @@ function createHarness(initialEnabled, autoNetwork = false) {
   };
 }
 
-function loadedPaths(messages) {
+function loadedComments(messages) {
   return messages
     .filter((message) => message.name === 'load-danmaku')
-    .map((message) => message.data.path);
+    .map((message) => decodeURIComponent(message.data.xmlContent));
 }
 
 test('switching videos while disabled clears A and loads B when re-enabled', () => {
   const harness = createHarness(true);
   harness.readyOverlay();
   harness.setVideo('file:///videos/A.mp4');
-  assert.deepEqual(loadedPaths(harness.overlayMessages), ['/videos/A.xml']);
+  assert.deepEqual(loadedComments(harness.overlayMessages), ['<i><d p="1,1,25,16777215,0,0,0,0">A comment</d></i>']);
 
   harness.toggleDanmaku();
   const switchStart = harness.overlayMessages.length;
@@ -156,22 +156,25 @@ test('switching videos while disabled clears A and loads B when re-enabled', () 
     1,
     'file-loaded must clear the previous video renderer once even while danmaku is disabled',
   );
-  assert.deepEqual(loadedPaths(duringDisabledSwitch), []);
+  assert.deepEqual(loadedComments(duringDisabledSwitch), []);
   assert.equal(harness.context.currentDanmakuStatus.isLoaded, false);
   assert.equal(harness.context.danmakuFileList.selectedPaths.length, 0);
 
   harness.toggleDanmaku();
-  assert.deepEqual(loadedPaths(harness.overlayMessages), ['/videos/A.xml', '/videos/B.xml']);
+  assert.deepEqual(loadedComments(harness.overlayMessages), [
+    '<i><d p="1,1,25,16777215,0,0,0,0">A comment</d></i>',
+    '<i><d p="1,1,25,16777215,0,0,0,0">B comment</d></i>',
+  ]);
 });
 
 test('enabling after startup-disabled file load initializes that video', () => {
   const harness = createHarness(false);
   harness.readyOverlay();
   harness.setVideo('file:///videos/B.mp4');
-  assert.deepEqual(loadedPaths(harness.overlayMessages), []);
+  assert.deepEqual(loadedComments(harness.overlayMessages), []);
 
   harness.toggleDanmaku();
-  assert.deepEqual(loadedPaths(harness.overlayMessages), ['/videos/B.xml']);
+  assert.deepEqual(loadedComments(harness.overlayMessages), ['<i><d p="1,1,25,16777215,0,0,0,0">B comment</d></i>']);
 });
 
 test('startup-disabled network video stays cleared without starting a match', () => {
@@ -181,7 +184,7 @@ test('startup-disabled network video stays cleared without starting a match', ()
   harness.setVideo('https://example.com/video.m3u8');
 
   assert.ok(harness.overlayMessages.some((message) => message.name === 'clear-danmaku'));
-  assert.deepEqual(loadedPaths(harness.overlayMessages), []);
+  assert.deepEqual(loadedComments(harness.overlayMessages), []);
   assert.deepEqual(harness.httpRequests, []);
 });
 

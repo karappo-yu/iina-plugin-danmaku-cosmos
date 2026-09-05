@@ -1,6 +1,6 @@
 {
   "private": true,
-  "description": "No build tools — this file is a stub only. @xmldom/xmldom is not used.",
+  "description": "No build step; package.json provides the Node test command for the vanilla IINA plugin.",
   "scripts": {
     "test": "node --test test/*.test.js"
   }

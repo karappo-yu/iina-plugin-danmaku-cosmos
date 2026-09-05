@@ -1248,7 +1248,6 @@ iina.onMessage("dandanplay-bangumi-result", function (data) {
    数据由 sidebar 主动向 main.js 拉取(danmaku-browser-request,懒加载约束);
    main 侧按与 overlay 相同的过滤(切片/密度/强制简体)构建,保证列表与渲染一致。 */
 var BROWSER_ROW_H = 26;
-var browserItems = [];         // [{t, text, blocked, merged}] 按 t 升序(全量,接收原样)
 var browserVpos = -1;          // 最近一次时间消息的 vpos(1/100s)
 var browserFollowLive = true;  // 跟随模式: 锚定 vpos 行滚动(用户手动翻阅时退出)
 var browserRenderedSourceKey = ''; // 上次渲染完成时的弹幕源标识(fileListState.selectedPaths[0])
@@ -1388,7 +1387,7 @@ function browserUpdateTotal() {
 function browserUpdateLiveUI() {
   // 播放时间显示已移除(标题行不再展示);只维护"回到实时"按钮
   var btn = document.getElementById("danmaku-browser-follow-btn");
-  if (btn) btn.style.display = (browserFollowLive || browserItems.length === 0) ? "none" : "";
+  if (btn) btn.style.display = (browserFollowLive || browserList.items.length === 0) ? "none" : "";
 }
 
 // 聊天栏式跟随: 锚定 vpos 对应行并保持其在可视区底部,新弹幕到点在底部"推出"
@@ -1471,10 +1470,9 @@ iina.onMessage("danmaku-browser-data", function (data) {
   var isDone = data.done !== false;
   if (chunkIndex === 0) {
     // 新数据或重发: 重置状态
-    browserItems = [];
+    browserList.items = [];
     browserVpos = -1;
     browserNextChunk = 1;
-    browserList.items = [];
     browserList.rowNodes.forEach(function (el) { el.remove(); });
     browserList.rowNodes.clear();
     // 弹幕源切换标记: 当前选中的弹幕文件(danmaku-file-list 消息维护)与
@@ -1494,20 +1492,15 @@ iina.onMessage("danmaku-browser-data", function (data) {
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
     if (!item || typeof item.t !== 'number' || !isFinite(item.t) || !item.text) continue;
-    browserItems.push({ t: item.t, text: item.text, blocked: !!item.blocked, merged: !!item.merged, owner: !!item._owner });
+    browserList.items.push({ t: item.t, text: item.text, blocked: !!item.blocked, merged: !!item.merged, owner: !!item._owner });
   }
   if (!isDone) {
     // 传输中不渲染(done 时一次性渲染)
     return;
   }
+  debugLog('danmaku-browser: data complete, total=' + browserList.items.length + ', chunks=' + (chunkIndex + 1));
   // 全部收齐: 单容器渲染
-  debugLog('danmaku-browser: data complete, total=' + browserItems.length + ', chunks=' + (chunkIndex + 1));
-  browserList.items = browserItems;
-  // 渲染前把 scrollTop 规整到新列表合法范围并标记为程序滚动目标:
-  // 恢复动作不一定锚定(播放位置未推送时跳过),此时滚动位置可能超出
-  // 新列表范围,浏览器渲染时的收紧事件会被误判为手动翻阅;主动规整
-  // 后收紧事件命中程序分支,不退出实时
-  var maxScroll = Math.max(0, browserItems.length * BROWSER_ROW_H - browserList.el.clientHeight);
+  var maxScroll = Math.max(0, browserList.items.length * BROWSER_ROW_H - browserList.el.clientHeight);
   if (browserList.el.scrollTop > maxScroll) {
     browserProgramScrollTop = maxScroll;
     browserList.el.scrollTop = maxScroll;
@@ -1533,7 +1526,7 @@ iina.onMessage("danmaku-visible-time", function (data) {
   var vpos = Math.round((data.time + (data.offset || 0)) * 100);
   browserVpos = vpos;
   // 自愈: 时间信号在流动但本地无列表数据 → 重新拉取
-  if (browserItems.length === 0) requestBrowserDataRefresh();
+  if (browserList.items.length === 0) requestBrowserDataRefresh();
   browserUpdateLiveUI();
   if (browserFollowLive) browserFollowToLive();
 });
