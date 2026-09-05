@@ -124,7 +124,7 @@ Three data paths in `overlay/main.js`:
 
 ### Time Offset
 
-`set-danmaku-offset` → `applyDanmakuOffset()` (persist + forward). Overlay adds `danmakuTimeOffsetSec` inside `canvasGetCurrentTime()` (base time + offset), so both CSS and Canvas modes shift instantly. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; step = |current offset|, fallback 1 — quirky but works); both send `set-danmaku-offset`.
+`set-danmaku-offset` → `applyDanmakuOffset()` (session-only; not persisted). The offset resets to zero on each video load, then forwards to overlay and sidebar. Overlay adds `danmakuTimeOffsetSec` inside `canvasGetCurrentTime()` (base time + offset), so both CSS and Canvas modes shift instantly. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; step = |current offset|, fallback 1 — quirky but works); both send `set-danmaku-offset`.
 
 ### Danmaku Deduplication (engine-side render merge, plugin-side list merge)
 
@@ -177,7 +177,7 @@ All communication uses `postMessage` / `onMessage` across three channels:
 |---------|-----------|---------|
 | `main.js ↔ overlay` | Bidirectional | Danmaku data, time updates, render params, mode switching |
 | `main.js ↔ sidebar` | Bidirectional | Sidebar UI state sync, operation commands |
-| `overlay → main.js` | One-way | Canvas unsupported notice, jump commands, seek state |
+| `overlay → main.js` | One-way | Jump commands, seek state |
 | `sidebar → main.js` | One-way | Toggle, param changes, file operations |
 
 Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-stroke-width`, `set-stroke-opacity`, `set-stroke-color`, `set-stroke-inversion-color`, `set-comment-limit`, `set-scroll-speed` (multiplier 0.25–1.0), `set-danmaku-offset`, `set-danmaku-font`, `set-style-preset` (persisted in main.js only, not forwarded).
@@ -200,7 +200,7 @@ Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-
 niconicomments.min.js → input.js → main.js
 ```
 
-`lib/opencc.min.js` (1.1MB) is intentionally NOT in this load order — it is injected dynamically by `ensureOpenCCLoaded()` in `overlay/main.js` the first time 强制简体 is enabled. When the bundle becomes ready while danmaku is already on screen, `rebuildFromLastLoad()` re-parses `lastLoadRawStr` so conversion takes effect immediately. Do not add it back to `index.html` — the goal is keeping overlay startup free of the 1.1MB parse cost.
+`main.js` uses `ensureBrowserSimplifier()` to read and evaluate the local OpenCC bundle only when conversion is needed; the converted content is applied before sending `load-danmaku`.
 
 Later scripts depend on functions mounted on `window` by earlier scripts (e.g., `window.parseDanmaku` from `input.js`). Do not reorder the `<script>` tags.
 
@@ -213,7 +213,6 @@ Later scripts depend on functions mounted on `window` by earlier scripts (e.g., 
   - `_commands` — array of mail commands (e.g., `['naka', '#ffffff', 'big']`)
   - `_userId` — user ID (number or string)
   - `_dateSec` — Unix timestamp in seconds
-  - `_reverse` — whether reverse danmaku (mode 6)
 
 - **Overlay data paths** (`prepareCanvasSource` in `overlay/main.js`):
   - `nico-json` type → `JSON.parse` directly, format detected by `detectNicoFormat` (`v1` when `data[0].comments`, else `legacy`) — pristine copy kept in `rawNicoJsonData`
@@ -265,7 +264,7 @@ Based on the `niconicomments` third-party library. All formats are normalized vi
 
 - `canvas.width = 1920; canvas.height = 1080` is hardcoded and does not adapt to window aspect ratio
 - Filenames containing `[` or `]` may cause auto-load to fail (regex matching in `extractNumberFromName`, `[n]`-style only; special formats like `第3话` often fail)
-- Canvas mode does not support CSS-mode-specific settings (font scale, scroll duration, blocking, lane limits)
+- Canvas mode receives the same filtered source content as CSS mode, but does not support CSS-specific animation/layout behavior.
 - CSS mode (niconicomments) Comment Art vertical positioning may differ slightly from Canvas mode
 - DDP cache only stores the last loaded episode per video (hash overwrite)
 - Backtick U+0060 in any sidebar message field causes IINA IPC to silently drop the entire message

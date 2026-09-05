@@ -46,14 +46,6 @@ function detectNicoFormat(data) {
   return 'legacy';
 }
 
-function detectRawDanmakuType(rawStr) {
-  const s = rawStr ? rawStr.trim() : '';
-  if (!s) return 'bilibili-xml';
-  if (s.charAt(0) === '[') return 'nico-json';
-  if (s.indexOf('<packet') !== -1) return 'nico-xml';
-  return 'bilibili-xml';
-}
-
 function toNumericUserId(userId, userMap) {
   const numeric = Number(userId);
   if (!isNaN(numeric) && isFinite(numeric)) return numeric;
@@ -311,7 +303,7 @@ function applyOpacityToDom() {
   if (cssContainer) cssContainer.style.opacity = canvasOpacity;
 }
 
-// load-danmaku 与 apply-settings 共用的逐字段幂等设置应用(重复携带无副作用)
+// load-danmaku 共用的逐字段幂等设置应用(重复携带无副作用)
 function applyOverlaySettings(data) {
   if (data.opacity !== undefined) { canvasOpacity = data.opacity; applyOpacityToDom(); }
   if (data.canvasFontScale !== undefined) canvasFontScale = data.canvasFontScale;
@@ -354,7 +346,7 @@ iina.onMessage("load-danmaku", (data) => {
     return;
   }
 
-  var danmakuType = data.danmakuType || detectRawDanmakuType(rawStr);
+  var danmakuType = data.danmakuType;
 
   let parsedList;
   if (danmakuType === 'dandanplay') {
@@ -512,6 +504,10 @@ iina.onMessage("set-danmaku-font", (data) => {
 iina.onMessage("clear-danmaku", () => {
   stopCanvasLoop();
   disposeCanvasRenderer();
+  lastTime = 0;
+  canvasVideoAnchorTime = 0;
+  canvasSystemAnchorTime = 0;
+  canvasIsPlaying = false;
   const cssContainer = document.querySelector('[data-dm-css-container]');
   if (cssContainer) cssContainer.remove();
   nicoRawData = null;
@@ -519,10 +515,6 @@ iina.onMessage("clear-danmaku", () => {
   rawNicoJsonData = null;
   nicoRawFormat = 'legacy';
   iina.postMessage("danmaku-type", { type: 'none' });
-});
-
-iina.onMessage("apply-settings", (data) => {
-  applyOverlaySettings(data);
 });
 
 // overlay 自身的 file:// 根目录(插件启动即加载,上报给 main 用于读 opencc.min.js

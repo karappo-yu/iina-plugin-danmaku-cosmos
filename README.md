@@ -78,8 +78,8 @@ CA 弹幕：
 - **自动匹配**：优先根据文件 hash 精确匹配（自动加载），失败后根据视频文件名匹配（显示候选列表供选择）
 - **手动搜索**：上述匹配均失败时，可手动搜索番剧名称，从搜索结果中选择
 - **弹幕缓存**：网络弹幕缓存到本地，24 小时内重复播放无需重新下载
-- **自动加载开关**：开启后自动匹配并加载网络弹幕；关闭时优先使用本地弹幕，网络弹幕仅在手动选择时加载
-- **弹幕冲突处理**：网络弹幕和本地弹幕同时存在时，根据优先级自动选择
+- **自动加载开关**：开启（`dandanplayAutoNetwork=true`）时采用网络优先：新鲜缓存立即加载，否则自动匹配；关闭时采用本地优先，仅在没有本地弹幕时使用新鲜的弹弹play缓存
+- **弹幕冲突处理**：由上述自动加载开关决定网络优先或本地优先
 
 > **注意**：弹弹play 提供的网络弹幕内容以简体中文和繁体中文为主，不包含其他语言。若习惯阅读简体，可开启“强制繁转简”选项。
 
@@ -187,8 +187,8 @@ CA 弹幕：
 - **自動マッチング**：ファイルハッシュによる完全一致（自動読み込み）→ ファイル名による曖昧一致（候補一覧表示）の順で試行
 - **手動検索**：上記が全て失敗した場合、番組名を手動検索可能
 - **キャッシュ**：ネットワークコメントはローカルにキャッシュされ、24時間以内の再再生では再ダウンロード不要
-- **自動読み込みトグル**：ON で自動マッチング＋自動読み込み、OFF では優先的にローカルコメントを使用
-- **競合処理**：ネットワークコメントとローカルコメントが共存する場合、優先設定に従って自動選択
+- **自動読み込みトグル**：ON（`dandanplayAutoNetwork=true`）ではネットワーク優先（新鮮なキャッシュを即時ロードし、なければ自動マッチング）、OFF ではローカル優先で、ローカルコメントがない場合のみ新鮮な弹弹play キャッシュを使用
+- **競合処理**：上記の自動読み込みトグルによりネットワーク優先／ローカル優先を切り替え
 
 > **注意**：弹弹play から提供されるネットワークコメントは簡体字中国語・繁体字中国語が主体で、他の言語は含まれません。
 
@@ -262,8 +262,7 @@ The plugin integrates the dandanplay open platform API for automatic network dan
 - **Auto-match**: First tries file hash (auto-load on exact match), then falls back to filename matching (shows candidate list)
 - **Manual search**: Search by anime name when both matching methods fail
 - **Cache**: Network danmaku is cached locally; replay within 24 hours skips re-download
-- **Auto-load toggle**: ON for automatic network matching + loading; OFF prefers local files
-- **Conflict resolution**: When both local and network danmaku exist, priority setting determines which to use
+- **Auto-load toggle**: ON (`dandanplayAutoNetwork=true`) uses network-first behavior (fresh cache loads immediately; otherwise auto-match); OFF uses local-first behavior and only falls back to a fresh Dandanplay cache
 
 > **Note**: Network danmaku provided by Dandanplay is predominantly Simplified Chinese and Traditional Chinese — other languages are not available.
 
@@ -324,7 +323,7 @@ The MIT License requires that the copyright notice and license text be included 
 
 The niconicomments author notes that implementing the complete flow of "real-time comment fetching → screen rendering → comment posting" may involve Japanese patents. See [ABOUT_PATENT.md](https://github.com/xpadev-net/niconicomments/blob/develop/ABOUT_PATENT.md) for details.
 
-This plugin is used solely for local playback of saved comment files and does not involve real-time fetching or posting functionality.
+This plugin supports local playback of saved danmaku files and also retrieves danmaku from the Dandanplay API when its network matching feature is enabled. It does not implement real-time comment posting.
 
 ---
 

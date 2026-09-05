@@ -611,11 +611,11 @@ function applyNicoJsonFilters(encodedContent) {
 }
 
 // load-danmaku 载荷统一构造。设置字段全量携带: overlay 端逐字段幂等应用,重复携带无副作用。
-function buildLoadDanmakuPayload(xmlContent, path, danmakuType) {
+function buildLoadDanmakuPayload(xmlContent, danmakuType) {
   return {
     xmlContent: xmlContent,
-    path: path,
     danmakuType: danmakuType,
+    canvasMode: currentCanvasMode,
     opacity: canvasOpacity,
     canvasFontScale: canvasFontScale,
     strokeColor: strokeColor,
@@ -653,7 +653,7 @@ function applyDanmakuFilter(offset, limit) {
   if (!selectedPath) return;
   if (!danmakuCache[selectedPath]) return;
 
-  overlay.postMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), selectedPath, 'nico-json'));
+  overlay.postMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), 'nico-json'));
   sendDanmakuFilterInfo();
 }
 
@@ -1084,7 +1084,7 @@ function resendDanmakuToOverlay() {
   if (!overlayReady) return;
   var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
   if (!selectedPath || !danmakuCache[selectedPath]) return;
-  overlay.postMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), selectedPath, currentDanmakuStatus.fileType));
+  overlay.postMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), currentDanmakuStatus.fileType));
 }
 
 function extractNumberFromName(name) {
@@ -1572,7 +1572,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
     sendDanmakuFilterInfo();
     notifyBrowserDataChanged();
 
-    var payload = buildLoadDanmakuPayload(getEffectiveContent(virtualPath), virtualPath, 'dandanplay');
+    var payload = buildLoadDanmakuPayload(getEffectiveContent(virtualPath), 'dandanplay');
     if (overlayReady) {
       overlay.postMessage("load-danmaku", payload);
       loadedDanmakuVideoUrl = currentVideoUrl;
@@ -1793,16 +1793,11 @@ function loadLocalDanmaku(fileInfo) {
   var encodedContent = encodeContent(contentToSend);
   danmakuCache[fileInfo.path] = encodedContent;
 
+  resetNicoJsonFilterState();
   if (fileType === 'nico-json') {
     nicoJsonTotalCount = computeNicoJsonCount(encodedContent);
     checkNicoJsonDuration(encodedContent);
-  } else {
-    nicoJsonTotalCount = 0;
-    clearNicoJsonDuration();
   }
-  danmakuFilterOffset = 0;
-  danmakuFilterLimit = 0;
-  danmakuFilterDensity = 0;
 
   updateDanmakuStatus({ fileType: fileType, isLoaded: true });
 
@@ -1810,7 +1805,7 @@ function loadLocalDanmaku(fileInfo) {
   sendDanmakuFilterInfo();
   notifyBrowserDataChanged();
 
-  var payload = buildLoadDanmakuPayload(getEffectiveContent(fileInfo.path), fileInfo.path, fileType);
+  var payload = buildLoadDanmakuPayload(getEffectiveContent(fileInfo.path), fileType);
 
   if (overlayReady) {
     overlay.postMessage("load-danmaku", payload);
@@ -1827,22 +1822,6 @@ function markOverlayReady() {
   if (overlayReady) return;
   overlayReady = true;
   overlay.show();
-  overlay.postMessage("apply-settings", {
-    opacity: canvasOpacity,
-    canvasFontScale: canvasFontScale,
-    canvasMode: currentCanvasMode,
-    strokeColor: strokeColor,
-    strokeInversionColor: strokeInversionColor,
-    strokeOpacity: strokeOpacity,
-    strokeWidth: strokeWidth,
-    commentLimit: commentLimit,
-    scrollSpeed: scrollSpeed,
-    danmakuTimeOffsetSec: danmakuTimeOffsetSec,
-    danmakuFontFamily: danmakuFontFamily,
-    danmakuFontWeight: danmakuFontWeight,
-    fixedCombo: danmakuDedupeEnabled,
-    nakaDedupeWindow: danmakuDedupeEnabled ? danmakuDedupeWindow * 100 : 0
-  });
 
   if (pendingDanmaku) {
     overlay.postMessage("load-danmaku", pendingDanmaku);
@@ -1929,20 +1908,15 @@ function loadManualDanmakuFile(path) {
   var manualFileType = detectDanmakuType(xmlContent);
   updateDanmakuStatus({ fileType: manualFileType, isLoaded: true });
 
+  resetNicoJsonFilterState();
   if (manualFileType === 'nico-json') {
     nicoJsonTotalCount = computeNicoJsonCount(encodedContent);
     checkNicoJsonDuration(encodedContent);
-  } else {
-    nicoJsonTotalCount = 0;
-    clearNicoJsonDuration();
   }
-  danmakuFilterOffset = 0;
-  danmakuFilterLimit = 0;
-  danmakuFilterDensity = 0;
   sendDanmakuFilterInfo();
   notifyBrowserDataChanged();
 
-  var manualPayload = buildLoadDanmakuPayload(getEffectiveContent(path), path, manualFileType);
+  var manualPayload = buildLoadDanmakuPayload(getEffectiveContent(path), manualFileType);
 
   if (overlayReady) {
     overlay.postMessage("load-danmaku", manualPayload);
@@ -2216,22 +2190,17 @@ function registerSidebarHandlers() {
     }
     updateDanmakuStatus({ fileType: fileType, isLoaded: true });
 
+    resetNicoJsonFilterState();
     if (fileType === 'nico-json') {
       nicoJsonTotalCount = computeNicoJsonCount(encodedContent);
       checkNicoJsonDuration(encodedContent);
-    } else {
-      nicoJsonTotalCount = 0;
-      clearNicoJsonDuration();
     }
-    danmakuFilterOffset = 0;
-    danmakuFilterLimit = 0;
-    danmakuFilterDensity = 0;
 
     sidebarPostMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
     notifyBrowserDataChanged();
 
-    var selectPayload = buildLoadDanmakuPayload(getEffectiveContent(filePath), filePath, fileType);
+    var selectPayload = buildLoadDanmakuPayload(getEffectiveContent(filePath), fileType);
 
     overlay.postMessage("load-danmaku", selectPayload);
     loadedDanmakuVideoUrl = currentVideoUrl;
