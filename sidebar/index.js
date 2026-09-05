@@ -76,8 +76,6 @@ var state = {
   danmakuForceSimplified: false, // 与 Info.json preferenceDefaults 一致
   danmakuAutoOffset: true,
   danmakuType: 'none',
-  danmakuFileName: null,
-  danmakuRelativePath: null,
   danmakuLoaded: false,
   canvasOpacity: 0.8,
   canvasFontScale: 1.0,
@@ -933,8 +931,6 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.danmakuForceSimplified !== undefined) state.danmakuForceSimplified = !!data.danmakuForceSimplified;
   if (data.danmakuAutoOffset !== undefined) state.danmakuAutoOffset = !!data.danmakuAutoOffset;
   if (data.danmakuFileType !== undefined) state.danmakuType = data.danmakuFileType;
-  if (data.danmakuFileName !== undefined) state.danmakuFileName = data.danmakuFileName;
-  if (data.danmakuRelativePath !== undefined) state.danmakuRelativePath = data.danmakuRelativePath;
   if (data.danmakuLoaded !== undefined) state.danmakuLoaded = data.danmakuLoaded;
   if (data.danmakuFilterDensity !== undefined) state.danmakuFilterDensity = data.danmakuFilterDensity;
   updateUI();
@@ -943,8 +939,6 @@ iina.onMessage("danmaku-state", function (data) {
 
 iina.onMessage("danmaku-type", function (data) {
   if (data.fileType !== undefined) state.danmakuType = data.fileType;
-  if (data.fileName !== undefined) state.danmakuFileName = data.fileName;
-  if (data.relativePath !== undefined) state.danmakuRelativePath = data.relativePath;
   if (data.isLoaded !== undefined) state.danmakuLoaded = data.isLoaded;
   updateUI();
   updateEnabledUI();

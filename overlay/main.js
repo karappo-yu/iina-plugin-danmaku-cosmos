@@ -1,4 +1,3 @@
-let allDanmaku = [];
 let lastTime = 0;
 let isPaused = false;
 
@@ -82,7 +81,7 @@ function buildFormattedCanvasData(list, sourceType) {
       premium: true,
       mail: Array.isArray(d._commands) ? d._commands : [],
       user_id: toNumericUserId(d._userId, userMap),
-      layer: d._layer === undefined ? -1 : d._layer,
+      layer: -1,
       is_my_post: false
     });
   }
@@ -355,21 +354,21 @@ iina.onMessage("load-danmaku", (data) => {
 
   var danmakuType = data.danmakuType || detectRawDanmakuType(rawStr);
 
+  let parsedList;
   if (danmakuType === 'dandanplay') {
     try {
-      allDanmaku = JSON.parse(rawStr);
+      parsedList = JSON.parse(rawStr);
     } catch (e) {
       console.log('[overlay] parse dandanplay failed: ' + e);
-      allDanmaku = [];
+      parsedList = [];
     }
   } else if (danmakuType === 'nico-json') {
-    allDanmaku = [];
+    parsedList = [];
   } else {
-    allDanmaku = parseDanmaku(rawStr, true);
+    parsedList = parseDanmaku(rawStr, true);
   }
 
-  prepareCanvasSource(rawStr, allDanmaku, danmakuType);
-  allDanmaku = [];
+  prepareCanvasSource(rawStr, parsedList, danmakuType);
 
   iina.postMessage("danmaku-type", { type: danmakuType });
 
@@ -518,7 +517,6 @@ iina.onMessage("clear-danmaku", () => {
   destroyCanvasRenderer();
   const cssContainer = document.querySelector('[data-dm-css-container]');
   if (cssContainer) cssContainer.remove();
-  allDanmaku = [];
   nicoRawData = null;
   rawFormattedData = null;
   rawNicoJsonData = null;

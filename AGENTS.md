@@ -25,7 +25,6 @@ The CSS renderer (a fork addition, `mode: "css"`) renders text via DOM/CSS inste
 Danmaku Cosmos/
 ├── Info.json                 # Plugin metadata & preference defaults
 ├── main.js                   # Plugin entry: IINA API, file loading, message relay, DDP integration
-├── global.js                 # Global entry (logging only)
 ├── overlay/                  # Danmaku render layer (WebView container)
 │   ├── index.html            # Entry point
 │   ├── index.css             # Render styles
@@ -215,7 +214,6 @@ Later scripts depend on functions mounted on `window` by earlier scripts (e.g., 
   - `_userId` — user ID (number or string)
   - `_dateSec` — Unix timestamp in seconds
   - `_reverse` — whether reverse danmaku (mode 6)
-  - `_layer` — CA layer ID (-1 = default layer, assigned at runtime by niconicomments)
 
 - **Overlay data paths** (`prepareCanvasSource` in `overlay/main.js`):
   - `nico-json` type → `JSON.parse` directly, format detected by `detectNicoFormat` (`v1` when `data[0].comments`, else `legacy`) — pristine copy kept in `rawNicoJsonData`
@@ -246,7 +244,7 @@ Based on the `niconicomments` third-party library. All formats are normalized vi
 ## Coding Conventions
 
 - **Variable declarations**: `var` (main.js/sidebar) and `let` (overlay) are both used. Prefer `let` in new code.
-- **Naming**: camelCase. Private/run-time fields prefix with `_` (e.g., `_layer`, `_commands`)
+- **Naming**: camelCase. Private/run-time fields prefix with `_` (e.g., `_commands`)
 - **Communication**: `iina.postMessage(key, value)` / `iina.onMessage(key, callback)` is the standard pattern. Keep naming consistent.
 - **Danmaku toggle**: Use the shared `toggleDanmaku()` or `ensureDanmakuEnabled()` functions. Do not manually repeat `preferences.set` + `overlay.postMessage` logic.
 - **Network requests**: Use `iina.http` module. DDP API uses `X-AppId`/`X-AppSecret` header auth.
