@@ -11,6 +11,12 @@ const MAIN_JS = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 function createHarness(initialEnabled, autoNetwork = false) {
   const eventHandlers = new Map();
   const overlayHandlers = new Map();
+  const sidebarHandlers = new Map();
+  const sidebarMessages = [];
+  const menuItems = [];
+  const fileReads = [];
+  const directoryReads = [];
+  let chosenFile = null;
   const overlayMessages = [];
   const httpRequests = [];
   const pendingHttp = [];
@@ -39,16 +45,18 @@ function createHarness(initialEnabled, autoNetwork = false) {
     },
     sidebar: {
       loadFile() {},
-      postMessage() {},
-      onMessage() {},
+      postMessage(name, data) { sidebarMessages.push({ name, data }); },
+      onMessage(name, handler) { register(sidebarHandlers, name, handler); },
     },
     event: {
       on(name, handler) { return register(eventHandlers, name, handler); },
-      off() {},
+      off(name, handler) {
+        eventHandlers.set(name, (eventHandlers.get(name) || []).filter((item) => item !== handler));
+      },
     },
     console: { log() {} },
     menu: {
-      addItem() {},
+      addItem(item) { menuItems.push(item); },
       item(label, callback, options) { return { label, callback, options }; },
       separator() { return {}; },
     },
@@ -58,14 +66,15 @@ function createHarness(initialEnabled, autoNetwork = false) {
       seekTo() {},
     },
     file: {
-      exists() { return false; },
+      exists(filePath) { return Object.hasOwn(comments, filePath); },
       list(dir) {
-        const base = path.basename(iina.core.status.url || '', path.extname(iina.core.status.url || ''));
-        const commentPath = path.join(dir, base + '.xml');
-        return comments[commentPath] ? [{ filename: base + '.xml', isDir: false }] : [];
+        directoryReads.push(dir);
+        return Object.keys(comments)
+          .filter((filePath) => path.dirname(filePath) === dir)
+          .map((filePath) => ({ filename: path.basename(filePath), isDir: false }));
       },
-      read(filePath) { return comments[filePath] || null; },
-      write() {},
+      read(filePath) { fileReads.push(filePath); return comments[filePath] || null; },
+      write(filePath, content) { comments[filePath] = content; },
     },
     preferences: {
       get(key) { return preferences.get(key); },
@@ -78,7 +87,8 @@ function createHarness(initialEnabled, autoNetwork = false) {
     },
     utils: {
       preferredLocalizations() { return ['en']; },
-      chooseFile() { return Promise.resolve(null); },
+      chooseFile() { return Promise.resolve(chosenFile); },
+      resolvePath(value) { return value; },
       exec() { return Promise.resolve(null); },
     },
     http: {
@@ -114,6 +124,7 @@ function createHarness(initialEnabled, autoNetwork = false) {
     clearTimeout() {},
   });
   vm.runInContext(MAIN_JS, context, { filename: 'main.js' });
+  emit(eventHandlers, 'iina.window-loaded');
 
   function emit(map, name, data) {
     for (const handler of map.get(name) || []) handler(data);
@@ -123,6 +134,22 @@ function createHarness(initialEnabled, autoNetwork = false) {
     context,
     httpRequests,
     overlayMessages,
+    sidebarMessages,
+    fileReads,
+    directoryReads,
+    setFile(filePath, content) { comments[filePath] = content; },
+    emitSidebar(name, data = {}) { emit(sidebarHandlers, name, data); },
+    emitEvent(name, data) { emit(eventHandlers, name, data); },
+    loadFromMenu(filePath) {
+      chosenFile = filePath;
+      menuItems.find((item) => item.label === 'Load Danmaku File…').callback();
+      return Promise.resolve();
+    },
+    addFromSidebar(filePath) {
+      chosenFile = filePath;
+      emit(sidebarHandlers, 'danmaku-file-add');
+      return Promise.resolve();
+    },
     resolveNextHttp(response) { pendingHttp.shift().resolve(response); },
     setNetworkResource(value) { iina.core.status.isNetworkResource = value; },
     setVideo(url) {
@@ -222,4 +249,116 @@ test('reloading the same video invalidates the previous auto-match request', asy
   await Promise.resolve();
   assert.equal(harness.httpRequests.length, 2);
   assert.equal(harness.context.currentDanmakuStatus.isLoaded, false);
+});
+
+
+test('menu loading selects and lists the source used by later filters', async () => {
+  const harness = createHarness(true);
+  harness.readyOverlay();
+  harness.setVideo('file:///videos/A.mp4');
+  const manualPath = '/downloads/manual.xml';
+  harness.setFile(manualPath, '<i><d p="2,1,25,16777215,0,0,0,0">manual comment</d></i>');
+
+  await harness.loadFromMenu(manualPath);
+
+  assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), [manualPath]);
+  assert.ok(harness.context.findDanmakuFileByPath(manualPath));
+  assert.deepEqual(Array.from(harness.context.buildDanmakuBrowserList(), (item) => item.text), ['manual comment']);
+  harness.emitSidebar('danmaku-blocklist-add', { word: 'manual' });
+  harness.emitSidebar('danmaku-blocklist-set-enabled', { enabled: true });
+  assert.equal(loadedComments(harness.overlayMessages).at(-1), '<i></i>');
+});
+
+for (const entry of ['automatic', 'menu', 'sidebar']) {
+  test(`${entry} loading normalizes local DDP exports, including reselection`, async () => {
+    const harness = createHarness(true);
+    const filePath = entry === 'automatic' ? '/videos/C.json' : '/downloads/DDP `source`.json';
+    const comments = [{ t: 100, text: 'DDP comment', _commands: ['naka', '#ffffff'] }];
+    harness.setFile(filePath, JSON.stringify({ source: 'dandanplay', comments }));
+    harness.readyOverlay();
+    harness.setVideo('file:///videos/C.mp4');
+    if (entry === 'menu') await harness.loadFromMenu(filePath);
+    if (entry === 'sidebar') await harness.addFromSidebar(filePath);
+
+    function assertDdpLoaded() {
+      const load = harness.overlayMessages.filter((message) => message.name === 'load-danmaku').at(-1);
+      assert.equal(load.data.danmakuType, 'dandanplay');
+      assert.deepEqual(JSON.parse(decodeURIComponent(load.data.xmlContent)), comments);
+      assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), [filePath]);
+      assert.deepEqual(Array.from(harness.context.buildDanmakuBrowserList(), (item) => item.text), ['DDP comment']);
+    }
+    assertDdpLoaded();
+    await harness.loadFromMenu('/videos/A.xml');
+    harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent(filePath) });
+    assertDdpLoaded();
+  });
+}
+
+test('request-state only reports current sources without rescanning or replacing session data', async () => {
+  const harness = createHarness(true);
+  harness.readyOverlay();
+  harness.setVideo('file:///videos/A.mp4');
+  const manualPath = '/downloads/manual.xml';
+  harness.setFile(manualPath, '<i><d p="2,1,25,16777215,0,0,0,0">manual comment</d></i>');
+  await harness.addFromSidebar(manualPath);
+  harness.context.ddpAddToFileListAndLoad(7, 'Anime', '1', [{ t: 100, text: 'first' }], false, true);
+  harness.context.ddpAddToFileListAndLoad(8, 'Anime', '2', [{ t: 200, text: 'second' }], false, true);
+  const before = JSON.stringify(harness.context.danmakuFileList);
+  const cacheBefore = JSON.stringify(harness.context.danmakuCache);
+  const readsBefore = harness.fileReads.length;
+  const scansBefore = harness.directoryReads.length;
+
+  harness.emitSidebar('request-state');
+  harness.emitSidebar('request-state');
+
+  assert.equal(JSON.stringify(harness.context.danmakuFileList), before);
+  assert.equal(JSON.stringify(harness.context.danmakuCache), cacheBefore);
+  assert.equal(harness.fileReads.length, readsBefore);
+  assert.equal(harness.directoryReads.length, scansBefore);
+  const reported = harness.sidebarMessages.filter((message) => message.name === 'danmaku-file-list').at(-1).data;
+  assert.deepEqual(Array.from(reported.selectedPaths), [encodeURIComponent(manualPath)]);
+  assert.equal(reported.jsonFiles.length, 2);
+  assert.ok(reported.xmlFiles.some((item) => item.path === encodeURIComponent(manualPath)));
+});
+
+test('manual selection before overlay readiness queues the latest source and enables time updates', async () => {
+  const harness = createHarness(false);
+  harness.setVideo('file:///videos/A.mp4');
+  await harness.addFromSidebar('/videos/B.xml');
+
+  assert.deepEqual(loadedComments(harness.overlayMessages), [], 'do not send data to an unready overlay');
+  assert.equal(harness.context.danmakuEnabled, true);
+  harness.readyOverlay();
+  assert.deepEqual(loadedComments(harness.overlayMessages), ['<i><d p="1,1,25,16777215,0,0,0,0">B comment</d></i>']);
+  harness.emitEvent('mpv.time-pos.changed', 12);
+  assert.equal(harness.overlayMessages.at(-1).data.time, 12);
+});
+
+test('failed or cancelled file choices preserve the active source and renderer', async () => {
+  const harness = createHarness(true);
+  harness.readyOverlay();
+  harness.setVideo('file:///videos/A.mp4');
+  const loadsBefore = loadedComments(harness.overlayMessages);
+
+  await harness.addFromSidebar('/downloads/missing.xml');
+  await harness.loadFromMenu('/downloads/missing.xml');
+  await harness.addFromSidebar(null);
+  await harness.loadFromMenu(null);
+
+  assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), ['/videos/A.xml']);
+  assert.equal(harness.context.currentDanmakuStatus.isLoaded, true);
+  assert.deepEqual(loadedComments(harness.overlayMessages), loadsBefore);
+});
+
+test('reselecting a local file reads current content without duplicating its list entry', async () => {
+  const harness = createHarness(true);
+  harness.readyOverlay();
+  harness.setVideo('file:///videos/A.mp4');
+  const updated = '<i><d p="1,1,25,16777215,0,0,0,0">updated comment</d></i>';
+  harness.setFile('/videos/A.xml', updated);
+
+  await harness.addFromSidebar('/videos/A.xml');
+
+  assert.equal(loadedComments(harness.overlayMessages).at(-1), updated);
+  assert.equal(harness.context.danmakuFileList.xmlFiles.filter((item) => item.path === '/videos/A.xml').length, 1);
 });
