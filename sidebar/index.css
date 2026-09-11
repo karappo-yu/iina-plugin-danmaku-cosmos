@@ -5,21 +5,21 @@
 :root {
   --bg: #1c1c28;
   --bg-elevated: #252536;
-  --bg-group: rgba(255, 255, 255, 0.06);
-  --bg-hover: rgba(255, 255, 255, 0.08);
+  --bg-group: rgba(255, 255, 255, 0.105);
+  --bg-hover: rgba(255, 255, 255, 0.13);
   --bg-selected: rgba(0, 122, 255, 0.18);
-  --label: #e8e8ed;
-  --secondary-label: rgba(235, 235, 245, 0.55);
-  --tertiary-label: rgba(235, 235, 245, 0.35);
-  --separator: rgba(255, 255, 255, 0.1);
+  --label: #f1f1f5;
+  --secondary-label: rgba(235, 235, 245, 0.64);
+  --tertiary-label: rgba(235, 235, 245, 0.4);
+  --separator: rgba(255, 255, 255, 0.13);
   --accent: #0a84ff;
   --accent-hover: #409cff;
   --danger: #ff453a;
-  --switch-off: rgba(120, 120, 128, 0.32);
-  --track: rgba(120, 120, 128, 0.32);
-  --thumb: #ffffff;
-  --radius: 8px;
-  --radius-sm: 6px;
+  --switch-off: rgba(120, 120, 128, 0.42);
+  --track: rgba(25, 25, 28, 0.9);
+  --thumb: #ececec;
+  --radius: 12px;
+  --radius-sm: 7px;
   --radius-pill: 20px;
 }
 
@@ -31,7 +31,7 @@ html {
 
 body {
   margin: 0;
-  padding: 14px 16px 20px;
+  padding: 14px 14px 20px;
   font-size: 13px;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
     Roboto, "Helvetica Neue", sans-serif;
@@ -48,23 +48,24 @@ body::-webkit-scrollbar {
 
 /* ========== Typography ========== */
 .section-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   text-transform: none;
-  letter-spacing: 0.2px;
-  margin: 0 0 8px 0;
-  color: var(--secondary-label);
+  letter-spacing: 0;
+  line-height: 1.25;
+  margin: 0 0 10px 0;
+  color: var(--label);
 }
 
 .toggle-label {
   font-size: 13px;
   color: var(--label);
-  font-weight: 400;
+  font-weight: 600;
 }
 
 .value-text {
-  font-size: 12px;
-  min-width: 42px;
+  font-size: 13px;
+  min-width: 48px;
   text-align: right;
   color: var(--secondary-label);
   font-variant-numeric: tabular-nums;
@@ -72,7 +73,7 @@ body::-webkit-scrollbar {
 
 /* ========== Layout ========== */
 .section {
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .toggle-row {
@@ -92,19 +93,24 @@ body::-webkit-scrollbar {
   margin-left: auto;
 }
 
-/* ========== Switch (iOS style matching image) ========== */
+/* ========== Switch (AppKit style) ========== */
 .switch {
   position: relative;
   display: inline-block;
-  width: 42px;
-  height: 24px;
+  width: 36px;
+  height: 18px;
   flex-shrink: 0;
 }
 
 .switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   opacity: 0;
-  width: 0;
-  height: 0;
+  cursor: pointer;
+  z-index: 1;
 }
 
 .switch-slider {
@@ -115,21 +121,21 @@ body::-webkit-scrollbar {
   right: 0;
   bottom: 0;
   background-color: var(--switch-off);
-  transition: background-color 0.2s ease;
-  border-radius: 24px;
+  transition: background-color 0.18s ease;
+  border-radius: 9px;
 }
 
 .switch-slider:before {
   position: absolute;
   content: "";
-  height: 20px;
+  height: 14px;
   width: 20px;
   left: 2px;
   bottom: 2px;
   background-color: var(--thumb);
-  transition: transform 0.2s ease;
-  border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.18s ease;
+  border-radius: 7px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
 }
 
 .switch input:checked + .switch-slider {
@@ -137,15 +143,18 @@ body::-webkit-scrollbar {
 }
 
 .switch input:checked + .switch-slider:before {
-  transform: translateX(18px);
+  transform: translateX(12px);
+}
+
+.switch input:disabled {
+  cursor: not-allowed;
 }
 
 .switch input:disabled + .switch-slider {
   opacity: 0.4;
-  cursor: not-allowed;
 }
 
-/* ========== Grouped toggle panel (like image's 硬件解码 group) ========== */
+/* ========== Grouped toggle panel (AppKit settings group) ========== */
 .toggle-group {
   background: var(--bg-group);
   border-radius: var(--radius);
@@ -154,8 +163,8 @@ body::-webkit-scrollbar {
 }
 
 .toggle-group .toggle-row {
-  padding: 10px 14px;
-  min-height: 40px;
+  padding: 0 14px;
+  min-height: 36px;
   border-bottom: 1px solid var(--separator);
 }
 
@@ -167,38 +176,51 @@ body::-webkit-scrollbar {
   font-size: 13px;
 }
 
-/* ========== Slider ========== */
+/* ========== Slider (AppKit style) ========== */
 .slider {
   flex: 1;
-  height: 4px;
+  height: 14px;
+  margin: 0;
   -webkit-appearance: none;
   appearance: none;
-  background: var(--track);
-  border-radius: 2px;
+  background: transparent;
   outline: none;
   cursor: pointer;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 3px;
+  background: var(--track);
+  border-radius: 2px;
 }
 
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
+  width: 18px;
+  height: 14px;
+  margin-top: -5.5px;
+  border-radius: 7px;
   background: var(--thumb);
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   border: none;
 }
 
+.slider::-moz-range-track {
+  height: 3px;
+  background: var(--track);
+  border-radius: 2px;
+}
+
 .slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
+  width: 18px;
+  height: 14px;
+  border-radius: 7px;
   background: var(--thumb);
   cursor: pointer;
   border: none;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* ========== Select / Inputs ========== */
@@ -206,8 +228,9 @@ select {
   -webkit-appearance: none;
   appearance: none;
   padding: 5px 28px 5px 10px;
-  font-size: 12px;
+  font-size: 13px;
   font-family: inherit;
+  font-weight: 400;
   border: none;
   border-radius: var(--radius-sm);
   background: var(--bg-group)
@@ -226,8 +249,9 @@ select:focus {
 input[type="text"],
 input[type="number"] {
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: 13px;
   font-family: inherit;
+  font-weight: 400;
   border: 1px solid var(--separator);
   border-radius: var(--radius-sm);
   background: var(--bg-group);
@@ -245,10 +269,10 @@ input[type="color"] {
   -webkit-appearance: none;
   appearance: none;
   width: 28px;
-  height: 22px;
+  height: 28px;
   padding: 0;
   border: 1px solid var(--separator);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: none;
   cursor: pointer;
   overflow: hidden;
@@ -260,20 +284,20 @@ input[type="color"]::-webkit-color-swatch-wrapper {
 
 input[type="color"]::-webkit-color-swatch {
   border: none;
-  border-radius: 2px;
+  border-radius: 5px;
 }
 
 /* ========== Buttons (pill style) ========== */
 .danmaku-file-action-btn,
 .btn {
   padding: 5px 14px;
-  font-size: 12px;
+  font-size: 13px;
   font-family: inherit;
   font-weight: 500;
   color: #fff;
   background: rgba(255, 255, 255, 0.12);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -291,8 +315,8 @@ input[type="color"]::-webkit-color-swatch {
 /* ========== Segmented control style (for presets etc) ========== */
 .segmented {
   display: flex;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
   padding: 0;
   gap: 0;
   overflow: hidden;
@@ -302,7 +326,7 @@ input[type="color"]::-webkit-color-swatch {
 .segmented .seg-item {
   flex: 1;
   padding: 6px 8px;
-  font-size: 11px;
+  font-size: 13px;
   font-family: inherit;
   font-weight: 500;
   color: #fff;
@@ -377,8 +401,8 @@ input[type="color"]::-webkit-color-swatch {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 2px 16px;
-  margin: 0 -16px;
+  padding: 2px 14px;
+  margin: 0 -14px;
   cursor: pointer;
   transition: background 0.12s;
   background: rgba(255, 255, 255, 0.1);
@@ -455,7 +479,7 @@ input[type="color"]::-webkit-color-swatch {
   top: 12px;
   left: 0;
   right: 0;
-  height: 4px;
+  height: 3px;
   background: var(--track);
   border-radius: 2px;
 }
@@ -473,21 +497,22 @@ input[type="color"]::-webkit-color-swatch {
 
 .range-handle {
   position: absolute;
-  top: -3px;
-  width: 10px;
-  height: 18px;
-  background: var(--accent);
-  border-radius: 3px;
+  top: -1px;
+  width: 18px;
+  height: 14px;
+  background: var(--thumb);
+  border-radius: 7px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   cursor: ew-resize;
   z-index: 2;
 }
 
 .range-handle-left {
-  left: -5px;
+  left: -9px;
 }
 
 .range-handle-right {
-  right: -5px;
+  right: -9px;
 }
 
 .range-count {
@@ -504,7 +529,7 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 .range-handle:hover {
-  background: var(--accent-hover);
+  background: #fff;
 }
 
 .range-labels {
@@ -619,8 +644,8 @@ kbd {
 .tabbar {
   display: flex;
   align-items: center;
-  margin: -14px -16px 12px;
-  padding: 0 16px;
+  margin: -14px -14px 12px;
+  padding: 0 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 .tab {
@@ -659,7 +684,7 @@ kbd {
 /* Advanced tab: divider between switch / slider / misc groups (full-width) */
 .adv-separator {
   border-top: 1px solid rgba(255, 255, 255, 0.12);
-  margin: 16px -16px;
+  margin: 16px -14px;
 }
 
 /* ========== Filter tab: danmaku browser list ========== */
@@ -679,8 +704,8 @@ kbd {
 }
 .danmaku-browser-list-wrap {
   position: relative;
-  height: min(46vh, 460px);
-  min-height: 200px;
+  height: min(70vh, 700px);
+  min-height: 220px;
 }
 .danmaku-browser-list {
   position: absolute;
