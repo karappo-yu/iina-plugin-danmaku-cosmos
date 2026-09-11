@@ -1767,7 +1767,10 @@ function loadDanmakuFile(path, enableDanmaku) {
   let encodedContent = danmakuCache[path];
 
   if (path.indexOf('dandanplay://') !== 0) {
-    let content = file.read(path);
+    let content = null;
+    try {
+      content = file.read(path);
+    } catch (e) {}
     if (!content) {
       core.osd(t('read_failed_name') + fileName);
       sidebarPostMessage("danmaku-file-error", { path: path, message: t('read_failed') });

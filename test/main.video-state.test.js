@@ -16,6 +16,8 @@ function createHarness(initialEnabled, autoNetwork = false) {
   const menuItems = [];
   const fileReads = [];
   const directoryReads = [];
+  const osdMessages = [];
+  const throwingReads = new Set();
   let chosenFile = null;
   const overlayMessages = [];
   const httpRequests = [];
@@ -62,7 +64,7 @@ function createHarness(initialEnabled, autoNetwork = false) {
     },
     core: {
       status: { idle: false, isNetworkResource: false, paused: false, url: null },
-      osd() {},
+      osd(message) { osdMessages.push(message); },
       seekTo() {},
     },
     file: {
@@ -73,7 +75,11 @@ function createHarness(initialEnabled, autoNetwork = false) {
           .filter((filePath) => path.dirname(filePath) === dir)
           .map((filePath) => ({ filename: path.basename(filePath), isDir: false }));
       },
-      read(filePath) { fileReads.push(filePath); return comments[filePath] || null; },
+      read(filePath) {
+        fileReads.push(filePath);
+        if (throwingReads.has(filePath)) throw new Error('read failed');
+        return comments[filePath] || null;
+      },
       write(filePath, content) { comments[filePath] = content; },
     },
     preferences: {
@@ -137,7 +143,9 @@ function createHarness(initialEnabled, autoNetwork = false) {
     sidebarMessages,
     fileReads,
     directoryReads,
+    osdMessages,
     setFile(filePath, content) { comments[filePath] = content; },
+    failRead(filePath) { throwingReads.add(filePath); },
     emitSidebar(name, data = {}) { emit(sidebarHandlers, name, data); },
     emitEvent(name, data) { emit(eventHandlers, name, data); },
     loadFromMenu(filePath) {
@@ -361,4 +369,42 @@ test('reselecting a local file reads current content without duplicating its lis
 
   assert.equal(loadedComments(harness.overlayMessages).at(-1), updated);
   assert.equal(harness.context.danmakuFileList.xmlFiles.filter((item) => item.path === '/videos/A.xml').length, 1);
+});
+
+test('automatic loading handles file.read exceptions as a load failure', () => {
+  const harness = createHarness(true);
+  const filePath = '/videos/C.xml';
+  harness.setFile(filePath, '<i><d p="1,1,25,16777215,0,0,0,0">C comment</d></i>');
+  harness.failRead(filePath);
+  harness.readyOverlay();
+
+  harness.setVideo('file:///videos/C.mp4');
+
+  assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), []);
+  assert.equal(harness.context.currentDanmakuStatus.isLoaded, false);
+  assert.equal(harness.context.pendingDanmaku, null);
+  assert.ok(harness.osdMessages.includes('Cannot read danmaku file: C.xml'));
+  const errors = harness.sidebarMessages.filter((message) => message.name === 'danmaku-file-error');
+  assert.equal(errors.at(-1).data.path, encodeURIComponent(filePath));
+});
+
+test('manual loading catches file.read exceptions and preserves the active source', async () => {
+  const harness = createHarness(true);
+  harness.readyOverlay();
+  harness.setVideo('file:///videos/A.mp4');
+  const brokenPath = '/downloads/broken.xml';
+  harness.setFile(brokenPath, '<i><d p="2,1,25,16777215,0,0,0,0">broken</d></i>');
+  harness.failRead(brokenPath);
+  const loadsBefore = loadedComments(harness.overlayMessages);
+
+  await harness.addFromSidebar(brokenPath);
+  await harness.loadFromMenu(brokenPath);
+
+  assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), ['/videos/A.xml']);
+  assert.equal(harness.context.currentDanmakuStatus.isLoaded, true);
+  assert.deepEqual(loadedComments(harness.overlayMessages), loadsBefore);
+  assert.equal(harness.osdMessages.filter((message) => message === 'Cannot read danmaku file: broken.xml').length, 2);
+  const errors = harness.sidebarMessages.filter((message) => message.name === 'danmaku-file-error');
+  assert.equal(errors.length, 2);
+  assert.deepEqual(errors.map((message) => message.data.path), [encodeURIComponent(brokenPath), encodeURIComponent(brokenPath)]);
 });
