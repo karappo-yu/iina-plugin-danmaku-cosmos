@@ -1522,8 +1522,6 @@ function ddpAutoMatchAndLoad(url, loadGeneration, manual) {
     dandanplayState.matches = JSON.parse(JSON.stringify(data.matches));
 
     if (data.isMatched) {
-      // manual 不受中途关闭开关影响:与 ddpLoadComments 的 manual 豁免一致,
-      // 否则点匹配后、响应返回前关掉开关会让 manual 的强制加载失效
       if (!manual && loadEnabled && !danmakuEnabled) return;
       var match = data.matches[0];
       // manual: 用户在「网络弹幕」面板手动触发的匹配是显式动作,
