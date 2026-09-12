@@ -490,7 +490,10 @@ iina.onMessage("set-danmaku-offset", (data) => {
   if (data.offset !== undefined) {
     danmakuTimeOffsetSec = Number(data.offset) || 0;
   }
-  if (nicoRawData) {
+  if (nicoRawData && niconiComments) {
+    // 偏移变化等同于时间轴跳转。CSSRenderer 使用增量 DOM，
+    // 必须先清空，否则旧时间点的弹幕会与新时间点的弹幕叠加。
+    niconiComments.clear();
     drawCanvasAtVpos(canvasGetCurrentTime() * 100, true);
   }
 });
