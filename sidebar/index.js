@@ -859,7 +859,9 @@ document.addEventListener("keydown", function (e) {
   var tagName = (target.tagName || '').toLowerCase();
   if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return;
   var key = e.key ? e.key.toLowerCase() : '';
-  if (key === 'a' || key === 'd') {
+  // Shift+D is reserved for the global danmaku toggle; modifier combinations
+  // must not also adjust the time offset.
+  if ((key === 'a' || key === 'd') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
     e.preventDefault();
     var delta = Math.abs(state.danmakuOffsetSeconds || 0);
     if (delta <= 0) delta = 1;
