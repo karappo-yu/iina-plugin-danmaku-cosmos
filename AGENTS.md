@@ -159,6 +159,8 @@ Dedup is split across two sides with the SAME window semantics (greedy from earl
 | **ON** (`dandanplayAutoNetwork=true`) | Network-first: fresh DDP cache auto-loads without any network traffic; no cache → auto-match |
 | **OFF** (`dandanplayAutoNetwork=false`) | Local-first: load local files; no local files → fall back to auto-loading a fresh DDP cache (stale cache is listed but never auto-loaded) |
 
+**Manual trigger always loads regardless of the toggle**: the 网络匹配 button (`dandanplay-trigger-match`), candidate selection (`dandanplay-select-match`) and episode selection (`dandanplay-select-episode`) are explicit user actions — they pass `manual=true` through `ddpAutoMatchAndLoad`/`ddpLoadComments`, which bypasses both the autoNetwork priority in `forceLoad` and the danmaku-toggle-off abort guard; loading then re-enables the toggle via `ensureDanmakuEnabled()`, same as manually picking a file from the list. Background auto-match (no `manual`) keeps the toggle/priority semantics unchanged.
+
 ### DDP Comment Conversion
 
 DDP `p` format: `time,mode,color,userId` → converted to nico-like internal format with `_dateSec: 1767196800` (2026-01-01) for correct Canvas Auto HTML5 detection. Note DDP conversion **explicitly pushes `naka`** to commands — this is why scroll-speed injection matches DDP danmaku.

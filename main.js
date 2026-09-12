@@ -1466,7 +1466,7 @@ function ddpResetState() {
   ddpSyncState();
 }
 
-function ddpAutoMatchAndLoad(url, loadGeneration) {
+function ddpAutoMatchAndLoad(url, loadGeneration, manual) {
   var loadEnabled = danmakuEnabled;
   if (loadGeneration === undefined) loadGeneration = danmakuLoadGeneration;
   var path = filePathFromUrl(url);
@@ -1524,9 +1524,11 @@ function ddpAutoMatchAndLoad(url, loadGeneration) {
     if (data.isMatched) {
       if (loadEnabled && !danmakuEnabled) return;
       var match = data.matches[0];
-      var forceLoad = loadEnabled && dandanplayAutoNetwork;
+      // manual: 用户在「网络弹幕」面板手动触发的匹配是显式动作,
+      // 加入列表后直接加载,不受 autoNetwork 优先级约束
+      var forceLoad = manual || (loadEnabled && dandanplayAutoNetwork);
       dandanplayState.matchType = 'hash';
-      ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, forceLoad, loadGeneration);
+      ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, forceLoad, loadGeneration, manual);
     } else {
       ddpSyncState();
       ddpFallbackToLocal();
@@ -1580,7 +1582,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
   }
 }
 
-function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, loadGeneration) {
+function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, loadGeneration, manual) {
   var videoUrl = currentVideoUrl;
   if (loadGeneration === undefined) loadGeneration = danmakuLoadGeneration;
   dandanplayState.status = 'loading';
@@ -1591,7 +1593,9 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, loadGen
 
   ddpGetComments(episodeId).then(function(res) {
     if (videoUrl !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration) return;
-    if (!danmakuEnabled && forceLoad) return;
+    // manual 路径弹幕开关关闭时也继续:ddpAddToFileListAndLoad 会在加载后
+    // ensureDanmakuEnabled() 重新开启开关(与列表中手动选文件的行为一致)
+    if (!danmakuEnabled && forceLoad && !manual) return;
     if (res.statusCode === 403) {
       dandanplayState.status = 'error';
       dandanplayState.error = 'Auth error (403): ' + (res.reason || 'check AppId/AppSecret');
@@ -2169,18 +2173,18 @@ function registerSidebarHandlers() {
     var match = data.match;
     if (match && match.episodeId) {
       dandanplayState.matchType = 'filename';
-      ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, true);
+      ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, true, undefined, true);
     }
   });
 
   sidebar.onMessage("dandanplay-select-episode", function (data) {
     dandanplayState.matchType = 'filename';
-    ddpLoadComments(data.episodeId, data.animeTitle, data.episodeTitle, true);
+    ddpLoadComments(data.episodeId, data.animeTitle, data.episodeTitle, true, undefined, true);
   });
 
   sidebar.onMessage("dandanplay-trigger-match", function () {
     if (currentVideoUrl) {
-      ddpAutoMatchAndLoad(currentVideoUrl);
+      ddpAutoMatchAndLoad(currentVideoUrl, undefined, true);
     }
   });
 
