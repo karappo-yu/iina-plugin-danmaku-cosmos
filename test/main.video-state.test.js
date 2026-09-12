@@ -489,3 +489,31 @@ test('selecting a filename-match candidate loads it with auto-network off', asyn
   assert.equal(loadedComments(harness.overlayMessages).length, 1);
   assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), ['dandanplay://7']);
 });
+
+test('manual trigger match completes when the toggle is turned off while matching', async () => {
+  const harness = createHarness(true, false);
+  harness.readyOverlay();
+  harness.setVideo('file:///videos/C.mp4');
+  await flushMicrotasks();
+
+  harness.emitSidebar('dandanplay-trigger-match');
+  await flushMicrotasks();
+  harness.resolveNextHttp({
+    statusCode: 200,
+    data: { success: true, isMatched: true, matches: [{ episodeId: 7, animeTitle: 'Anime', episodeTitle: 'EP1' }] },
+  });
+  await flushMicrotasks();
+  assert.ok(harness.httpRequests.some((request) => request.url.includes('/api/v2/comment/7')));
+
+  harness.toggleDanmaku();
+  assert.equal(harness.context.danmakuEnabled, false);
+
+  harness.resolveNextHttp({
+    statusCode: 200,
+    data: { comments: [{ p: '1,1,16777215,1', m: 'hello' }] },
+  });
+  await flushMicrotasks();
+
+  assert.equal(loadedComments(harness.overlayMessages).length, 1);
+  assert.equal(harness.context.danmakuEnabled, true);
+});
