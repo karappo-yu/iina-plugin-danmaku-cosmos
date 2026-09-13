@@ -171,8 +171,6 @@ function renderFileList() {
 }
 
 function updateDanmakuInfoUI() {
-  // 文件列表区(含 添加/网络匹配/搜索 按钮)始终显示——空列表时也要保留添加入口,
-  // 不按 hasDanmaku 隐藏
   var hasDanmaku = state.danmakuLoaded || fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0;
   toggleDanmaku.disabled = !hasDanmaku;
   if (!hasDanmaku) toggleDanmaku.checked = false;
@@ -617,7 +615,6 @@ if (danmakuForceSimplifiedToggle) {
     var forceSimp = danmakuForceSimplifiedToggle.checked;
     state.danmakuForceSimplified = forceSimp;
     
-    // 向 IINA 的核心主脚本传递设置更新命令
     iina.postMessage("set-danmaku-force-simplified", { value: forceSimp });
   });
 }
@@ -1027,7 +1024,6 @@ if (ddpAutoNetwork) {
 }
 
 // 「网络匹配」按钮:展开/收起匹配结果列表;展开时无结果则触发 hash/文件名匹配
-// (承接原「网络弹幕」展开头的逻辑)
 var ddpMatchBtn = document.getElementById("dandanplay-match-btn");
 if (ddpMatchBtn) {
   ddpMatchBtn.addEventListener("click", function () {
@@ -1387,7 +1383,6 @@ function browserUpdateTotal() {
 }
 
 function browserUpdateLiveUI() {
-  // 播放时间显示已移除(标题行不再展示);只维护"回到实时"按钮
   var btn = document.getElementById("danmaku-browser-follow-btn");
   if (btn) btn.style.display = (browserFollowLive || browserList.items.length === 0) ? "none" : "";
 }
@@ -1467,7 +1462,7 @@ iina.onMessage("danmaku-browser-data", function (data) {
   if (items === null) {
     return;
   }
-  // 兼容旧格式(无 chunkIndex/done 的单条消息)
+  // 缺 chunkIndex/done 字段时视为单块完整消息
   var chunkIndex = data.chunkIndex === undefined ? 0 : data.chunkIndex;
   var isDone = data.done !== false;
   if (chunkIndex === 0) {
@@ -1616,7 +1611,7 @@ function renderBlocklist() {
     item.appendChild(x);
     blocklistList.appendChild(item);
   }
-  // 添加行: + 号,点击进入内联编辑(替代独立添加按钮)
+  // 添加行: + 号,点击进入内联编辑
   var addItem = document.createElement("div");
   addItem.className = "danmaku-blocklist-item danmaku-blocklist-add-item";
   addItem.textContent = "+ " + t('blocklist_add');

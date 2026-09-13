@@ -69,7 +69,6 @@ function parseBilibiliXml(xmlStr) {
       }
     }
   } catch (e) {
-    // fall through to regex
   }
 
   // Fallback: regex (for malformed XML that DOMParser can't handle)
