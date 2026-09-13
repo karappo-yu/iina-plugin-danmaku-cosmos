@@ -1494,7 +1494,7 @@ iina.onMessage("danmaku-browser-data", function (data) {
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
     if (!item || typeof item.t !== 'number' || !isFinite(item.t) || !item.text) continue;
-    browserList.items.push({ t: item.t, text: item.text, blocked: !!item.blocked, merged: !!item.merged, owner: !!item._owner });
+    browserList.items.push({ t: item.t, text: item.text, blocked: !!item.blocked, owner: !!item._owner });
   }
   if (!isDone) {
     // 传输中不渲染(done 时一次性渲染)
