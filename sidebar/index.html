@@ -55,7 +55,6 @@
     <!-- ==================== Basic tab ==================== -->
     <div id="tab-basic">
 
-      <!-- Danmaku On + File List -->
       <div class="section">
         <div class="toggle-row">
           <span class="toggle-label" data-i18n="danmaku_visible">弹幕开关</span>
@@ -65,7 +64,6 @@
           </label>
         </div>
 
-      <!-- Style Preset -->
       <div class="section" style="margin-top:12px">
         <div class="control-row">
           <span class="toggle-label" data-i18n="style_preset">样式预设</span>
@@ -81,16 +79,6 @@
 
         <div id="danmaku-file-list-section" class="danmaku-file-list-section">
           <div id="danmaku-file-list-container">
-            <!-- Example structure matching video track style (JS will populate) -->
-            <!--
-            <div class="danmaku-file-item selected">
-              <span class="item-radio"></span>
-              <div class="danmaku-file-item-info">
-                <span class="danmaku-file-item-name">example.xml</span>
-                <span class="danmaku-file-item-meta">Ass · 12,340 comments</span>
-              </div>
-            </div>
-            -->
           </div>
           <div class="danmaku-file-list-footer">
             <div class="danmaku-file-list-actions">
@@ -102,7 +90,6 @@
         </div>
       </div>
 
-      <!-- Network Danmaku / Dandanplay -->
       <div class="section" id="dandanplay-section">
         <div id="dandanplay-error" class="dandanplay-error" style="display:none"></div>
         <div id="dandanplay-matches">
@@ -123,7 +110,6 @@
         </div>
       </div>
 
-      <!-- Danmaku Count / Date Range -->
       <div class="section" id="danmaku-filter-section" style="display:none">
         <div class="adv-separator"></div>
         <div class="section-title" data-i18n="danmaku_filter">弹幕数量</div>
@@ -141,7 +127,6 @@
         </div>
       </div>
 
-      <!-- Density -->
       <div class="section" id="danmaku-density-section" style="display:none">
         <div class="section-title">
           <span data-i18n="density_filter">密度过滤</span>
@@ -153,7 +138,6 @@
         </div>
       </div>
 
-      <!-- Opacity -->
       <div class="section">
         <div class="section-title" data-i18n="opacity">不透明度</div>
         <div class="control-row">
@@ -162,7 +146,6 @@
         </div>
       </div>
 
-      <!-- Font Scale -->
       <div class="section">
         <div class="section-title" data-i18n="font_scale">字体缩放</div>
         <div class="control-row">
@@ -176,7 +159,6 @@
     <!-- ==================== Advanced tab ==================== -->
     <div id="tab-advanced" style="display:none">
 
-      <!-- Grouped switches matching image style -->
       <div class="toggle-group" style="margin-top:12px">
         <div class="toggle-row">
           <span class="toggle-label" data-i18n="ddp_auto_network">自动加载网络弹幕</span>
@@ -210,7 +192,6 @@
 
       <div class="adv-separator"></div>
 
-      <!-- Font Weight -->
       <div class="section-title" data-i18n="danmaku_font_weight" style="margin-top:14px">字重</div>
       <div class="control-row">
         <input type="range" id="danmaku-font-weight-slider" data-clickable min="100" max="900" step="50" value="400" class="slider" />
@@ -219,28 +200,24 @@
 
 
 
-      <!-- Comment Limit -->
       <div class="section-title" data-i18n="comment_limit" style="margin-top:14px">评论数量限制</div>
       <div class="control-row">
         <input type="range" id="comment-limit-slider" data-clickable min="0" max="200" step="10" value="0" class="slider" />
         <span id="comment-limit-value" class="value-text" data-i18n="off">关闭</span>
       </div>
 
-      <!-- Stroke Opacity -->
       <div class="section-title" data-i18n="stroke_opacity" style="margin-top:14px">描边不透明度</div>
       <div class="control-row">
         <input type="range" id="stroke-opacity-slider" data-clickable min="0" max="100" step="5" value="40" class="slider" />
         <span id="stroke-opacity-value" class="value-text">40%</span>
       </div>
 
-      <!-- Stroke Width -->
       <div class="section-title" data-i18n="stroke_width" style="margin-top:14px">描边宽度</div>
       <div class="control-row">
         <input type="range" id="stroke-width-slider" data-clickable min="1" max="8" step="0.5" value="2.8" class="slider" />
         <span id="stroke-width-value" class="value-text">2.8px</span>
       </div>
 
-      <!-- Scroll Speed -->
       <div class="section-title" data-i18n="scroll_speed" style="margin-top:14px">滚动速度</div>
       <div class="control-row">
         <input type="range" id="speed-slider" data-clickable min="25" max="100" step="5" value="100" class="slider" />
@@ -249,7 +226,6 @@
 
       <div class="adv-separator"></div>
 
-      <!-- Stroke Color -->
       <div class="control-row" style="margin-top:14px">
         <span class="toggle-label" data-i18n="stroke_color">描边颜色</span>
         <input type="color" id="stroke-color" value="#000000" style="margin-left:auto" />
@@ -258,7 +234,6 @@
         <span class="toggle-label" data-i18n="stroke_inversion">反色</span>
         <input type="color" id="stroke-inversion-color" value="#ffffff" style="margin-left:auto" />
       </div>
-      <!-- Offset -->
       <div class="control-row" style="margin-top:14px">
         <span class="toggle-label" data-i18n="danmaku_offset">弹幕偏移 (秒)</span>
         <input type="number" id="danmaku-offset-input" value="0" min="-30" max="30" step="0.5"
@@ -266,7 +241,6 @@
       </div>
       <div id="duration-mismatch-hint" class="dandanplay-error" style="display:none"></div>
 
-      <!-- Font Family -->
       <div class="control-row" style="margin-top:16px">
         <span class="toggle-label" data-i18n="danmaku_font_family">字体</span>
         <select id="danmaku-font-select" data-clickable style="max-width:190px">

@@ -9,7 +9,7 @@ let strokeInversionColor = '#ffffff';
 let strokeOpacity = 0.4;
 let strokeWidth = 2.8;
 let commentLimit = 0;
-let scrollSpeed = 1.0; // 滚动速度倍率 (0.25 ~ 1.0), 通过 naka 弹幕 long 命令实现
+let scrollSpeed = 1.0;
 let danmakuTimeOffsetSec = 0;
 let danmakuFontFamily = "";
 let danmakuFontWeight = "";
@@ -18,8 +18,8 @@ let nakaDedupeWindow = 0; // 滚动弹幕窗口去重(1/100s,0=关;= main 的去
 
 let niconiComments = null;
 let nicoRawData = null;
-let rawFormattedData = null; // 未注入滚动速度 long 命令的原始 formatted 数据
-let rawNicoJsonData = null; // 未注入滚动速度的原始 nico-json JSON 文本; set-scroll-speed 时按需重新 parse,避免常驻两份大对象
+let rawFormattedData = null; // 未注入滚动速度命令的原始 formatted 数据
+let rawNicoJsonData = null; // 未注入滚动速度的原始 nico-json JSON 文本
 let nicoRawFormat = 'legacy';
 let canvasRafId = null;
 let canvasVideoAnchorTime = 0;
@@ -87,12 +87,12 @@ function prepareCanvasSource(rawStr, parsedList, sourceType) {
   if (sourceType === 'nico-json') {
     try {
       nicoRawData = JSON.parse(rawStr);
-      rawNicoJsonData = rawStr; // 原始文本留作纯净副本(重放时重新 parse),常驻内存只保留一份解析树
+      rawNicoJsonData = rawStr;
       nicoRawFormat = detectNicoFormat(nicoRawData);
       applyScrollSpeedToNicoJson(nicoRawData);
       return;
     } catch (e) {
-      console.warn('niconicocomments JSON parse failed, using formatted data:', e);
+      console.warn('niconicomments JSON parse failed, using formatted data:', e);
     }
   }
   rawFormattedData = buildFormattedCanvasData(parsedList, sourceType);
@@ -295,7 +295,6 @@ function stopCanvasLoop() {
   }
 }
 
-// 不透明度同时作用于 canvas(canvas 模式)与 CSS 容器(css 模式)
 function applyOpacityToDom() {
   const canvas = document.getElementById('niconicomments-canvas');
   if (canvas && canvasNicoMode !== 'css') canvas.style.opacity = canvasOpacity;
@@ -399,7 +398,6 @@ iina.onMessage("pause-state", (data) => {
 });
 
 iina.onMessage("playback-speed", (data) => {
-  // 同 pause-state: 锚点存裸视频时间,回写前剥离偏移
   const anchoredTime = canvasGetCurrentTime() - danmakuTimeOffsetSec;
   playbackSpeed = data && data.speed ? data.speed : 1.0;
   canvasSyncAnchor(anchoredTime);
