@@ -120,11 +120,9 @@ function createFileItem(fileInfo, isChecked, isDisabled) {
 
   item.addEventListener('click', function () {
     if (isDisabled) return;
-    // Radio-style: clicking this file selects it exclusively
     iina.postMessage("select-danmaku-file", { path: fileInfo.path });
   });
 
-  // Track selector: solid dot when selected, empty placeholder otherwise
   var selector = document.createElement('div');
   selector.className = 'danmaku-file-selector';
   var dot = document.createElement('div');
@@ -437,20 +435,16 @@ var STYLE_PRESETS = {
 };
 
 function applyStylePreset(p) {
-  // 字体缩放
   state.canvasFontScale = p.fontScale;
   fontsizeSlider.value = Math.round(p.fontScale * 100);
   fontsizeValue.textContent = Math.round(p.fontScale * 100) + "%";
   iina.postMessage("set-fontscale", { scale: p.fontScale });
-  // 字体粗细
   state.danmakuFontWeight = p.fontWeight;
   iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: p.fontWeight });
-  // 描边粗细
   state.strokeWidth = p.strokeWidth;
   strokeWidthSlider.value = p.strokeWidth;
   strokeWidthValue.textContent = String(p.strokeWidth) + 'px';
   iina.postMessage("set-stroke-width", { width: p.strokeWidth });
-  // 滚动速度
   state.scrollSpeed = p.scrollSpeed;
   speedSlider.value = Math.round(p.scrollSpeed * 100);
   speedValue.textContent = Math.round(p.scrollSpeed * 100) + '%';
@@ -568,7 +562,6 @@ toggleDanmaku.addEventListener("change", function () {
   iina.postMessage("toggle-danmaku");
 });
 
-// Tab switching (basic / advanced / filter)
 if (tabButtons.length) {
   tabButtons.forEach(function (tab) {
     tab.addEventListener("click", function () {
@@ -1366,7 +1359,6 @@ function browserRenderList(list) {
     })(item.t);
     var text = document.createElement("span");
     text.className = "danmaku-browser-text";
-    // 弹幕内容里的时间(m:ss / h:mm:ss,如"空降 01:39")渲染为可点击跳转
     browserRenderTextWithLinks(item.text, text);
     div.appendChild(time);
     div.appendChild(text);
@@ -1375,7 +1367,6 @@ function browserRenderList(list) {
   }
 }
 
-// 列表条数显示(格式: (12,345) 紧贴标题)
 function browserUpdateTotal() {
   if (!totalEl) return;
   var n = browserList.items.length;
@@ -1485,7 +1476,6 @@ iina.onMessage("danmaku-browser-data", function (data) {
     requestBrowserDataRefresh(); // 丢块/乱序: 丢弃不完整数据并重新拉取
     return;
   }
-  // 追加本块
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
     if (!item || typeof item.t !== 'number' || !isFinite(item.t) || !item.text) continue;
@@ -1496,7 +1486,6 @@ iina.onMessage("danmaku-browser-data", function (data) {
     return;
   }
   debugLog('danmaku-browser: data complete, total=' + browserList.items.length + ', chunks=' + (chunkIndex + 1));
-  // 全部收齐: 单容器渲染
   var maxScroll = Math.max(0, browserList.items.length * BROWSER_ROW_H - browserList.el.clientHeight);
   if (browserList.el.scrollTop > maxScroll) {
     browserProgramScrollTop = maxScroll;

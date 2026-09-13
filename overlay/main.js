@@ -295,7 +295,6 @@ function stopCanvasLoop() {
   }
 }
 
-// 不透明度同时作用于 canvas(canvas 模式)与 CSS 容器(css 模式)
 function applyOpacityToDom() {
   const canvas = document.getElementById('niconicomments-canvas');
   if (canvas && canvasNicoMode !== 'css') canvas.style.opacity = canvasOpacity;

@@ -12,7 +12,6 @@ var danmakuEnabled = preferences.get("danmakuEnabled");
 var danmakuForceSimplified = !!preferences.get("danmakuForceSimplified"); // 默认 false,与 Info.json preferenceDefaults 一致
 // 弹幕时长自动偏移检测(nico-json): 加载时对比弹幕源时长与视频时长,自动设置偏移
 var danmakuAutoOffset = preferences.get("danmakuAutoOffset") !== undefined ? preferences.get("danmakuAutoOffset") : true;
-// 屏蔽词过滤(正则支持)——列表与开关都持久化;过滤在 getEffectiveContent 单源出口执行
 var danmakuBlocklist = [];
 try { danmakuBlocklist = JSON.parse(preferences.get("danmakuBlocklist") || '[]') || []; } catch (e) { danmakuBlocklist = []; }
 if (!Array.isArray(danmakuBlocklist)) danmakuBlocklist = [];
@@ -215,8 +214,8 @@ var danmakuFilterOffset = 0;
 var danmakuFilterLimit = 0;
 var danmakuFilterDensity = 0;
 var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听(控制播放时间推送)
-var lastBrowserTimeSent = 0;     // 时间推送节流标记
-var danmakuBrowserVisible = preferences.get("danmakuBrowserVisible") !== undefined ? !!preferences.get("danmakuBrowserVisible") : true; // 弹幕列表显示开关
+var lastBrowserTimeSent = 0;
+var danmakuBrowserVisible = preferences.get("danmakuBrowserVisible") !== undefined ? !!preferences.get("danmakuBrowserVisible") : true;
 var pluginRootPath = '';         // 插件根目录(读 overlay/lib/opencc.min.js;与其他设置一样持久化)
 // 启动时从 preferences 重读: 重启后不依赖任何 webview 上报即可用
 var storedRoot = preferences.get("pluginRootPath");
@@ -267,7 +266,7 @@ function sanitizeIPCValue(value, key) {
     return key === 'path' ? encodeIPCPath(value) : sanitizeIPCString(value);
   }
   if (Array.isArray(value)) {
-    if (key === 'selectedPaths') return value.map(encodeIPCPath); // 路径数组,逐项编码
+    if (key === 'selectedPaths') return value.map(encodeIPCPath);
     return value.map(function (item) { return sanitizeIPCValue(item); });
   }
   if (value && typeof value === 'object') {
@@ -544,7 +543,6 @@ function densityFilterNicoJsonComments(comments, density) {
   return result;
 }
 
-// Apply offset/limit + density filters to nico-json thread data
 function filterNicoJsonData(data) {
   if (!Array.isArray(data)) return data;
   var filteredData = [];
@@ -621,7 +619,6 @@ function buildLoadDanmakuPayload(xmlContent, danmakuType) {
   };
 }
 
-// nico-json 过滤状态整体复位(换视频 / 强制切换 DDP 时)
 function resetNicoJsonFilterState() {
   nicoJsonTotalCount = 0;
   clearNicoJsonDuration();
@@ -734,10 +731,10 @@ function rebuildBlockRegexes() {
     if (!w) continue;
     var re;
     try {
-      re = new RegExp(w, 'i'); // 优先按正则
+      re = new RegExp(w, 'i');
     } catch (e) {
       try {
-        re = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); // 非法正则 → 转义当普通词
+        re = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       } catch (e2) {
         continue;
       }
@@ -766,7 +763,7 @@ function mergeDuplicateItems(items, windowMs) {
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
     if (!it || typeof it.t !== 'number' || !isFinite(it.t)) continue;
-    if (!it.text) { out.push(it); continue; }  // 空文本(未解析/无效评论)原样透传
+    if (!it.text) { out.push(it); continue; }
     var bucket = buckets.get(it.text);
     if (!bucket) { bucket = []; buckets.set(it.text, bucket); }
     bucket.push(it);
@@ -893,7 +890,7 @@ function getEffectiveContent(path) {
   var ft = currentDanmakuStatus.fileType;
   var out;
   if (ft === 'nico-json') {
-    out = applyNicoJsonFilters(encodedContent); // 切片/密度(无过滤时原样返回)
+    out = applyNicoJsonFilters(encodedContent);
     if (danmakuBlocklistEnabled) out = filterBlockedNicoJson(out);
     return out;
   }
@@ -1047,7 +1044,7 @@ var browserDataPending = false; // 列表开关关闭期间数据变化: 不构�
 function notifyBrowserDataChanged() {
   if (!danmakuBrowserWatch) return;
   if (!danmakuBrowserVisible) {
-    browserDataPending = true; // 列表隐藏: 跳过构建与分块传输(省性能)
+    browserDataPending = true;
     return;
   }
   sendDanmakuBrowserData(buildDanmakuBrowserList());
@@ -1156,7 +1153,6 @@ function findDanmakuByEpisode(videoUrl) {
       } else if (videoEpNum !== null && fileEpNum !== null && fileEpNum === videoEpNum) {
         if (ext === 'xml') epNumXmlFiles.push(fileInfo); else epNumJsonFiles.push(fileInfo);
       }
-      // Files that don't match the video (no episode number) are skipped entirely
     }
   }
 
@@ -1926,7 +1922,6 @@ function registerSidebarHandlers() {
     danmakuAutoOffset = !!data.value;
     preferences.set("danmakuAutoOffset", danmakuAutoOffset);
     syncPreferencesSoon();
-    // 开启时: 若当前已加载 nico-json,补做一次时长检测
     if (danmakuAutoOffset && currentDanmakuStatus.fileType === 'nico-json') {
       var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
       if (selectedPath && danmakuCache[selectedPath]) {
@@ -2035,7 +2030,6 @@ function registerSidebarHandlers() {
     sidebarPostMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
   });
 
-  // 弹幕列表显示开关(持久化,与其他设置一致)
   sidebar.onMessage("danmaku-browser-vis-set", function (data) {
     if (data && data.visible !== undefined) {
       danmakuBrowserVisible = !!data.visible;
@@ -2043,7 +2037,7 @@ function registerSidebarHandlers() {
       syncPreferencesSoon();
       sidebarPostMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible });
       if (danmakuBrowserVisible && browserDataPending) {
-        browserDataPending = false; // 关闭期间数据有变化: 打开时补发一次
+        browserDataPending = false;
         sendDanmakuBrowserData(buildDanmakuBrowserList());
       }
     }
@@ -2162,11 +2156,11 @@ function registerSidebarHandlers() {
   // 过滤 tab: sidebar 懒加载,只能由 sidebar 主动拉取弹幕列表;watch 控制播放时间推送
   sidebar.onMessage("danmaku-browser-request", function (data) {
     if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
-    sidebarPostMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible }); // 列表开关回显
+    sidebarPostMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible });
     if (danmakuBrowserVisible) {
       sendDanmakuBrowserData(buildDanmakuBrowserList());
     } else {
-      browserDataPending = true; // 列表关闭: 跳过传输,打开时补发
+      browserDataPending = true;
     }
   });
 
