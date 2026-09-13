@@ -159,6 +159,10 @@ Dedup is split across two sides with the SAME window semantics (greedy from earl
 | **ON** (`dandanplayAutoNetwork=true`) | Network-first: fresh DDP cache auto-loads without any network traffic; no cache → auto-match |
 | **OFF** (`dandanplayAutoNetwork=false`) | Local-first: load local files; no local files → fall back to auto-loading a fresh DDP cache (stale cache is listed but never auto-loaded) |
 
+**Manual DDP loads use `DDP_LOAD_ORIGIN.MANUAL`**: `dandanplay-trigger-match`, `dandanplay-select-match`, and `dandanplay-select-episode` pass the origin through `ddpAutoMatchAndLoad()` / `ddpLoadComments()`. Manual origin forces activation regardless of auto-network priority and bypasses the danmaku-toggle abort guards; background callers pass `DDP_LOAD_ORIGIN.AUTO` and keep the existing toggle/priority semantics.
+
+DDP persistence and activation are separate: `ddpSaveVideoCache()` writes disk cache, `ddpUpsertFileListEntry()` updates the session cache/file list, and `ddpAddToFileListAndLoad(..., forceLoad=true)` delegates activation to `loadDanmakuFile()`. That shared entry owns overlay-readiness queuing, `ensureDanmakuEnabled()`, filter/list notifications, and the `network_loaded` OSD key. Do not reintroduce a separate overlay/pending/enable path in DDP code.
+
 ### DDP Comment Conversion
 
 DDP `p` format: `time,mode,color,userId` → converted to nico-like internal format with `_dateSec: 1767196800` (2026-01-01) for correct Canvas Auto HTML5 detection. Note DDP conversion **explicitly pushes `naka`** to commands — this is why scroll-speed injection matches DDP danmaku.
