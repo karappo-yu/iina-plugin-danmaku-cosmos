@@ -30,12 +30,18 @@
     "scrollSpeed": 1.0,
     "danmakuFontFamily": "",
     "danmakuFontWeight": "400",
+    "stylePreset": "nico",
     "dandanplayAppId": "",
     "dandanplayAppSecret": "",
     "dandanplayAutoNetwork": true,
     "dandanplayChConvert": 0,
     "dandanplayWithRelated": true,
     "danmakuForceSimplified": false,
-    "danmakuAutoOffset": true
+    "danmakuAutoOffset": true,
+    "danmakuBlocklistEnabled": false,
+    "danmakuBlocklist": "[]",
+    "danmakuDedupeEnabled": false,
+    "danmakuDedupeWindow": 2,
+    "danmakuBrowserVisible": true
   }
 }

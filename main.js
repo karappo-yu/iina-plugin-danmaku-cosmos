@@ -792,9 +792,7 @@ function mergeDuplicateItems(items, windowMs) {
         j++;
       }
       if (count > 1) {
-        // 合并标记(调用方据此识别合并弹幕);分隔符用 x(✖ 太粗,且不带
-        // 变体选择符时才按文本渲染)
-        first._mergeCount = count;
+        // 分隔符用 x(✖ 太粗,且不带变体选择符时才按文本渲染)
         first.text = first.text + 'x' + count;
       }
       out.push(first);
@@ -1006,8 +1004,6 @@ function buildDanmakuBrowserList() {
   // 去重: 可见弹幕合并(与 overlay 相同规则——屏蔽先于去重,overlay 不渲染
   // 被屏蔽弹幕所以不参与画面合并);被屏蔽弹幕按同一规则做展示层合并
   // (已屏蔽/全部视图里 2s 内重复的屏蔽弹幕显示为 草x5,而非逐条列出)。
-  // 合并弹幕标记 merged(供 sidebar 切换"已合并"视图识别;blocked 合并项
-  // 不标 merged——"已合并"视图只展示画面里的合并弹幕)。
   if (danmakuDedupeEnabled && danmakuDedupeWindow > 0) {
     var visible = [];
     var blockedItems = [];
@@ -1020,11 +1016,6 @@ function buildDanmakuBrowserList() {
       else visible.push(items[di]);
     }
     var mergedOut = mergeDuplicateItems(visible, danmakuDedupeWindow * 100);
-    for (var mi = 0; mi < mergedOut.length; mi++) {
-      if (mergedOut[mi]._mergeCount > 1) {
-        mergedOut[mi].merged = true;
-      }
-    }
     // 被屏蔽弹幕展示层合并(保持 blocked 标记;时间窗相同)
     var blockedMerged = mergeDuplicateItems(blockedItems, danmakuDedupeWindow * 100);
     items = blockedMerged.concat(ownerItems).concat(fixedItems).concat(mergedOut);

@@ -19,7 +19,7 @@ let nakaDedupeWindow = 0; // 滚动弹幕窗口去重(1/100s,0=关;= main 的去
 let niconiComments = null;
 let nicoRawData = null;
 let rawFormattedData = null; // 未注入滚动速度 long 命令的原始 formatted 数据
-let rawNicoJsonData = null; // 未注入滚动速度 long 命令的原始 nico-json 数据
+let rawNicoJsonData = null; // 未注入滚动速度的原始 nico-json JSON 文本; set-scroll-speed 时按需重新 parse,避免常驻两份大对象
 let nicoRawFormat = 'legacy';
 let canvasRafId = null;
 let canvasVideoAnchorTime = 0;
@@ -86,8 +86,8 @@ function prepareCanvasSource(rawStr, parsedList, sourceType) {
   rawNicoJsonData = null;
   if (sourceType === 'nico-json') {
     try {
-      rawNicoJsonData = JSON.parse(rawStr);
-      nicoRawData = JSON.parse(rawStr); // 独立副本,避免重复注入叠加
+      nicoRawData = JSON.parse(rawStr);
+      rawNicoJsonData = rawStr; // 原始文本留作纯净副本(重放时重新 parse),常驻内存只保留一份解析树
       nicoRawFormat = detectNicoFormat(nicoRawData);
       applyScrollSpeedToNicoJson(nicoRawData);
       return;
@@ -480,7 +480,7 @@ iina.onMessage("set-scroll-speed", (data) => {
     applyScrollSpeed();
     initCanvasRenderer(nicoRawData);
   } else if (rawNicoJsonData) {
-    nicoRawData = JSON.parse(JSON.stringify(rawNicoJsonData));
+    nicoRawData = JSON.parse(rawNicoJsonData);
     applyScrollSpeedToNicoJson(nicoRawData);
     initCanvasRenderer(nicoRawData);
   }
