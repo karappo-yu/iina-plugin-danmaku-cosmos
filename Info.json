@@ -1,7 +1,7 @@
 {
   "name": "Danmaku Cosmos",
   "identifier": "com.danmaku-cosmos.iina-plugin",
-  "version": "4.5",
+  "version": "4.6",
   "description": "IINA danmaku plugin with local files, Dandanplay network matching, and CSS/Canvas rendering",
   "author": {
     "name": "karappo-yu"
