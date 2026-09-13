@@ -171,9 +171,9 @@ function renderFileList() {
 }
 
 function updateDanmakuInfoUI() {
-  var fileListSection = document.getElementById('danmaku-file-list-section');
+  // 文件列表区(含 添加/网络匹配/搜索 按钮)始终显示——空列表时也要保留添加入口,
+  // 不按 hasDanmaku 隐藏
   var hasDanmaku = state.danmakuLoaded || fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0;
-  if (fileListSection) fileListSection.style.display = '';
   toggleDanmaku.disabled = !hasDanmaku;
   if (!hasDanmaku) toggleDanmaku.checked = false;
 }
