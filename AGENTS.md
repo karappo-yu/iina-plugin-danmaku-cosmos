@@ -119,8 +119,8 @@ The engine's `nakaCommentSpeedOffset` only scales the `width × offset` term in 
 
 Three data paths in `overlay/main.js`:
 - **formatted** (local XML, DDP): `rawFormattedData` kept pristine; `applyScrollSpeed()` maps a fresh copy with `@N` appended to `mail`
-- **nico-json v1** (`thread.comments[].commands` array) and **legacy** (`thread.chat[].mail` string): `rawNicoJsonData` kept pristine (deep-copied via `JSON.parse(JSON.stringify())`); `applyScrollSpeedToNicoJson()` mutates the copy, writing string `mail` back joined
-- `set-scroll-speed` re-applies from the pristine copy + rebuilds the renderer (no double injection)
+- **nico-json v1** (`thread.comments[].commands` array) and **legacy** (`thread.chat[].mail` string): `rawNicoJsonData` keeps the pristine JSON **text** (no second resident parsed tree); `applyScrollSpeedToNicoJson()` mutates the working copy, writing string `mail` back joined
+- `set-scroll-speed` re-applies by re-parsing `rawNicoJsonData` + rebuilds the renderer (no double injection)
 
 ### Time Offset
 
@@ -219,7 +219,7 @@ Later scripts depend on functions mounted on `window` by earlier scripts (e.g., 
   - `_dateSec` — Unix timestamp in seconds
 
 - **Overlay data paths** (`prepareCanvasSource` in `overlay/main.js`):
-  - `nico-json` type → `JSON.parse` directly, format detected by `detectNicoFormat` (`v1` when `data[0].comments`, else `legacy`) — pristine copy kept in `rawNicoJsonData`
+  - `nico-json` type → `JSON.parse` directly, format detected by `detectNicoFormat` (`v1` when `data[0].comments`, else `legacy`) — pristine JSON text kept in `rawNicoJsonData` (re-parsed on re-apply)
   - everything else → `buildFormattedCanvasData(parsedList, type)` → pristine copy kept in `rawFormattedData`
   - Both paths then apply scroll-speed injection (see Scroll Speed section)
 
