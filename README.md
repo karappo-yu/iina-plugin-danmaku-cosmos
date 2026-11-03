@@ -27,9 +27,10 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **自动加载弹幕**：按优先级自动查找同目录下的弹幕文件
 - **手动加载弹幕**：通过菜单或侧边栏手动选择弹幕文件
 - **侧边栏控制面板**：实时调整弹幕开关、渲染模式、繁简转换、透明度、字体缩放、滚动速度等
+- **弹幕密度控制**：在「基础」tab 中按一分钟窗口调整弹幕数量，支持全部弹幕格式，尽量保留随剧情变化的疏密节奏
 - **弹幕时间偏移**：在高级设置中可手动输入偏移秒数，或按 A / D 键快速回退/前进，用于调整弹幕显示时间
 - **自动设置片头偏移**：加载 Niconico V1 JSON 弹幕时，自动检测弹幕源时长与当前视频时长的差异。当片源开头包含 Aniplex 等供应商片头导致视频比原始弹幕源更长时，自动设置偏移量跳过片头。差值小于 1 秒视为一致（弹幕源时长仅精确到秒）。可在高级设置中关闭自动设置——关闭后仍会检测并在侧边栏以红字提醒时长不一致，但不再自动设置偏移。**仅对 Niconico V1 JSON 格式有效**，且弹幕文件中需包含 `thread` 的 `fork: "main"` 和 `duration` 字段（Niconico 官方导出的 JSON 不含 `duration`，需由自定义下载器写入）。这是对 V1 JSON 格式的可选增强，不影响标准 V1 JSON 的正常读取，也不影响其他弹幕格式——不使用 Niconico JSON 的用户无需关注此开关
-- **弹幕过滤面板**：侧边栏新增「过滤」tab——弹幕时间轴浏览、屏蔽词、去重合并、点击跳转
+- **弹幕过滤面板**：「过滤」tab 提供弹幕时间轴浏览、屏蔽词、顶部／底部固定弹幕屏蔽、去重合并和点击跳转
 - **快捷键**：`Shift + D` 显示/隐藏弹幕
 - **弹幕字体设置**：在高级设置中可选择字体预设（日文/中文字体）或自定义字体，并可调节粗细，用于调整弹幕的显示效果
 - **滚动速度控制**：在高级设置中可调节滚动弹幕的速度（25%~100%，仅调慢），固定弹幕不受影响
@@ -96,10 +97,19 @@ CA 弹幕：
 
 侧边栏新增「过滤」tab，提供弹幕时间轴浏览与过滤功能：
 
-- **时间轴列表**：虚拟滚动，数万条弹幕流畅浏览；跟随播放位置实时滚动，高亮当前屏幕上的弹幕
+- **时间轴列表**：虚拟滚动，数万条弹幕流畅浏览；跟随播放位置实时滚动，高亮当前屏幕上的弹幕；列表数量只统计未被屏蔽的条目
 - **屏蔽词**：标签式屏蔽词列表，支持正则；被屏蔽的弹幕在列表中以删除线标记，且不参与渲染
+- **顶部／底部屏蔽**：独立屏蔽顶部或底部固定弹幕，默认关闭，设置会保存；被屏蔽的条目仍显示删除线，且不计入列表数量
 - **去重**：将设定时间窗内的相同弹幕合并为「原文xN」并自动配色；固定弹幕支持渐进合并（x2/x3）
 - **点击跳转**：点击时间戳跳转视频到对应位置；弹幕文本内的时间（如「空降 01:39」）也可点击跳转
+
+#### 密度控制的设计思路
+
+弹幕的数量会随着剧情变化：平静片段较少，笑点、名场面或高潮时集中出现。这种疏密起伏本身就是观看体验的一部分。将弹幕限制在屏幕上方四分之一等固定区域，会把这些变化挤进很小的空间，让弹幕的展开方式和观看节奏显得死板。因此，本插件选择通过密度控制减少过量弹幕，保留完整的显示空间。
+
+密度控制以 **60 秒为一个时间窗口**：弹幕较少时原样保留，超出设定数量时才筛选；保留下来的弹幕仍按原来的时间点出现。以一分钟为单位调整数量，能在控制拥挤程度的同时，尽量保留弹幕随剧情起伏的节奏，减少对画面和字幕的干扰。
+
+在「基础」tab 调整每分钟数量，滑块最右端为关闭。字幕在底部时，可在「过滤」tab 开启「屏蔽底部弹幕」；顶部字幕则可对应开启顶部屏蔽。结合字号、去重等选项，可以按内容和观看习惯自由调整。位置屏蔽针对固定弹幕，滚动弹幕仍保留全屏布局。
 
 ### 弹幕文件加载
 
@@ -149,9 +159,10 @@ CA 弹幕：
 - **自動読み込み**：同じフォルダから優先順位に従って自動検索
 - **手動読み込み**：メニューやサイドバーからコメントファイルを選択
 - **サイドバーコントロール**：コメント表示、描画モード、繁簡変換、透明度、フォント倍率、スクロール速度などをリアルタイム調整
+- **コメント密度調整**：「基本」タブで1分ごとのコメント数を調整。すべてのコメントフォーマットに対応し、展開に応じたコメントの増減をできるだけ保ちます
 - **コメントタイムオフセット**：詳細設定で秒数を入力したり、A / D キーで素早く巻き戻し／進めることができ、コメントの表示時間を調整できます
 - **オフセット自動設定**：Niconico V1 JSON コメント読み込み時に、コメントソースの長さと現在の動画の長さの差異を自動検出します。Aniplex などの配給ロゴにより動画が元のコメントソースより長い場合、オフセットを自動設定して冒頭をスキップします。差が 1 秒未満は一致とみなします（コメントソースの長さは秒単位まで）。詳細設定で自動設定をオフにできます——オフでも検出とサイドバーの赤字による長さ不一致の通知は行われますが、オフセットの自動設定は行いません。**Niconico V1 JSON フォーマットのみ対応**。コメントファイルの `thread` に `fork: "main"` と `duration` フィールドが必要です（Niconico 公式のエクスポート JSON には `duration` が含まれず、カスタムダウンローダーで書き込む必要があります）。これは V1 JSON フォーマットに対するオプションの拡張であり、標準 V1 JSON の読み込みや他のコメントフォーマットには影響しません——Niconico JSON を使用しないユーザーはこのトグルを気にする必要はありません
-- **コメントフィルタパネル**：サイドバーに新しい「フィルター」タブを追加——コメントタイムライン表示、NGワード、重複マージ、クリックでジャンプ
+- **コメントフィルタパネル**：「フィルター」タブでコメントタイムライン表示、NGワード、上部／下部固定コメントのブロック、重複マージ、クリックでジャンプ
 - **ショートカット**：`Shift + D` でコメントの表示/非表示を切り替え
 - **コメントフォント設定**：詳細設定でフォント（日本語・中国語フォントのプリセットやカスタム）と太さを選択でき、コメントの表示効果を調整できます
 - **スクロール速度調整**：詳細設定でスクロールコメントの速度を調整できます（25%〜100%、減速のみ）。固定コメントには影響しません
@@ -175,10 +186,19 @@ CA 弹幕：
 
 サイドバーの新しい「フィルター」タブで、コメントタイムラインの表示とフィルターを提供します：
 
-- **タイムライン一覧**：仮想スクロールにより数万件のコメントもスムーズに表示。再生位置に追従してスクロールし、現在画面上のコメントをハイライト
+- **タイムライン一覧**：仮想スクロールにより数万件のコメントもスムーズに表示。再生位置に追従してスクロールし、現在画面上のコメントをハイライト。一覧の件数はブロックされていない項目のみを集計
 - **NGワード**：タグ形式のNGワード一覧、正規表現対応。NG判定されたコメントは一覧上で取り消し線表示となり、描画からも除外
+- **上部／下部のブロック**：上部・下部の固定コメントを個別にブロック。既定はオフで、設定は保存されます。ブロックした項目は取り消し線付きで一覧に残り、件数には含まれません
 - **重複排除**：設定した時間窓内の同一コメントを「原文xN」に統合して自動着色。固定コメントは段階的マージ（x2/x3）に対応
 - **クリックでジャンプ**：タイムスタンプをクリックすると動画の該当位置へジャンプ。コメント本文内の時刻（例：「空降 01:39」）もクリックでジャンプ可能
+
+#### コメント密度調整の設計意図
+
+コメント数は動画の展開に応じて変わります。静かな場面では少なく、笑いどころや名場面、クライマックスでは一気に増えます。この増減も視聴体験の一部です。画面上部の4分の1などに表示領域を固定すると、こうした変化が狭い空間に押し込められ、コメントの広がりや視聴のリズムが単調になりがちです。そのため、本プラグインでは画面全体の表示領域を保ち、密度調整で過剰なコメントを減らす方針を採っています。
+
+密度調整は **60秒単位の時間枠**で行います。コメントが少ない時間枠はそのまま残し、設定数を超えたときだけ間引きます。残したコメントの表示時刻は変えません。1分単位で数を調整することで、画面の混雑を抑えつつ、動画の展開に応じたコメントの増減をできるだけ保ち、映像や字幕を見やすくします。
+
+「基本」タブで1分あたりの数を調整でき、スライダーの右端でオフにできます。字幕が下部にある場合は「フィルター」タブの下部ブロックを、上部にある場合は上部ブロックを利用できます。フォント倍率や重複排除と組み合わせ、動画や好みに応じて調整してください。位置によるブロックは固定コメントが対象で、スクロールコメントは画面全体に表示されます。
 
 ### ネットワークコメント
 
@@ -233,9 +253,10 @@ CA 弹幕：
 - **Auto-load**: Automatically searches for danmaku files in the same directory by priority
 - **Manual load**: Select danmaku files via menu or sidebar
 - **Sidebar control panel**: Real-time adjustment of danmaku visibility, render mode, Chinese conversion, opacity, font scale, scroll speed, and more
+- **Danmaku density control**: Adjust comment counts in one-minute windows in the **Basic** tab. Supports all danmaku formats while aiming to preserve changes in activity as the story unfolds
 - **Danmaku time offset**: Adjust timing in Advanced settings by entering a seconds offset, or use A / D keys to quickly rewind or advance to change the display timing of danmaku
 - **Auto set intro offset**: When loading Niconico V1 JSON danmaku, automatically detects the duration difference between the danmaku source and the current video. When the video is longer than the original danmaku source (e.g. due to Aniplex distributor logos at the start), automatically sets an offset to skip the intro. Differences under 1 second are treated as consistent (danmaku source duration is only second-precision). Auto-setting can be disabled in Advanced settings — when disabled, detection and a red-text warning in the sidebar still occur, but the offset is no longer applied automatically. **Only works with Niconico V1 JSON format**, and requires the danmaku file's `thread` to contain `fork: "main"` and `duration` fields (Niconico's official export JSON does not include `duration`; it must be injected by a custom downloader). This is an optional enhancement to the V1 JSON format — it does not affect standard V1 JSON loading or other danmaku formats, so users not using Niconico JSON can ignore this toggle
-- **Danmaku filter panel**: New "Filter" tab in the sidebar — danmaku timeline browser, blocklist, dedupe merging, click-to-seek
+- **Danmaku filter panel**: The **Filter** tab provides a danmaku timeline browser, blocklist, top/bottom fixed-comment blocking, dedupe merging, and click-to-seek
 - **Shortcut**: Press `Shift + D` to show/hide danmaku
 - **Danmaku font settings**: Choose a font (Japanese/Chinese presets or custom) and weight in Advanced settings to adjust the danmaku appearance
 - **Scroll speed control**: Adjust the scrolling danmaku speed in Advanced settings (25%–100%, slow-down only); fixed comments are unaffected
@@ -279,10 +300,19 @@ Toggle between modes in the sidebar's Advanced settings.
 
 A new **Filter** tab in the sidebar provides a danmaku timeline browser with filtering:
 
-- **Timeline list**: Virtual scrolling keeps tens of thousands of danmaku smooth; live-follows playback position and highlights danmaku currently on screen
+- **Timeline list**: Virtual scrolling keeps tens of thousands of danmaku smooth; live-follows playback position and highlights danmaku currently on screen. The list count includes only unblocked entries
 - **Block words**: Tag-list blocklist with regex support; blocked danmaku are shown with strikethrough in the list and excluded from rendering
+- **Top/bottom blocking**: Independently block fixed comments at the top or bottom. Both options default to off and their settings are saved. Blocked entries remain in the list with strikethrough and are excluded from the count
 - **Dedupe**: Merges identical danmaku within a configurable time window into `text xN` with auto-coloring; fixed comments support progressive merging (x2/x3)
 - **Click-to-seek**: Click a timestamp to seek the video to that position; times inside danmaku text (e.g. `空降 01:39`) are also clickable
+
+#### Why density control uses one-minute windows
+
+Danmaku activity follows the story: quiet scenes attract fewer comments, while jokes, memorable moments, and climaxes bring sudden bursts. These changes are part of the viewing experience. Restricting all danmaku to a fixed area such as the top quarter compresses those changes into a small space, making the presentation and viewing rhythm feel rigid. This plugin therefore keeps the full display area and uses density control to reduce excessive comment counts.
+
+Density control works in **60-second windows**. Windows with fewer comments are left intact; comments are filtered only when the configured count is exceeded. Retained comments keep their original display times. Adjusting counts over a minute helps control crowding while preserving as much of the story's natural rhythm of comment activity as possible, reducing interference with the video and subtitles.
+
+Adjust the per-minute count in the **Basic** tab; the slider's far-right position turns filtering off. For subtitles at the bottom, enable **Block Bottom Danmaku** in the **Filter** tab; use top blocking for subtitles at the top. Combine these controls with font scale and deduplication to suit the content and your viewing preferences. Position blocking applies to fixed comments, while scrolling comments retain the full-screen layout.
 
 ### Loading Comment Files
 
