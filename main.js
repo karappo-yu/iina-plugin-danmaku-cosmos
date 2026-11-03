@@ -549,10 +549,8 @@ function densityFilterNicoJsonComments(comments, density) {
 }
 
 // ── 密度过滤: nico-json 以外的格式 ──────────────────────────────────
-// nico-xml 与 nico-json 同构(都有 vpos 与 no), 复用 densityFilterNicoJsonComments:
-// 把 <chat> 拍成伪 comment({vposMs, no}) 喂进去, 拿回保留集合再按区间删原文元素。
-//
-// bilibili-xml 的排序信号只有 p[4] 发送时间戳(部分导出留 0), dandanplay 则完全没有。
+// XML 和 dandanplay 共用 selectDensityKeep: nico-xml 按 no, bilibili-xml 按 p[4]
+// 发送时间戳排序(部分导出留 0); dandanplay 则没有排序信号。
 // 窗口内每条都有信号就按信号取前 N, 只要缺一条就整窗退化为等间隔取样——不拿数组顺序
 // 冒充发送顺序: dandanplay 的 _dateSec 是固定常量(供 Canvas Auto HTML5 检测), 按它排序
 // 会静默退化成"保留整集末尾", 比没有信号更糟。
@@ -604,19 +602,6 @@ function ddpDensityRecords(list) {
   return records;
 }
 
-// nico-xml: 适配成 nico-json 的 comment 形状
-function densityKeepForNicoXml(entries, density) {
-  var pseudo = new Array(entries.length);
-  for (var i = 0; i < entries.length; i++) {
-    pseudo[i] = { vposMs: entries[i].t * 10, no: entries[i].o || 0, _idx: i };
-  }
-  var kept = densityFilterNicoJsonComments(pseudo, density);
-  var keep = new Array(entries.length);
-  for (var k = 0; k < entries.length; k++) keep[k] = false;
-  for (var j = 0; j < kept.length; j++) keep[kept[j]._idx] = true;
-  return keep;
-}
-
 // XML 扫描: 一趟正则同时取出原文区间与归一化字段。
 // nico-xml 用 <chat vpos no>; bilibili-xml 用 <d p="秒,模式,颜色,时间戳,...">。
 function densityScanXml(rawStr, ft) {
@@ -644,12 +629,6 @@ function densityScanXml(rawStr, ft) {
     entries.push({ index: m.index, length: m[0].length, t: t, o: o, protect: false });
   }
   return entries;
-}
-
-function densityKeepForEntries(entries, ft, density) {
-  return ft === 'nico-xml'
-    ? densityKeepForNicoXml(entries, density)
-    : selectDensityKeep(entries, density);
 }
 
 function countKept(keep) {
@@ -684,7 +663,7 @@ function applyDensityFilter(encodedContent, ft, density) {
 
   var entries = densityScanXml(rawStr, ft);
   if (entries.length === 0) return null;
-  var xmlKeep = densityKeepForEntries(entries, ft, density);
+  var xmlKeep = selectDensityKeep(entries, density);
   var chunks = [];
   var last = 0;
   var dropped = false;
@@ -716,7 +695,7 @@ function countDensityItems(encodedContent, ft, density) {
   }
   var entries = densityScanXml(rawStr, ft);
   if (entries.length === 0) return null;
-  return { total: entries.length, kept: countKept(densityKeepForEntries(entries, ft, density)) };
+  return { total: entries.length, kept: countKept(selectDensityKeep(entries, density)) };
 }
 
 function filterNicoJsonData(data) {

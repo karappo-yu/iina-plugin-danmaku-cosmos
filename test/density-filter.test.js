@@ -2,7 +2,7 @@
 
 // 密度过滤扩展到所有格式的行为约定。
 // nico-json 走原有 densityFilterNicoJsonComments(本文件只验证它不被新路径介入);
-// nico-xml 复用同一函数; bilibili-xml 与 dandanplay 走 selectDensityKeep。
+// nico-xml、bilibili-xml 与 dandanplay 共用 selectDensityKeep。
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -100,7 +100,7 @@ function biliSecondsOf(raw) {
   return out;
 }
 
-test('nico-xml 复用 nico-json 的规则: 同一窗口按 no 后发优先保留', () => {
+test('nico-xml 编号完整时: 同一窗口按 no 后发优先保留', () => {
   const encoded = encodeURIComponent(nicoXml(120));
   const filtered = plugin.applyDensityFilter(encoded, 'nico-xml', 10);
   assert.ok(filtered, '应当发生过滤');
@@ -110,6 +110,37 @@ test('nico-xml 复用 nico-json 的规则: 同一窗口按 no 后发优先保留
   // 结构与 XML 头必须原样保留
   assert.ok(decodeURIComponent(filtered).startsWith('<?xml version="1.0" encoding="UTF-8"?><packet>'));
 });
+
+for (const [name, noAttribute] of [
+  ['全部缺少 no', () => ''],
+  ['部分缺少 no', (i) => i === 300 ? '' : ` no="${i + 1}"`],
+  ['部分 no 为 0', (i) => ` no="${i === 300 ? 0 : i + 1}"`],
+]) {
+  test(`nico-xml ${name}时均匀采样, 列表与计数使用相同保留集合`, () => {
+    const context = loadPlugin();
+    let xml = '<?xml version="1.0" encoding="UTF-8"?><packet>';
+    for (let i = 0; i < 600; i++) {
+      xml += `<chat vpos="${i * 10}"${noAttribute(i)}>c${i}</chat>`;
+    }
+    xml += '</packet>';
+    const encoded = encodeURIComponent(xml);
+    const filtered = context.applyDensityFilter(encoded, 'nico-xml', 50);
+    const raw = decodeURIComponent(filtered);
+    const times = Array.from(raw.matchAll(/vpos="(\d+)"/g), (m) => Number(m[1]));
+    assert.equal(times.length, 50);
+    assert.ok(times.at(-1) - times[0] > 5500, '保留弹幕应分布在整分钟内');
+    assert.ok(raw.startsWith('<?xml version="1.0" encoding="UTF-8"?><packet>'));
+    assert.ok(raw.endsWith('</packet>'));
+    const counts = context.countDensityItems(encoded, 'nico-xml', 50);
+    assert.equal(counts.total, 600);
+    assert.equal(counts.kept, 50);
+    context.danmakuCache['/videos/sample.xml'] = encoded;
+    context.danmakuFileList.selectedPaths = ['/videos/sample.xml'];
+    context.currentDanmakuStatus.fileType = 'nico-xml';
+    context.danmakuFilterDensity = 50;
+    assert.deepEqual(Array.from(context.buildDanmakuBrowserList(), (item) => item.text), textsOf(raw));
+  });
+}
 
 test('bilibili-xml 有发送时间戳时按时间戳后发优先', () => {
   const encoded = encodeURIComponent(biliXml(120));
