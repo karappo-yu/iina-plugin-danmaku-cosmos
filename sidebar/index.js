@@ -32,10 +32,11 @@ var rangeSelector = document.getElementById("danmaku-range-selector");
 var filterCoverage = document.getElementById("filter-coverage");
 var filterHandleLeft = document.getElementById("filter-handle-left");
 var filterHandleRight = document.getElementById("filter-handle-right");
-var densitySection = document.getElementById("danmaku-density-section");
 var densitySlider = document.getElementById("density-slider");
 var densityValue = document.getElementById("density-value");
 var densityCount = document.getElementById("density-count");
+// 滑块最右端不是密度值, 而是"关闭"哨兵; 与 index.html 的 max/value 必须一致
+var DENSITY_SLIDER_OFF = 550;
 var tabBasic = document.getElementById("tab-basic");
 var tabAdvanced = document.getElementById("tab-advanced");
 var tabFilter = document.getElementById("tab-filter");
@@ -496,11 +497,7 @@ function updateFilterUI() {
     updateRangeSelector();
   }
 
-  var showDensity = state.enabled && state.danmakuLoaded && state.danmakuType === 'nico-json';
-  if (densitySection) densitySection.style.display = showDensity ? '' : 'none';
-  if (showDensity) {
-    updateDensitySlider();
-  }
+  updateDensitySlider();
 }
 
 function updateDensitySlider() {
@@ -510,7 +507,7 @@ function updateDensitySlider() {
     densitySlider.value = density;
     densityValue.textContent = density + ' /min';
   } else {
-    densitySlider.value = 600;
+    densitySlider.value = DENSITY_SLIDER_OFF;
     densityValue.textContent = t('off');
   }
   if (densityCount) {
@@ -878,7 +875,7 @@ document.addEventListener("mouseup", function () {
 if (densitySlider) {
   densitySlider.addEventListener("input", function () {
     var val = parseInt(densitySlider.value, 10);
-    if (val >= 600) {
+    if (val >= DENSITY_SLIDER_OFF) {
       densityValue.textContent = t('off');
     } else {
       densityValue.textContent = val + ' /min';
@@ -886,7 +883,7 @@ if (densitySlider) {
   });
   densitySlider.addEventListener("change", function () {
     var val = parseInt(densitySlider.value, 10);
-    var density = val >= 600 ? 0 : val;
+    var density = val >= DENSITY_SLIDER_OFF ? 0 : val;
     state.danmakuFilterDensity = density;
     iina.postMessage("set-danmaku-filter-density", { density: density });
   });
