@@ -2,6 +2,8 @@ var toggleDanmaku = document.getElementById("toggle-danmaku");
 var canvasRendererToggle = document.getElementById("canvas-renderer-toggle");
 var danmakuForceSimplifiedToggle = document.getElementById("danmaku-force-simplified-toggle"); 
 var danmakuAutoOffsetToggle = document.getElementById("danmaku-auto-offset-toggle"); 
+let blockTopToggle = document.getElementById("danmaku-block-top-toggle");
+let blockBottomToggle = document.getElementById("danmaku-block-bottom-toggle");
 var opacitySlider = document.getElementById("opacity-slider");
 var opacityValue = document.getElementById("opacity-value");
 var fontsizeSlider = document.getElementById("fontsize-slider");
@@ -32,10 +34,11 @@ var rangeSelector = document.getElementById("danmaku-range-selector");
 var filterCoverage = document.getElementById("filter-coverage");
 var filterHandleLeft = document.getElementById("filter-handle-left");
 var filterHandleRight = document.getElementById("filter-handle-right");
-var densitySection = document.getElementById("danmaku-density-section");
 var densitySlider = document.getElementById("density-slider");
 var densityValue = document.getElementById("density-value");
 var densityCount = document.getElementById("density-count");
+// 滑块最右端不是密度值, 而是"关闭"哨兵; 与 index.html 的 max/value 必须一致
+var DENSITY_SLIDER_OFF = 550;
 var tabBasic = document.getElementById("tab-basic");
 var tabAdvanced = document.getElementById("tab-advanced");
 var tabFilter = document.getElementById("tab-filter");
@@ -233,6 +236,8 @@ var i18n = {
     blocklist_add: "Add",
     blocklist_placeholder: "word or regex...",
     blocklist_remove: "Remove",
+    block_top: "Block Top Danmaku",
+    block_bottom: "Block Bottom Danmaku",
     dedupe_title: "Deduplicate",
     dedupe_window: "Window (sec)"
   },
@@ -284,6 +289,8 @@ var i18n = {
     blocklist_add: "\u8ffd\u52a0",
     blocklist_placeholder: "\u5358\u8a9e\u307e\u305f\u306f\u6b63\u898f\u8868\u73fe...",
     blocklist_remove: "\u524a\u9664",
+    block_top: "\u4e0a\u90e8\u30b3\u30e1\u30f3\u30c8\u3092\u30d6\u30ed\u30c3\u30af",
+    block_bottom: "\u4e0b\u90e8\u30b3\u30e1\u30f3\u30c8\u3092\u30d6\u30ed\u30c3\u30af",
     dedupe_title: "\u91cd\u8907\u30b3\u30e1\u30f3\u30c8\u5408\u4f75",
     dedupe_window: "\u5408\u4f75\u7bc4\u56f2 (\u79d2)"
   },
@@ -335,6 +342,8 @@ var i18n = {
     blocklist_add: "\u6dfb\u52a0",
     blocklist_placeholder: "\u5c4f\u853d\u8bcd\u6216\u6b63\u5219...",
     blocklist_remove: "\u5220\u9664",
+    block_top: "\u5c4f\u853d\u9876\u90e8\u5f39\u5e55",
+    block_bottom: "\u5c4f\u853d\u5e95\u90e8\u5f39\u5e55",
     dedupe_title: "\u5f39\u5e55\u53bb\u91cd",
     dedupe_window: "\u53bb\u91cd\u533a\u95f4 (\u79d2)"
   }
@@ -496,11 +505,7 @@ function updateFilterUI() {
     updateRangeSelector();
   }
 
-  var showDensity = state.enabled && state.danmakuLoaded && state.danmakuType === 'nico-json';
-  if (densitySection) densitySection.style.display = showDensity ? '' : 'none';
-  if (showDensity) {
-    updateDensitySlider();
-  }
+  updateDensitySlider();
 }
 
 function updateDensitySlider() {
@@ -510,7 +515,7 @@ function updateDensitySlider() {
     densitySlider.value = density;
     densityValue.textContent = density + ' /min';
   } else {
-    densitySlider.value = 600;
+    densitySlider.value = DENSITY_SLIDER_OFF;
     densityValue.textContent = t('off');
   }
   if (densityCount) {
@@ -580,6 +585,7 @@ if (tabButtons.length) {
           iina.postMessage("danmaku-browser-request", { pluginRoot: browserPluginRoot() });
           iina.postMessage("danmaku-browser-watch", { watch: true });
           iina.postMessage("danmaku-blocklist-request");
+          iina.postMessage("danmaku-position-filter-request");
           iina.postMessage("danmaku-dedupe-request");
         } else {
           iina.postMessage("danmaku-browser-watch", { watch: false });
@@ -878,7 +884,7 @@ document.addEventListener("mouseup", function () {
 if (densitySlider) {
   densitySlider.addEventListener("input", function () {
     var val = parseInt(densitySlider.value, 10);
-    if (val >= 600) {
+    if (val >= DENSITY_SLIDER_OFF) {
       densityValue.textContent = t('off');
     } else {
       densityValue.textContent = val + ' /min';
@@ -886,7 +892,7 @@ if (densitySlider) {
   });
   densitySlider.addEventListener("change", function () {
     var val = parseInt(densitySlider.value, 10);
-    var density = val >= 600 ? 0 : val;
+    var density = val >= DENSITY_SLIDER_OFF ? 0 : val;
     state.danmakuFilterDensity = density;
     iina.postMessage("set-danmaku-filter-density", { density: density });
   });
@@ -922,6 +928,7 @@ iina.onMessage("danmaku-state", function (data) {
   if (data.stylePreset !== undefined) state.stylePreset = data.stylePreset;
   if (data.danmakuForceSimplified !== undefined) state.danmakuForceSimplified = !!data.danmakuForceSimplified;
   if (data.danmakuAutoOffset !== undefined) state.danmakuAutoOffset = !!data.danmakuAutoOffset;
+  applyPositionFilterState(data);
   if (data.danmakuFileType !== undefined) state.danmakuType = data.danmakuFileType;
   if (data.danmakuLoaded !== undefined) state.danmakuLoaded = data.danmakuLoaded;
   if (data.danmakuFilterDensity !== undefined) state.danmakuFilterDensity = data.danmakuFilterDensity;
@@ -1369,8 +1376,11 @@ function browserRenderList(list) {
 
 function browserUpdateTotal() {
   if (!totalEl) return;
-  var n = browserList.items.length;
-  totalEl.textContent = n > 0 ? "(" + n.toLocaleString() + ")" : "";
+  let n = 0;
+  for (let i = 0; i < browserList.items.length; i++) {
+    if (!browserList.items[i].blocked) n++;
+  }
+  totalEl.textContent = browserList.items.length > 0 ? "(" + n.toLocaleString() + ")" : "";
 }
 
 function browserUpdateLiveUI() {
@@ -1660,6 +1670,30 @@ if (blocklistToggle) {
     var on = blocklistToggle.checked;
     if (blocklistPanel) blocklistPanel.style.display = on ? "" : "none";
     iina.postMessage("danmaku-blocklist-set-enabled", { enabled: on });
+  });
+}
+
+/* ========== 顶部 / 底部弹幕屏蔽 ========== */
+function applyPositionFilterState(data) {
+  if (!data) return;
+  if (typeof data.danmakuBlockTopEnabled === 'boolean' && blockTopToggle) {
+    blockTopToggle.checked = data.danmakuBlockTopEnabled;
+  }
+  if (typeof data.danmakuBlockBottomEnabled === 'boolean' && blockBottomToggle) {
+    blockBottomToggle.checked = data.danmakuBlockBottomEnabled;
+  }
+}
+
+iina.onMessage("danmaku-position-filter-state", applyPositionFilterState);
+
+if (blockTopToggle) {
+  blockTopToggle.addEventListener("change", function () {
+    iina.postMessage("danmaku-position-filter-set", { danmakuBlockTopEnabled: blockTopToggle.checked });
+  });
+}
+if (blockBottomToggle) {
+  blockBottomToggle.addEventListener("change", function () {
+    iina.postMessage("danmaku-position-filter-set", { danmakuBlockBottomEnabled: blockBottomToggle.checked });
   });
 }
 
