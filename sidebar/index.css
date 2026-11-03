@@ -65,7 +65,10 @@ body::-webkit-scrollbar {
 
 .value-text {
   font-size: 13px;
-  min-width: 48px;
+  /* 固定宽度: min-width 会让"500 /min"这种长文案把 flex:1 的滑块挤窄,
+     指针不动也会因为轨道变长短而算出不同的值, 在"数字↔关闭"之间反复跳 */
+  width: 64px;
+  flex-shrink: 0;
   text-align: right;
   color: var(--secondary-label);
   font-variant-numeric: tabular-nums;
