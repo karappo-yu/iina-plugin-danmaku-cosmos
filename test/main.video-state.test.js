@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 const MAIN_JS = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 
-function createHarness(initialEnabled, autoNetwork = false) {
+function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {}) {
   const eventHandlers = new Map();
   const overlayHandlers = new Map();
   const sidebarHandlers = new Map();
@@ -25,6 +25,7 @@ function createHarness(initialEnabled, autoNetwork = false) {
   const preferences = new Map([
     ['danmakuEnabled', initialEnabled],
     ['dandanplayAutoNetwork', autoNetwork],
+    ...Object.entries(savedPreferences),
   ]);
   const comments = {
     '/videos/A.xml': '<i><d p="1,1,25,16777215,0,0,0,0">A comment</d></i>',
@@ -138,6 +139,7 @@ function createHarness(initialEnabled, autoNetwork = false) {
 
   return {
     context,
+    preferences,
     httpRequests,
     overlayMessages,
     sidebarMessages,
@@ -178,6 +180,142 @@ function loadedComments(messages) {
 async function flushMicrotasks() {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 }
+
+function setPositionSource(harness, fileType, source) {
+  const sourcePath = '/videos/positions';
+  harness.context.danmakuCache[sourcePath] = encodeURIComponent(source);
+  harness.context.danmakuFileList.selectedPaths = [sourcePath];
+  harness.context.currentDanmakuStatus.fileType = fileType;
+  return sourcePath;
+}
+
+const positionFixtures = [
+  {
+    name: 'Niconico XML', fileType: 'nico-xml',
+    source: '<packet><chat vpos="100" mail="ue">top-only</chat><chat vpos="200" mail="shita">bottom-only</chat><chat vpos="300" mail="">scroll-only</chat></packet>',
+  },
+  {
+    name: 'Bilibili XML', fileType: 'bilibili-xml',
+    source: '<i><chatserver>chat.bilibili.com</chatserver><d p="1,5,25,16777215,0,0,0,0">top-only</d><d p="2,4,25,16777215,0,0,0,0">bottom-only</d><d p="3,1,25,16777215,0,0,0,0">scroll-only</d></i>',
+  },
+  {
+    name: 'Dandanplay', fileType: 'dandanplay',
+    source: JSON.stringify([
+      { t: 100, text: 'top-only', _commands: ['ue'] },
+      { t: 200, text: 'bottom-only', _commands: ['shita'] },
+      { t: 300, text: 'scroll-only', _commands: ['naka'] },
+    ]),
+  },
+  {
+    name: 'Niconico V1 JSON', fileType: 'nico-json',
+    source: JSON.stringify([{ fork: 'main', comments: [
+      { vposMs: 1000, body: 'top-only', commands: ['ue'] },
+      { vposMs: 2000, body: 'bottom-only', commands: ['shita'] },
+      { vposMs: 3000, body: 'scroll-only', commands: [] },
+    ] }]),
+  },
+  {
+    name: 'Niconico legacy JSON', fileType: 'nico-json',
+    source: JSON.stringify([{ chat: [
+      { vpos: 100, content: 'top-only', mail: 'ue' },
+      { vpos: 200, content: 'bottom-only', mail: 'shita' },
+      { vpos: 300, content: 'scroll-only', mail: '' },
+    ] }]),
+  },
+];
+
+for (const fixture of positionFixtures) {
+  test(`${fixture.name}: independent position toggles filter rendering and retain blocked list rows`, () => {
+    const harness = createHarness(true);
+    harness.readyOverlay();
+    const sourcePath = setPositionSource(harness, fixture.fileType, fixture.source);
+    harness.emitSidebar('danmaku-browser-watch', { watch: true });
+    assert.equal(decodeURIComponent(harness.context.getEffectiveContent(sourcePath)), fixture.source, '默认关闭');
+    for (const [top, bottom] of [[true, false], [false, true], [true, true], [false, false]]) {
+      harness.emitSidebar('danmaku-position-filter-set', { danmakuBlockTopEnabled: top, danmakuBlockBottomEnabled: bottom });
+      const effective = decodeURIComponent(harness.context.getEffectiveContent(sourcePath));
+      assert.equal(effective.includes('top-only'), !top);
+      assert.equal(effective.includes('bottom-only'), !bottom);
+      assert.equal(effective.includes('scroll-only'), true);
+      assert.equal(loadedComments(harness.overlayMessages).at(-1), effective, '切换立即更新 overlay');
+      const items = Array.from(harness.context.buildDanmakuBrowserList(), (item) => ({ text: item.text, blocked: item.blocked }));
+      assert.deepEqual(items, [
+        { text: 'top-only', blocked: top },
+        { text: 'bottom-only', blocked: bottom },
+        { text: 'scroll-only', blocked: false },
+      ]);
+      const message = harness.sidebarMessages.filter((item) => item.name === 'danmaku-browser-data').at(-1);
+      const sentItems = JSON.parse(Buffer.from(message.data.payload, 'base64').toString('utf8'));
+      assert.deepEqual(sentItems.map((item) => ({ text: item.text, blocked: item.blocked })), items, '列表收到划线标记');
+    }
+    assert.equal(harness.context.danmakuCache[sourcePath], encodeURIComponent(fixture.source), '缓存保留原始内容供关闭后恢复');
+  });
+}
+
+test('position settings default off, persist independently and restore through lazy sidebar snapshots', () => {
+  const harness = createHarness(true);
+  harness.emitSidebar('request-state');
+  let state = harness.sidebarMessages.find((item) => item.name === 'danmaku-state').data;
+  assert.equal(state.danmakuBlockTopEnabled, false);
+  assert.equal(state.danmakuBlockBottomEnabled, false);
+  harness.emitSidebar('danmaku-position-filter-set', { danmakuBlockTopEnabled: true });
+  assert.equal(harness.preferences.get('danmakuBlockTopEnabled'), true);
+  assert.equal(harness.preferences.get('danmakuBlockBottomEnabled'), false);
+  const restarted = createHarness(true, false, Object.fromEntries(harness.preferences));
+  restarted.emitSidebar('request-state');
+  restarted.emitSidebar('danmaku-position-filter-request');
+  for (const name of ['danmaku-state', 'danmaku-position-filter-state']) {
+    state = restarted.sidebarMessages.find((item) => item.name === name).data;
+    assert.equal(state.danmakuBlockTopEnabled, true);
+    assert.equal(state.danmakuBlockBottomEnabled, false);
+  }
+});
+
+test('position blocking combines with word blocking and keeps blocked fixed comments out of list deduplication', () => {
+  const harness = createHarness(true);
+  setPositionSource(harness, 'dandanplay', JSON.stringify([
+    { t: 100, text: 'same', _commands: ['ue'] },
+    { t: 110, text: 'same', _commands: ['ue'] },
+    { t: 120, text: 'same', _commands: ['shita'] },
+    { t: 130, text: 'blocked-word', _commands: ['naka'] },
+    { t: 140, text: 'visible', _commands: ['naka'] },
+    { t: 150, text: 'visible', _commands: ['naka'] },
+  ]));
+  harness.emitSidebar('danmaku-dedupe-set', { enabled: true });
+  harness.emitSidebar('danmaku-blocklist-add', { word: 'blocked-word' });
+  harness.emitSidebar('danmaku-blocklist-set-enabled', { enabled: true });
+  harness.emitSidebar('danmaku-position-filter-set', { danmakuBlockTopEnabled: true });
+  const items = Array.from(harness.context.buildDanmakuBrowserList(), (item) => ({ text: item.text, blocked: item.blocked }));
+  assert.deepEqual(items, [
+    { text: 'same', blocked: true },
+    { text: 'same', blocked: true },
+    { text: 'same', blocked: false },
+    { text: 'blocked-word', blocked: true },
+    { text: 'visiblex2', blocked: false },
+  ]);
+  harness.emitSidebar('danmaku-position-filter-set', { danmakuBlockTopEnabled: false });
+  const source = JSON.parse(decodeURIComponent(harness.context.getEffectiveContent('/videos/positions')));
+  assert.equal(source.filter((item) => item.text === 'same').length, 3);
+  assert.equal(source.some((item) => item.text === 'blocked-word'), false, '关闭位置过滤仍保留屏蔽词过滤');
+});
+
+test('position classification follows case insensitive first-command semantics and preserves Niconico owners', () => {
+  const harness = createHarness(true);
+  const sourcePath = setPositionSource(harness, 'nico-json', JSON.stringify([
+    { fork: 'main', comments: [
+      { vposMs: 1000, body: 'upper-top', commands: ['UE'] },
+      { vposMs: 2000, body: 'scroll-first', commands: ['naka', 'ue'] },
+      { vposMs: 3000, body: 'bottom-first', commands: ['shita', 'ue'] },
+      { vposMs: 4000, body: 'top-first', commands: ['ue', 'shita'] },
+    ] },
+    { fork: 'owner', comments: [{ vposMs: 5000, body: 'owner-top', commands: ['ue'] }] },
+  ]));
+  harness.emitSidebar('danmaku-position-filter-set', { danmakuBlockTopEnabled: true });
+  const filtered = JSON.parse(decodeURIComponent(harness.context.getEffectiveContent(sourcePath)));
+  assert.deepEqual(filtered.flatMap((thread) => thread.comments.map((item) => item.body)), ['scroll-first', 'bottom-first', 'owner-top']);
+  const blocked = Array.from(harness.context.buildDanmakuBrowserList()).filter((item) => item.blocked).map((item) => item.text);
+  assert.deepEqual(blocked, ['upper-top', 'top-first']);
+});
 
 test('switching videos while disabled clears A and loads B when re-enabled', () => {
   const harness = createHarness(true);

@@ -40,6 +40,8 @@
     "danmakuAutoOffset": true,
     "danmakuBlocklistEnabled": false,
     "danmakuBlocklist": "[]",
+    "danmakuBlockTopEnabled": false,
+    "danmakuBlockBottomEnabled": false,
     "danmakuDedupeEnabled": false,
     "danmakuDedupeWindow": 2,
     "danmakuBrowserVisible": true
