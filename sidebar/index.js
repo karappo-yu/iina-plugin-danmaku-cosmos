@@ -1,3 +1,12 @@
+function onPluginMessage(name, callback) {
+  iina.onMessage(name, function (data) {
+    if (data && typeof data.encodedPayload === 'string') {
+      data = JSON.parse(decodeURIComponent(data.encodedPayload));
+    }
+    callback(data);
+  });
+}
+
 var toggleDanmaku = document.getElementById("toggle-danmaku");
 var canvasRendererToggle = document.getElementById("canvas-renderer-toggle");
 var danmakuForceSimplifiedToggle = document.getElementById("danmaku-force-simplified-toggle"); 
@@ -189,6 +198,15 @@ function updateEnabledUI() {
 
 var i18n = {
   en: {
+    font_default: "Default",
+    font_custom: "Custom\u2026",
+    font_japanese: "Japanese",
+    font_chinese: "Chinese",
+    font_generic: "Generic",
+    filter_empty: "No danmaku loaded",
+    render_error: "Unable to display results",
+    click_retry: "Click to retry",
+    episode_number: "Episode {n}",
     danmaku_visible: "Danmaku On",
     opacity: "Danmaku Opacity",
     font_scale: "Font Scale",
@@ -242,6 +260,15 @@ var i18n = {
     dedupe_window: "Window (sec)"
   },
   ja: {
+    font_default: "\u65e2\u5b9a",
+    font_custom: "\u30ab\u30b9\u30bf\u30e0\u2026",
+    font_japanese: "\u65e5\u672c\u8a9e",
+    font_chinese: "\u4e2d\u56fd\u8a9e",
+    font_generic: "\u6c4e\u7528",
+    filter_empty: "\u30b3\u30e1\u30f3\u30c8\u672a\u8aad\u307f\u8fbc\u307f",
+    render_error: "\u7d50\u679c\u3092\u8868\u793a\u3067\u304d\u307e\u305b\u3093",
+    click_retry: "\u30af\u30ea\u30c3\u30af\u3057\u3066\u518d\u8a66\u884c",
+    episode_number: "\u7b2c{n}\u8a71",
     danmaku_visible: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a",
     opacity: "\u30b3\u30e1\u30f3\u30c8\u900f\u660e\u5ea6",
     font_scale: "\u30d5\u30a9\u30f3\u30c8\u500d\u7387",
@@ -295,6 +322,15 @@ var i18n = {
     dedupe_window: "\u5408\u4f75\u7bc4\u56f2 (\u79d2)"
   },
   zh: {
+    font_default: "\u9ed8\u8ba4",
+    font_custom: "\u81ea\u5b9a\u4e49\u2026",
+    font_japanese: "\u65e5\u6587",
+    font_chinese: "\u4e2d\u6587",
+    font_generic: "\u901a\u7528",
+    filter_empty: "\u672a\u52a0\u8f7d\u5f39\u5e55",
+    render_error: "\u65e0\u6cd5\u663e\u793a\u7ed3\u679c",
+    click_retry: "\u70b9\u51fb\u91cd\u8bd5",
+    episode_number: "\u7b2c {n} \u96c6",
     danmaku_visible: "\u5f39\u5e55\u663e\u793a",
     opacity: "\u5f39\u5e55\u900f\u660e\u5ea6",
     font_scale: "\u5b57\u4f53\u7f29\u653e",
@@ -367,6 +403,10 @@ function applyI18n() {
   document.querySelectorAll("[data-i18n]").forEach(function(el) {
     var key = el.getAttribute("data-i18n");
     if (dict[key]) el.textContent = dict[key];
+  });
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n-label]").forEach(function (el) {
+    el.label = t(el.getAttribute("data-i18n-label"));
   });
   document.querySelectorAll("[data-i18n-placeholder]").forEach(function(el) {
     var key = el.getAttribute("data-i18n-placeholder");
@@ -672,7 +712,7 @@ commentLimitSlider.addEventListener("input", function () {
 });
 
 if (offsetInput) {
-  offsetInput.addEventListener("input", function () {
+  offsetInput.addEventListener("change", function () {
     var val = parseFloat(offsetInput.value);
     if (isNaN(val)) val = 0;
     state.danmakuOffsetSeconds = val;
@@ -898,7 +938,7 @@ if (densitySlider) {
   });
 }
 
-iina.onMessage("danmaku-filter-info", function (data) {
+onPluginMessage("danmaku-filter-info", function (data) {
   if (data.fileType !== undefined) state.danmakuType = data.fileType;
   state.nicoJsonTotalCount = data.totalCount || 0;
   state.danmakuFilterOffset = data.filterOffset || 0;
@@ -910,7 +950,7 @@ iina.onMessage("danmaku-filter-info", function (data) {
   updateFilterUI();
 });
 
-iina.onMessage("danmaku-state", function (data) {
+onPluginMessage("danmaku-state", function (data) {
   if (data.enabled !== undefined) state.enabled = data.enabled;
   if (data.canvasMode !== undefined) state.useCanvasRenderer = data.canvasMode === 'default';
   if (data.canvasOpacity !== undefined) state.canvasOpacity = data.canvasOpacity;
@@ -936,14 +976,14 @@ iina.onMessage("danmaku-state", function (data) {
   updateEnabledUI();
 });
 
-iina.onMessage("danmaku-type", function (data) {
+onPluginMessage("danmaku-type", function (data) {
   if (data.fileType !== undefined) state.danmakuType = data.fileType;
   if (data.isLoaded !== undefined) state.danmakuLoaded = data.isLoaded;
   updateUI();
   updateEnabledUI();
 });
 
-iina.onMessage("danmaku-file-list", function (data) {
+onPluginMessage("danmaku-file-list", function (data) {
   var count = (data.jsonFiles ? data.jsonFiles.length : 0);
   debugLog('danmaku-file-list received, jsonFiles=' + count + ' selected=' + (data.selectedPaths ? data.selectedPaths.length : 0));
   if (data.jsonFiles) {
@@ -951,14 +991,21 @@ iina.onMessage("danmaku-file-list", function (data) {
       debugLog('  [' + i + '] filename="' + data.jsonFiles[i].filename + '" len=' + data.jsonFiles[i].filename.length + ' type=' + data.jsonFiles[i].type);
     }
   }
+  if ((fileListState.selectedPaths[0] || '') !== ((data.selectedPaths || [])[0] || '')) {
+    if (filterTimer) clearTimeout(filterTimer);
+    filterTimer = null;
+    filterDragMode = null;
+  }
   fileListState.xmlFiles = data.xmlFiles || [];
   fileListState.jsonFiles = data.jsonFiles || [];
   fileListState.selectedPaths = data.selectedPaths || [];
+  fileListState.selectedPaths.forEach(function (path) { delete fileListState.errorPaths[path]; });
   renderFileList();
-  updateDanmakuInfoUI();
+  updateUI();
+  updateEnabledUI();
 });
 
-iina.onMessage("danmaku-file-error", function (data) {
+onPluginMessage("danmaku-file-error", function (data) {
   fileListState.errorPaths[data.path] = data.message;
   renderFileList();
 });
@@ -1061,14 +1108,17 @@ if (ddpSearchResultsToggle) {
 }
 
 var ddpSearchTimer = null;
+let ddpSearchId = 0;
 
 function ddpDoSearch() {
   var keyword = ddpSearchInput ? ddpSearchInput.value.trim() : '';
   debugLog('ddpDoSearch called, keyword="' + keyword + '"');
   if (!keyword) return;
+  let searchId = ++ddpSearchId;
   if (ddpSearchTimer) clearTimeout(ddpSearchTimer);
   if (ddpSearchResults) {
     ddpSearchResults.innerHTML = '';
+    ddpSearchResults.style.display = '';
     if (ddpSearchResultsWrapper) ddpSearchResultsWrapper.style.display = '';
     if (ddpSearchResultsToggle) ddpSearchResultsToggle.style.display = 'none';
     var loadingEl = document.createElement('div');
@@ -1079,7 +1129,7 @@ function ddpDoSearch() {
   if (ddpSearchResultsArrow) ddpSearchResultsArrow.textContent = '\u25B6';
   ddpSearchTimer = setTimeout(function() {
     debugLog('sending dandanplay-search, keyword="' + keyword + '"');
-    iina.postMessage("dandanplay-search", { keyword: keyword });
+    iina.postMessage("dandanplay-search", { keyword: keyword, searchId: searchId });
     ddpSearchTimer = null;
   }, 500);
 }
@@ -1094,7 +1144,7 @@ if (ddpSearchInput) {
   });
 }
 
-iina.onMessage("dandanplay-status", function (data) {
+onPluginMessage("dandanplay-status", function (data) {
   try {
     if (data.status !== undefined) ddpState.status = data.status;
     // 新视频加载时 main.js 会 ddpResetState() 推送 status='idle':
@@ -1113,7 +1163,8 @@ iina.onMessage("dandanplay-status", function (data) {
   } catch (e) {}
 });
 
-iina.onMessage("dandanplay-search-result", function (data) {
+onPluginMessage("dandanplay-search-result", function (data) {
+  if (data.searchId !== ddpSearchId) return;
   debugLog('received dandanplay-search-result, typeof=' + typeof data + ' hasAnimes=' + (data && data.animes ? data.animes.length : 0) + ' error=' + (data && data.error ? data.error : 'null') + ' ddpSearchResults=' + (ddpSearchResults ? 'exists' : 'null'));
   try {
     if (!ddpSearchResults) {
@@ -1153,6 +1204,7 @@ iina.onMessage("dandanplay-search-result", function (data) {
       (function(anime) {
         var item = document.createElement('div');
         item.className = 'dandanplay-search-result-item';
+        item.dataset.animeId = String(anime.animeId);
         item.setAttribute('data-clickable', '');
 
         var title = document.createElement('div');
@@ -1166,16 +1218,15 @@ iina.onMessage("dandanplay-search-result", function (data) {
         item.appendChild(title);
         item.appendChild(sub);
 
-        var epLoading = false;
         item.addEventListener('click', function () {
           if (item._epList) {
             item._epList.style.display = item._epList.style.display === 'none' ? '' : 'none';
             return;
           }
-          if (epLoading) return;
-          epLoading = true;
+          if (item._epLoading) return;
+          item._epLoading = true;
           sub.textContent = t('loading_episodes');
-          iina.postMessage("dandanplay-get-bangumi", { bangumiId: String(anime.animeId), animeTitle: anime.animeTitle });
+          iina.postMessage("dandanplay-get-bangumi", { bangumiId: String(anime.animeId), animeTitle: anime.animeTitle, searchId: ddpSearchId });
         });
 
         ddpSearchResults.appendChild(item);
@@ -1187,15 +1238,16 @@ iina.onMessage("dandanplay-search-result", function (data) {
     ddpSearchResults.innerHTML = '';
     var errEl = document.createElement('div');
     errEl.className = 'dandanplay-error';
-    errEl.textContent = 'Render error: ' + e.message;
+    errEl.textContent = t('render_error');
     ddpSearchResults.appendChild(errEl);
   }
 });
 
-iina.onMessage("dandanplay-bangumi-result", function (data) {
+onPluginMessage("dandanplay-bangumi-result", function (data) {
+  if (data.searchId !== ddpSearchId) return;
   debugLog('received bangumi-result, typeof=' + typeof data + ' animeTitle="' + (data.animeTitle || '') + '" episodes=' + (data.episodes ? data.episodes.length : 0) + ' error=' + (data.error || 'null'));
   try {
-    if (!ddpSearchResults || data.error) {
+    if (!ddpSearchResults) {
       debugLog('bangumi-result: skip, ddpSearchResults=' + (ddpSearchResults ? 'exists' : 'null') + ' error=' + (data.error || 'null'));
       return;
     }
@@ -1206,11 +1258,15 @@ iina.onMessage("dandanplay-bangumi-result", function (data) {
     debugLog('bangumi-result: found ' + items.length + ' items, looking for animeTitle="' + animeTitle + '"');
     for (var i = 0; i < items.length; i++) {
       (function(item) {
-        var titleEl = item.querySelector('.dandanplay-search-result-title');
-        if (!titleEl || titleEl.textContent !== animeTitle) return;
+        if (item.dataset.animeId !== String(data.bangumiId)) return;
+        item._epLoading = false;
         debugLog('bangumi-result: matched item, episodes=' + episodes.length);
 
         var subEl = item.querySelector('.dandanplay-search-result-episodes');
+        if (data.error) {
+          if (subEl) subEl.textContent = data.error + ' — ' + t('click_retry');
+          return;
+        }
         if (subEl) subEl.textContent = t('episodes_count').replace('{n}', episodes.length);
 
         var epList = document.createElement('div');
@@ -1221,7 +1277,7 @@ iina.onMessage("dandanplay-bangumi-result", function (data) {
             var epItem = document.createElement('div');
             epItem.className = 'dandanplay-episode-item';
             epItem.setAttribute('data-clickable', '');
-            epItem.textContent = ep.episodeTitle || ('Episode ' + (j + 1));
+            epItem.textContent = ep.episodeTitle || t('episode_number').replace('{n}', j + 1);
             epItem.addEventListener('click', function (e) {
               e.stopPropagation();
               iina.postMessage("dandanplay-select-episode", {
@@ -1393,7 +1449,6 @@ function browserFollowToLive() {
   var list = browserList;
   if (list.items.length === 0) return;
   var anchorRow = browserRowForVpos(browserVpos, list.items);
-  if (anchorRow < 0) return;
   var viewH = list.el.clientHeight;
   var target = Math.max(0, (anchorRow + 1) * BROWSER_ROW_H - viewH);
   browserProgramScrollTop = target;
@@ -1402,6 +1457,7 @@ function browserFollowToLive() {
 }
 
 var browserNextChunk = 0;
+let browserDataLoaded = false;
 var browserLastRefreshRequest = 0;
 
 // 数据缺失时重发拉取请求,限流避免循环
@@ -1448,7 +1504,7 @@ function browserUtf8Decode(bytes) {
   return out;
 }
 
-iina.onMessage("danmaku-browser-data", function (data) {
+onPluginMessage("danmaku-browser-data", function (data) {
   if (!data) return;
   var items = null;
   if (typeof data.payload === 'string') {
@@ -1469,7 +1525,7 @@ iina.onMessage("danmaku-browser-data", function (data) {
   if (chunkIndex === 0) {
     // 新数据或重发: 重置状态
     browserList.items = [];
-    browserVpos = -1;
+    browserDataLoaded = false;
     browserNextChunk = 1;
     browserList.rowNodes.forEach(function (el) { el.remove(); });
     browserList.rowNodes.clear();
@@ -1495,6 +1551,7 @@ iina.onMessage("danmaku-browser-data", function (data) {
     // 传输中不渲染(done 时一次性渲染)
     return;
   }
+  browserDataLoaded = true;
   debugLog('danmaku-browser: data complete, total=' + browserList.items.length + ', chunks=' + (chunkIndex + 1));
   var maxScroll = Math.max(0, browserList.items.length * BROWSER_ROW_H - browserList.el.clientHeight);
   if (browserList.el.scrollTop > maxScroll) {
@@ -1517,12 +1574,13 @@ iina.onMessage("danmaku-browser-data", function (data) {
 });
 
 // 播放时间推送(main.js 300ms 节流): 更新锚点;跟随模式下滚动到 vpos 行(聊天栏式)
-iina.onMessage("danmaku-visible-time", function (data) {
+onPluginMessage("danmaku-visible-time", function (data) {
   if (!data || typeof data.time !== 'number') return;
   var vpos = Math.round((data.time + (data.offset || 0)) * 100);
   browserVpos = vpos;
+  if (!browserVisToggle || !browserVisToggle.checked) return;
   // 自愈: 时间信号在流动但本地无列表数据 → 重新拉取
-  if (browserList.items.length === 0) requestBrowserDataRefresh();
+  if (!browserDataLoaded && browserNextChunk === 0) requestBrowserDataRefresh();
   browserUpdateLiveUI();
   if (browserFollowLive) browserFollowToLive();
 });
@@ -1574,7 +1632,7 @@ if (browserVisToggle) {
     iina.postMessage("danmaku-browser-vis-set", { visible: v });
   });
 }
-iina.onMessage("danmaku-browser-vis-state", function (data) {
+onPluginMessage("danmaku-browser-vis-state", function (data) {
   if (data && data.visible !== undefined) applyBrowserVis(data.visible);
 });
 
@@ -1622,6 +1680,7 @@ function renderBlocklist() {
 // 点击 + 行: 该行变为内联输入框;回车提交、Esc 取消、失焦提交(空内容忽略)
 function blocklistStartAdd() {
   var item = this;
+  if (item.classList.contains('editing')) return;
   item.classList.add("editing");
   item.innerHTML = "";
   var inp = document.createElement("input");
@@ -1661,7 +1720,7 @@ function applyBlocklistState(state) {
   }
 }
 
-iina.onMessage("danmaku-blocklist-state", function (data) {
+onPluginMessage("danmaku-blocklist-state", function (data) {
   applyBlocklistState(data);
 });
 
@@ -1684,7 +1743,7 @@ function applyPositionFilterState(data) {
   }
 }
 
-iina.onMessage("danmaku-position-filter-state", applyPositionFilterState);
+onPluginMessage("danmaku-position-filter-state", applyPositionFilterState);
 
 if (blockTopToggle) {
   blockTopToggle.addEventListener("change", function () {
@@ -1717,7 +1776,7 @@ function applyDedupeState(state) {
   }
 }
 
-iina.onMessage("danmaku-dedupe-state", function (data) {
+onPluginMessage("danmaku-dedupe-state", function (data) {
   applyDedupeState(data);
 });
 
@@ -1744,4 +1803,12 @@ if (dedupeToggle && dedupeSegmented) {
       });
     })(dedupeSegItems[i]);
   }
+}
+
+// Keep virtualization filled when the sidebar height changes, including while paused.
+if (typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(function () {
+    if (browserFollowLive && browserVpos >= 0) browserFollowToLive();
+    else browserRenderList(browserList);
+  }).observe(browserList.el);
 }

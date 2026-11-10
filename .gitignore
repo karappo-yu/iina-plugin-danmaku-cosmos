@@ -118,7 +118,6 @@ out
 .stylelintcache
 # SvelteKit build / generate output
 .svelte-kit
-#!! ERROR: vscode+all is undefined. Use list command to see defined gitignore types !!#
 # End of https://www.toptal.com/developers/gitignore/api/node,macos,vscode+all
 .vscode/
 *.js.map
@@ -128,6 +127,7 @@ package-lock.json
 .trae/
 index.d.ts
 .dist/
+dist/
 test-danmaku/
 test-speed.xml
 test-speed.json

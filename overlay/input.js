@@ -18,94 +18,75 @@ function parseNicoXml(chats) {
 }
 
 function decodeXmlText(text) {
+  let entities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
   if (text.indexOf('&') === -1) return text;
-  return text
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+  return text.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, function (entity, key) {
+    if (key.charAt(0) !== '#') return entities[key] === undefined ? entity : entities[key];
+    let code = key.charAt(1).toLowerCase() === 'x' ? parseInt(key.slice(2), 16) : Number(key.slice(1));
+    return code > 0 && code <= 0x10FFFF && !(code >= 0xD800 && code <= 0xDFFF) ? String.fromCodePoint(code) : entity;
+  });
+}
+
+function decodeXmlContent(content) {
+  // CDATA stays literal; ordinary text is decoded exactly once, like DOMParser.
+  return content.replace(/\r\n?/g, '\n').split(/(<!\[CDATA\[[\s\S]*?\]\]>|<!--[\s\S]*?-->)/g).map(function (part) {
+    if (part.indexOf('<!--') === 0) return '';
+    return part.indexOf('<![CDATA[') === 0 ? part.slice(9, -3) : decodeXmlText(part);
+  }).join('');
+}
+
+function buildBilibiliComment(pAttr, text) {
+  if (!pAttr || !text) return null;
+  let parts = pAttr.split(',');
+  let mode = Number(parts[1]);
+  let time = Number(parts[0]);
+  if (!parts[0].trim() || !isFinite(time) || !Number.isInteger(mode) || mode < 1 || mode > 6) return null;
+  let size = parseInt(parts[2], 10) || 25;
+  let color = parseInt(parts[3], 10);
+  if (!isFinite(color)) color = 0xFFFFFF;
+  color = (color >>> 0) & 0xFFFFFF;
+  let commands = [mode === 4 ? 'shita' : mode === 5 ? 'ue' : 'naka'];
+  if (size >= 36) commands.push('big');
+  else if (size <= 15) commands.push('small');
+  commands.push('#' + color.toString(16).padStart(6, '0'));
+  return { t: Math.round(time * 100), text: text, _isOwner: false,
+    _commands: commands, _userId: parts[6] || '', _dateSec: 1767196800 };
 }
 
 function parseBilibiliXml(xmlStr) {
-  // Primary: DOMParser (correctly handles CDATA, self-closing, entities)
+  let list = [];
+  let add = function (p, text) {
+    let comment = buildBilibiliComment(p, text);
+    if (!comment) return;
+    comment._no = list.length + 1;
+    list.push(comment);
+  };
   try {
-    var parser = new DOMParser();
-    var xmlDoc = parser.parseFromString(xmlStr, "text/xml");
+    let xmlDoc = new DOMParser().parseFromString(xmlStr, 'text/xml');
     if (xmlDoc.getElementsByTagName('parsererror').length === 0) {
-      var dElements = xmlDoc.getElementsByTagName('d');
-      if (dElements.length > 0) {
-        var list = [];
-        for (var i = 0; i < dElements.length; i++) {
-          var el = dElements[i];
-          var pAttr = el.getAttribute('p');
-          if (!pAttr) continue;
-          var parts = pAttr.split(",");
-          var mode = parseInt(parts[1], 10);
-          if (mode < 1 || mode > 6) continue;
-          var size = parseInt(parts[2], 10) || 25;
-          var colorVal = parseInt(parts[3], 10);
-          if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
-          var commands = [];
-          if (mode === 4) commands.push('shita');
-          else if (mode === 5) commands.push('ue');
-          else commands.push('naka');
-          if (size >= 36) commands.push('big');
-          else if (size <= 15) commands.push('small');
-          commands.push('#' + colorVal.toString(16).padStart(6, '0'));
-          list.push({
-            t: Math.round(parseFloat(parts[0]) * 100),
-            text: el.textContent || '',
-            _isOwner: false,
-            _commands: commands,
-            _userId: 0,
-            _dateSec: 1767196800
-          });
-        }
-        for (var j = 0; j < list.length; j++) {
-          list[j]._no = j + 1;
-        }
-        return list;
-      }
+      let elements = xmlDoc.getElementsByTagName('d');
+      for (let i = 0; i < elements.length; i++) add(elements[i].getAttribute('p'), elements[i].textContent);
+      return list;
     }
-  } catch (e) {
-  }
+  } catch (e) {}
 
-  // Fallback: regex (for malformed XML that DOMParser can't handle)
-  var list = [];
-  var regex = /<d p="([^"]+)">([\s\S]*?)<\/d>/g;
-  var match;
-  while ((match = regex.exec(xmlStr)) !== null) {
-    var p = match[1].split(",");
-    var mode = parseInt(p[1], 10);
-    if (mode < 1 || mode > 6) continue;
-    var size = parseInt(p[2], 10) || 25;
-    var colorVal = parseInt(p[3], 10);
-    if (colorVal < 0) colorVal = (colorVal >>> 0) & 0xFFFFFF;
-    var commands = [];
-    if (mode === 4) commands.push('shita');
-    else if (mode === 5) commands.push('ue');
-    else commands.push('naka');
-    if (size >= 36) commands.push('big');
-    else if (size <= 15) commands.push('small');
-    commands.push('#' + colorVal.toString(16).padStart(6, '0'));
-    list.push({
-      t: Math.round(parseFloat(p[0]) * 100),
-      text: decodeXmlText(match[2]),
-      _isOwner: false,
-      _commands: commands,
-      _userId: 0,
-      _dateSec: 1767196800
-    });
-  }
-  for (var j = 0; j < list.length; j++) {
-    list[j]._no = j + 1;
+  // Malformed exports still use the same field validation as the DOM path.
+  let re = /<!--[\s\S]*?-->|<d\b((?:"[^"]*"|'[^']*'|[^'">])*)>((?:<!\[CDATA\[[\s\S]*?\]\]>|[\s\S])*?)<\/d\s*>/g;
+  let match;
+  while ((match = re.exec(xmlStr)) !== null) {
+    if (match[1] === undefined) continue;
+    if (/\/\s*$/.test(match[1])) { re.lastIndex = match.index + 3 + match[1].length; continue; }
+    let attrs = /(?:^|\s)([\w:-]+)\s*=\s*(["'])([\s\S]*?)\2/g;
+    let attr;
+    while ((attr = attrs.exec(match[1])) !== null) {
+      if (attr[1] === 'p') { add(decodeXmlText(attr[3]), decodeXmlContent(match[2])); break; }
+    }
   }
   return list;
 }
 
 function parseXmlDanmaku(xmlStr) {
-  if (xmlStr.indexOf('<chat') === -1 && xmlStr.indexOf('<packet') === -1) {
+  if (!/<(?:chat|packet)\b/.test(xmlStr)) {
     return parseBilibiliXml(xmlStr);
   }
   const parser = new DOMParser();

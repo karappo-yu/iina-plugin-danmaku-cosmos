@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="index.css?v=55" />
+  <link rel="stylesheet" href="index.css?v=56" />
   <title>Danmaku Control</title>
 </head>
 
@@ -214,7 +214,7 @@
 
       <div class="section-title" data-i18n="stroke_width" style="margin-top:14px">描边宽度</div>
       <div class="control-row">
-        <input type="range" id="stroke-width-slider" data-clickable min="1" max="8" step="0.5" value="2.8" class="slider" />
+        <input type="range" id="stroke-width-slider" data-clickable min="1" max="8" step="0.1" value="2.8" class="slider" />
         <span id="stroke-width-value" class="value-text">2.8px</span>
       </div>
 
@@ -244,27 +244,27 @@
       <div class="control-row" style="margin-top:16px">
         <span class="toggle-label" data-i18n="danmaku_font_family">字体</span>
         <select id="danmaku-font-select" data-clickable style="max-width:190px">
-          <option value="">默认</option>
-          <optgroup label="Japanese">
+          <option value="" data-i18n="font_default">默认</option>
+          <optgroup label="Japanese" data-i18n-label="font_japanese">
             <option value="gothic">Hiragino Gothic</option>
             <option value="mincho">Hiragino Mincho</option>
             <option value="maru">Hiragino Maru Gothic</option>
             <option value="yugothic">Yu Gothic</option>
             <option value="yumincho">Yu Mincho</option>
           </optgroup>
-          <optgroup label="Chinese">
+          <optgroup label="Chinese" data-i18n-label="font_chinese">
             <option value="pingfang">PingFang SC</option>
             <option value="songti">Songti SC</option>
             <option value="kaiti">KaiTi</option>
             <option value="yahei">Microsoft YaHei</option>
             <option value="simsun">SimSun</option>
           </optgroup>
-          <optgroup label="Generic">
+          <optgroup label="Generic" data-i18n-label="font_generic">
             <option value="sans">sans-serif</option>
             <option value="serif">serif</option>
             <option value="mono">monospace</option>
           </optgroup>
-          <option value="custom">自定义…</option>
+          <option value="custom" data-i18n="font_custom">自定义…</option>
         </select>
       </div>
       <div class="control-row" id="danmaku-font-custom-row" style="display:none;margin-top:6px">
@@ -292,7 +292,7 @@
         <div class="danmaku-browser-list-wrap">
           <div id="danmaku-browser-list-all" class="danmaku-browser-list" data-clickable>
             <div class="danmaku-browser-spacer"></div>
-            <div class="danmaku-browser-empty" style="display:none">未加载弹幕</div>
+            <div class="danmaku-browser-empty" data-i18n="filter_empty" style="display:none">未加载弹幕</div>
           </div>
           <button id="danmaku-browser-follow-btn" class="danmaku-browser-follow-float" data-i18n="filter_back_live" style="display:none">回到实时</button>
         </div>
@@ -341,7 +341,7 @@
     </div>
 
   </div>
-  <script src="index.js?v=51"></script>
+  <script src="index.js?v=52"></script>
 </body>
 
 </html>

@@ -15,6 +15,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate Plugin
+        run: |
+          node --check main.js
+          node --check overlay/input.js
+          node --check overlay/main.js
+          node --check sidebar/index.js
+          node --test test/*.test.js
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            node -e 'const info = require("./Info.json"); if (process.env.GITHUB_REF_NAME !== "v" + info.version) { throw new Error("Release tag must match Info.json version"); }'
+          fi
+
       - name: Package Plugin
         run: |
           mkdir -p dist
@@ -24,23 +39,22 @@ jobs:
             overlay \
             sidebar \
             -x "*.DS_Store" \
-            -x "*__MACOSX*" \
-            -x "*.git*" \
-            -x ".github/*" \
-            -x ".trae/*" \
-            -x "AGENTS.md" \
-            -x "README.md" \
-            -x "package.json" \
-            -x "package-lock.json" \
-            -x "png/*" \
-            -x "test/*"
+            -x "*__MACOSX*"
           echo "Package created:"
           ls -lh dist/
 
       - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/danmaku-cosmos.iinaplgz
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Manual Package
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: danmaku-cosmos
+          path: dist/danmaku-cosmos.iinaplgz

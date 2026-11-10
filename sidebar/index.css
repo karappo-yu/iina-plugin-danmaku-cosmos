@@ -706,12 +706,6 @@ kbd {
 .danmaku-browser-list {
   position: absolute;
   inset: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-sm);
-  margin-top: 2px;
-  -webkit-overflow-scrolling: touch;
 }
 .danmaku-browser-spacer {
   position: relative;
@@ -722,16 +716,7 @@ kbd {
   left: 0;
   right: 0;
   top: 0;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  font-size: 12px;
-  font-weight: 400;
-  white-space: nowrap;
-  overflow: hidden;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+
 }
 .danmaku-browser-row.blocked {
   opacity: 0.45;
@@ -827,10 +812,6 @@ kbd {
   margin-top: 8px; /* 与标题行(开关)隔开 */
   -webkit-overflow-scrolling: touch;
 }
-.danmaku-browser-list {
-  position: absolute;
-  inset: 0;
-}
 .danmaku-blocklist-list {
   max-height: 140px;
   padding: 2px 0;
@@ -847,12 +828,6 @@ kbd {
   white-space: nowrap;
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-.danmaku-browser-row {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
 }
 /* 屏蔽词列表全量渲染: 最后一行不画底部分隔线(弹幕列表是虚拟渲染,不可用 :last-child) */
 .danmaku-blocklist-item:last-child {

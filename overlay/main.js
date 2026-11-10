@@ -1,9 +1,19 @@
+function onPluginMessage(name, callback) {
+  iina.onMessage(name, function (data) {
+    if (data && typeof data.encodedPayload === 'string') {
+      data = JSON.parse(decodeURIComponent(data.encodedPayload));
+    }
+    callback(data);
+  });
+}
+
 let lastTime = 0;
+let currentLoadId = 0;
 let isPaused = false;
 
 let canvasOpacity = 0.8;
 let canvasFontScale = 1.0;
-let canvasNicoMode = 'default';
+let canvasNicoMode = 'css';
 let strokeColor = '#000000';
 let strokeInversionColor = '#ffffff';
 let strokeOpacity = 0.4;
@@ -22,6 +32,7 @@ let rawFormattedData = null; // 未注入滚动速度命令的原始 formatted �
 let rawNicoJsonData = null; // 未注入滚动速度的原始 nico-json JSON 文本
 let nicoRawFormat = 'legacy';
 let canvasRafId = null;
+let canvasRebuildTimer = null;
 let canvasVideoAnchorTime = 0;
 let canvasSystemAnchorTime = 0;
 let canvasIsPlaying = false;
@@ -40,28 +51,23 @@ function canvasGetCurrentTime() {
 
 function detectNicoFormat(data) {
   if (Array.isArray(data) && data.length > 0) {
-    if (data[0].comments !== undefined && Array.isArray(data[0].comments)) return 'v1';
-    if (data[0].chat !== undefined) return 'legacy';
+    if (data.some(function (entry) { return entry && Array.isArray(entry.comments); })) return 'v1';
   }
   return 'legacy';
 }
 
 function toNumericUserId(userId, userMap) {
-  const numeric = Number(userId);
-  if (!isNaN(numeric) && isFinite(numeric)) return numeric;
-  const key = String(userId || '');
-  if (userMap[key] === undefined) {
-    userMap._nextId = (userMap._nextId || 0) + 1;
-    userMap[key] = userMap._nextId;
-  }
-  return userMap[key];
+  const key = String(userId === undefined || userId === null ? '' : userId);
+  if (!userMap.has(key)) userMap.set(key, userMap.size);
+  return userMap.get(key);
 }
 
 function buildFormattedCanvasData(list, sourceType) {
-  const userMap = {};
+  const userMap = new Map();
   const result = [];
   for (let i = 0; i < list.length; i++) {
     const d = list[i];
+    if (!d || typeof d.text !== 'string' || !isFinite(d.t)) continue;
     result.push({
       id: i,
       no: d._no || 0,
@@ -85,15 +91,11 @@ function prepareCanvasSource(rawStr, parsedList, sourceType) {
   rawFormattedData = null;
   rawNicoJsonData = null;
   if (sourceType === 'nico-json') {
-    try {
-      nicoRawData = JSON.parse(rawStr);
-      rawNicoJsonData = rawStr;
-      nicoRawFormat = detectNicoFormat(nicoRawData);
-      applyScrollSpeedToNicoJson(nicoRawData);
-      return;
-    } catch (e) {
-      console.warn('niconicomments JSON parse failed, using formatted data:', e);
-    }
+    nicoRawData = JSON.parse(rawStr);
+    rawNicoJsonData = rawStr;
+    nicoRawFormat = detectNicoFormat(nicoRawData);
+    applyScrollSpeedToNicoJson(nicoRawData);
+    return;
   }
   rawFormattedData = buildFormattedCanvasData(parsedList, sourceType);
   applyScrollSpeed();
@@ -101,7 +103,7 @@ function prepareCanvasSource(rawStr, parsedList, sourceType) {
 }
 
 // nico-json (v1/legacy 线程数组) 的滚动速度注入:
-// v1: thread.comments[].commands 数组; legacy: thread.chat[].mail 字符串
+// v1: thread.comments[].commands 数组; legacy: 每条记录的 chat.mail 字符串
 function applyScrollSpeedToNicoJson(data) {
   if (!Array.isArray(data)) return;
   var k = scrollSpeed;
@@ -112,19 +114,30 @@ function applyScrollSpeedToNicoJson(data) {
     var thread = data[i];
     if (!thread) continue;
     if (thread.fork === 'owner') continue; // owner 弹幕(投稿者弹幕)不注入,保持默认速度
-    var comments = Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null);
+    var comments = Array.isArray(thread.comments) ? thread.comments : (thread.chat && !Array.isArray(thread.chat) ? [thread.chat] : null);
     if (!comments) continue;
     for (var j = 0; j < comments.length; j++) {
       var c = comments[j];
       if (!c) continue;
-      var cmds = Array.isArray(c.commands) ? c.commands : (typeof c.mail === 'string' ? c.mail.split(/\s+/).filter(Boolean) : null);
-      if (!cmds) continue;
-      if (cmds.indexOf('ue') !== -1 || cmds.indexOf('shita') !== -1) continue; // 固定弹幕不注入
+      if (thread.chat && !c.user_id) continue;
+      var cmds = Array.isArray(c.commands) ? c.commands : (typeof c.mail === 'string' ? c.mail.split(/\s+/).filter(Boolean) : []);
+      if (!isScrollingCommands(cmds)) continue;
       if (cmds.some(function (m) { return /^[@＠][0-9.]/.test(m); })) continue; // 自带时长命令不动
       cmds.push('@' + longSecs);
-      if (typeof c.mail === 'string') c.mail = cmds.join(' '); // legacy 字符串同步回写
+      if (thread.chat) c.mail = cmds.join(' ');
+      else c.commands = cmds;
     }
   }
+}
+
+// Match the engine: only the first position command among the first 64 wins.
+function isScrollingCommands(commands) {
+  for (let i = 0; i < Math.min(commands.length, 64); i++) {
+    let command = String(commands[i]).toLowerCase();
+    if (command === 'naka') return true;
+    if (command === 'ue' || command === 'shita') return false;
+  }
+  return true;
 }
 
 // 滚动弹幕速度倍率: 引擎 speed = (画布宽 + 弹幕宽×offset) / (long + 100)
@@ -144,10 +157,9 @@ function applyScrollSpeed() {
   var longSecs = Math.max(0.5, 4 / k - 1);
   nicoRawData = rawFormattedData.map(function (c) {
     var mail = c.mail;
-    if (!Array.isArray(mail)) return c;
+    if (c.owner || !Array.isArray(mail)) return c;
     // 滚动弹幕判定: 显式 naka, 或没有 ue/shita 位置命令(本地 nico XML 的默认弹幕 mail 为空)
-    var isScroll = mail.indexOf('naka') !== -1 || (mail.indexOf('ue') === -1 && mail.indexOf('shita') === -1);
-    if (!isScroll) return c;
+    if (!isScrollingCommands(mail)) return c;
     if (mail.some(function (m) { return /^[@＠][0-9.]/.test(m); })) return c; // 自带时长命令的不动
     return Object.assign({}, c, { mail: mail.concat(['@' + longSecs]) });
   });
@@ -216,7 +228,29 @@ function buildDanmakuFontConfig() {
   };
 }
 
+function reportCanvasError(error) {
+  console.log('[overlay] renderer failed: ' + error);
+  stopCanvasLoop();
+  disposeCanvasRenderer();
+  iina.postMessage("danmaku-load-result", { loadId: currentLoadId, success: false });
+}
+
+function scheduleCanvasRebuild() {
+  if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
+  canvasRebuildTimer = setTimeout(function () {
+    canvasRebuildTimer = null;
+    if (nicoRawData) {
+      try {
+        initCanvasRenderer(nicoRawData);
+        startCanvasLoop();
+      } catch (error) { reportCanvasError(error); }
+    }
+  }, 80);
+}
+
 function initCanvasRenderer(data) {
+  if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
+  canvasRebuildTimer = null;
   const canvas = document.getElementById('niconicomments-canvas');
   if (!canvas || typeof NiconiComments === 'undefined') return;
   canvas.width = 1920;
@@ -264,6 +298,7 @@ function initCanvasRenderer(data) {
     stopCanvasLoop();
     if (niconiComments) niconiComments.clear();
   }
+  iina.postMessage("danmaku-load-result", { loadId: currentLoadId, success: true });
 }
 
 function shouldRunCanvasLoop() {
@@ -320,13 +355,14 @@ function applyOverlaySettings(data) {
   if (data.nakaDedupeWindow !== undefined) nakaDedupeWindow = Number(data.nakaDedupeWindow) || 0;
 }
 
-iina.onMessage("time-update", (data) => {
+onPluginMessage("time-update", (data) => {
+  if (!data || typeof data.time !== 'number' || !isFinite(data.time)) return;
   let t = data.time * 100;
   const isSeek = Math.abs(t - lastTime) > 150;
   if (isSeek) stopCanvasLoop();
   canvasSyncAnchor(data.time);
   lastTime = t;
-  if (isSeek && niconiComments) {
+  if ((isSeek || isPaused) && niconiComments) {
     niconiComments.clear();
     // 必须用偏移后时间: 裸视频时间会在负偏移时把本该延后的弹幕提前生成,
     // CSS 模式弹幕是 DOM 动画,生成后会完整飘完一遍再出现第二次(重复)
@@ -335,51 +371,36 @@ iina.onMessage("time-update", (data) => {
   startCanvasLoop();
 });
 
-iina.onMessage("load-danmaku", (data) => {
-  applyOverlaySettings(data);
-
-  const encodedStr = data.xmlContent;
-  let rawStr;
-  try { rawStr = decodeURIComponent(encodedStr); } catch (e) {
-    console.log('[overlay] decodeURIComponent failed: ' + e);
-    return;
-  }
-
-  var danmakuType = data.danmakuType;
-
-  let parsedList;
-  if (danmakuType === 'dandanplay') {
-    try {
+onPluginMessage("load-danmaku", (data) => {
+  currentLoadId = data.loadId;
+  try {
+    applyOverlaySettings(data);
+    const rawStr = decodeURIComponent(data.xmlContent);
+    const danmakuType = data.danmakuType;
+    let parsedList = [];
+    if (danmakuType === 'dandanplay') {
       parsedList = JSON.parse(rawStr);
-    } catch (e) {
-      console.log('[overlay] parse dandanplay failed: ' + e);
-      parsedList = [];
+      if (!Array.isArray(parsedList)) throw new Error('Invalid Dandanplay comment list');
+    } else if (danmakuType !== 'nico-json') {
+      parsedList = parseDanmaku(rawStr, true);
     }
-  } else if (danmakuType === 'nico-json') {
-    parsedList = [];
-  } else {
-    parsedList = parseDanmaku(rawStr, true);
-  }
-
-  prepareCanvasSource(rawStr, parsedList, danmakuType);
-
-  iina.postMessage("danmaku-type", { type: danmakuType });
-
-  if (nicoRawData) {
-    canvasIsPlaying = !isPaused;
-    initCanvasRenderer(nicoRawData);
-    startCanvasLoop();
-  }
+    prepareCanvasSource(rawStr, parsedList, danmakuType);
+    if (nicoRawData) {
+      canvasIsPlaying = !isPaused;
+      initCanvasRenderer(nicoRawData);
+      startCanvasLoop();
+    }
+  } catch (error) { reportCanvasError(error); }
 });
 
-iina.onMessage("resize", () => {
+onPluginMessage("resize", () => {
   if (niconiComments) {
     niconiComments.clear();
     drawCanvasAtVpos(canvasGetCurrentTime() * 100, true);
   }
 });
 
-iina.onMessage("pause-state", (data) => {
+onPluginMessage("pause-state", (data) => {
   // canvasGetCurrentTime() 返回的是含偏移的时间,而锚点存的是裸视频时间——
   // 回写前必须剥离偏移,否则下次读取会二次叠加偏移
   const anchoredTime = canvasGetCurrentTime() - danmakuTimeOffsetSec;
@@ -397,7 +418,7 @@ iina.onMessage("pause-state", (data) => {
   }
 });
 
-iina.onMessage("playback-speed", (data) => {
+onPluginMessage("playback-speed", (data) => {
   const anchoredTime = canvasGetCurrentTime() - danmakuTimeOffsetSec;
   playbackSpeed = data && data.speed ? data.speed : 1.0;
   canvasSyncAnchor(anchoredTime);
@@ -407,7 +428,7 @@ iina.onMessage("playback-speed", (data) => {
   }
 });
 
-iina.onMessage("toggle-danmaku", (data) => {
+onPluginMessage("toggle-danmaku", (data) => {
   danmakuVisible = !!data.enabled;
   const canvas = document.getElementById('niconicomments-canvas');
   if (canvas) canvas.style.display = data.enabled ? '' : 'none';
@@ -424,67 +445,59 @@ iina.onMessage("toggle-danmaku", (data) => {
   }
 });
 
-iina.onMessage("set-opacity", (data) => {
+onPluginMessage("set-opacity", (data) => {
   canvasOpacity = data.opacity;
   applyOpacityToDom();
 });
 
-iina.onMessage("set-fontscale", (data) => {
+onPluginMessage("set-fontscale", (data) => {
   canvasFontScale = data.scale;
-  if (nicoRawData) initCanvasRenderer(nicoRawData);
+  if (nicoRawData) scheduleCanvasRebuild();
 });
 
-iina.onMessage("set-canvas-mode", (data) => {
-  const oldMode = canvasNicoMode;
+onPluginMessage("set-canvas-mode", (data) => {
   canvasNicoMode = data.mode;
-  if (nicoRawData) {
-    initCanvasRenderer(nicoRawData);
-    startCanvasLoop();
-    if (oldMode === 'css' && canvasNicoMode !== 'css') {
-      const cssContainer = document.querySelector('[data-dm-css-container]');
-      if (cssContainer) cssContainer.remove();
-    }
-  }
+  if (nicoRawData) scheduleCanvasRebuild();
 });
 
-iina.onMessage("set-stroke-opacity", (data) => {
+onPluginMessage("set-stroke-opacity", (data) => {
   strokeOpacity = data.opacity;
-  if (nicoRawData) initCanvasRenderer(nicoRawData);
+  if (nicoRawData) scheduleCanvasRebuild();
 });
 
-iina.onMessage("set-stroke-width", (data) => {
+onPluginMessage("set-stroke-width", (data) => {
   strokeWidth = data.width;
-  if (nicoRawData) initCanvasRenderer(nicoRawData);
+  if (nicoRawData) scheduleCanvasRebuild();
 });
 
-iina.onMessage("set-stroke-color", (data) => {
+onPluginMessage("set-stroke-color", (data) => {
   strokeColor = data.color;
-  if (nicoRawData) initCanvasRenderer(nicoRawData);
+  if (nicoRawData) scheduleCanvasRebuild();
 });
 
-iina.onMessage("set-stroke-inversion-color", (data) => {
+onPluginMessage("set-stroke-inversion-color", (data) => {
   strokeInversionColor = data.color;
-  if (nicoRawData) initCanvasRenderer(nicoRawData);
+  if (nicoRawData) scheduleCanvasRebuild();
 });
 
-iina.onMessage("set-comment-limit", (data) => {
+onPluginMessage("set-comment-limit", (data) => {
   commentLimit = data.limit;
-  if (nicoRawData) initCanvasRenderer(nicoRawData);
+  if (nicoRawData) scheduleCanvasRebuild();
 });
 
-iina.onMessage("set-scroll-speed", (data) => {
+onPluginMessage("set-scroll-speed", (data) => {
   scrollSpeed = data.speed;
   if (rawFormattedData) {
     applyScrollSpeed();
-    initCanvasRenderer(nicoRawData);
+    scheduleCanvasRebuild();
   } else if (rawNicoJsonData) {
     nicoRawData = JSON.parse(rawNicoJsonData);
     applyScrollSpeedToNicoJson(nicoRawData);
-    initCanvasRenderer(nicoRawData);
+    scheduleCanvasRebuild();
   }
 });
 
-iina.onMessage("set-danmaku-offset", (data) => {
+onPluginMessage("set-danmaku-offset", (data) => {
   if (data.offset !== undefined) {
     danmakuTimeOffsetSec = Number(data.offset) || 0;
   }
@@ -496,13 +509,16 @@ iina.onMessage("set-danmaku-offset", (data) => {
   }
 });
 
-iina.onMessage("set-danmaku-font", (data) => {
+onPluginMessage("set-danmaku-font", (data) => {
   if (data.fontFamily !== undefined) danmakuFontFamily = data.fontFamily || "";
   if (data.fontWeight !== undefined) danmakuFontWeight = data.fontWeight || "";
-  if (nicoRawData) initCanvasRenderer(nicoRawData);
+  if (nicoRawData) scheduleCanvasRebuild();
 });
 
-iina.onMessage("clear-danmaku", () => {
+onPluginMessage("clear-danmaku", () => {
+  currentLoadId = 0;
+  if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
+  canvasRebuildTimer = null;
   stopCanvasLoop();
   disposeCanvasRenderer();
   lastTime = 0;
@@ -515,7 +531,6 @@ iina.onMessage("clear-danmaku", () => {
   rawFormattedData = null;
   rawNicoJsonData = null;
   nicoRawFormat = 'legacy';
-  iina.postMessage("danmaku-type", { type: 'none' });
 });
 
 // overlay 自身的 file:// 根目录(插件启动即加载,上报给 main 用于读 opencc.min.js
@@ -531,4 +546,8 @@ function overlayPluginRoot() {
   }
 }
 
-iina.postMessage("overlay-ready", { pluginRoot: overlayPluginRoot() });
+function reportOverlayReady() {
+  iina.postMessage("overlay-ready", { pluginRoot: overlayPluginRoot() });
+}
+onPluginMessage("request-overlay-state", reportOverlayReady);
+reportOverlayReady();

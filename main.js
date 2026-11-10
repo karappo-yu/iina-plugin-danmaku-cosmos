@@ -42,8 +42,8 @@ var danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
 var danmakuFontWeight = preferences.get("danmakuFontWeight") || "400";
 var stylePreset = preferences.get("stylePreset") || "nico";
 var overlayReady = false;
+let overlayLoadId = 0;
 var preferencesSyncTimer = null;
-var ddpCacheDirPath = null;
 
 var DDP_APP_ID = preferences.get("dandanplayAppId") || 't43832ky57';
 var DDP_APP_SECRET = preferences.get("dandanplayAppSecret") || 'IDnPEdEKDIziKeYVxm6VcaJE4Bv2fnzT';
@@ -68,6 +68,9 @@ var dandanplayState = {
 // i18n for OSD / menu / file dialog strings (sidebar UI strings live in sidebar/index.js)
 var PLUGIN_I18N = {
   en: {
+    render_failed: "Cannot render this danmaku file",
+    ddp_auth_error: "DanDanPlay: authentication failed (403)",
+    ddp_no_results: "No results found",
     menu_toggle: "Toggle Danmaku",
     menu_load_file: "Load Danmaku File…",
     menu_show_overlay: "Show Danmaku Overlay",
@@ -95,6 +98,9 @@ var PLUGIN_I18N = {
     duration_mismatch_no_offset: "Duration mismatch with danmaku file"
   },
   ja: {
+    render_failed: "\u3053\u306e\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u3092\u63cf\u753b\u3067\u304d\u307e\u305b\u3093",
+    ddp_auth_error: "\u5f3e\u5f3ePlay: \u8a8d\u8a3c\u306b\u5931\u6557\u3057\u307e\u3057\u305f (403)",
+    ddp_no_results: "\u691c\u7d22\u7d50\u679c\u304c\u3042\u308a\u307e\u305b\u3093",
     menu_toggle: "\u30b3\u30e1\u30f3\u30c8\u8868\u793a\u3092\u5207\u308a\u66ff\u3048",
     menu_load_file: "\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u3092\u8aad\u307f\u8fbc\u3080\u2026",
     menu_show_overlay: "\u30b3\u30e1\u30f3\u30c8\u30aa\u30fc\u30d0\u30fc\u30ec\u30a4\u3092\u8868\u793a",
@@ -122,6 +128,9 @@ var PLUGIN_I18N = {
     duration_mismatch_no_offset: "\u52d5\u753b\u306e\u9577\u3055\u304c\u30b3\u30e1\u30f3\u30c8\u30d5\u30a1\u30a4\u30eb\u3068\u4e00\u81f4\u3057\u307e\u305b\u3093"
   },
   zh: {
+    render_failed: "\u65e0\u6cd5\u6e32\u67d3\u6b64\u5f39\u5e55\u6587\u4ef6",
+    ddp_auth_error: "\u5f39\u5f39play: \u8eab\u4efd\u9a8c\u8bc1\u5931\u8d25 (403)",
+    ddp_no_results: "\u672a\u627e\u5230\u641c\u7d22\u7ed3\u679c",
     menu_toggle: "\u5207\u6362\u5f39\u5e55\u663e\u793a",
     menu_load_file: "\u624b\u52a8\u52a0\u8f7d\u5f39\u5e55\u6587\u4ef6\u2026",
     menu_show_overlay: "\u663e\u793a\u5f39\u5e55\u8986\u76d6\u5c42",
@@ -191,6 +200,8 @@ var currentVideoUrl = null;
 var loadedDanmakuVideoUrl = null;
 // 同一 URL 也可能被重新加载;世代号用于丢弃旧异步 DDP 请求的回调。
 var danmakuLoadGeneration = 0;
+let ddpRequestGeneration = 0;
+let ddpSearchGeneration = 0;
 var timePosListenerID = null;
 var windowScaleListenerID = null;
 var speedListenerID = null;
@@ -230,7 +241,7 @@ if (typeof storedRoot === 'string' && storedRoot.length > 0) {
 function sanitizePluginRoot(p) {
   if (typeof p !== 'string' || p.length === 0) return '';
   if (p.charAt(0) !== '/') return '';   // 必须绝对路径
-  if (p.indexOf('..') !== -1) return ''; // 拒绝路径穿越
+  if (p.split('/').indexOf('..') !== -1) return ''; // 拒绝路径穿越
   return p;
 }
 
@@ -281,18 +292,41 @@ function sanitizeIPCValue(value, key) {
   return value;
 }
 
+function containsTemplateSyntax(value) {
+  if (typeof value === 'string') return value.indexOf('${') !== -1 || value.indexOf('`') !== -1;
+  if (!value || typeof value !== 'object') return false;
+  return Object.keys(value).some(function (key) {
+    return containsTemplateSyntax(key) || containsTemplateSyntax(value[key]);
+  });
+}
+
+function sendWebViewMessage(target, key, data) {
+  let payload = data === undefined ? {} : data;
+  // IINA interpolates JSON into a JS template literal. Also protect ${...},
+  // including persisted font names and API text, without altering the content.
+  if (containsTemplateSyntax(payload)) {
+    payload = { encodedPayload: encodeContent(JSON.stringify(payload)) };
+  }
+  target.postMessage(key, payload);
+}
+
 function sidebarPostMessage(key, data) {
-  sidebar.postMessage(key, sanitizeIPCValue(data === undefined ? {} : data));
+  sendWebViewMessage(sidebar, key, sanitizeIPCValue(data === undefined ? {} : data));
+}
+
+function overlayPostMessage(key, data) {
+  sendWebViewMessage(overlay, key, data);
 }
 
 function applyDanmakuOffset(offsetSec) {
   var nextOffset = parseFloat(offsetSec);
-  if (isNaN(nextOffset)) nextOffset = 0;
+  if (!isFinite(nextOffset)) return;
   danmakuTimeOffsetSec = nextOffset;
   if (overlayReady) {
-    overlay.postMessage("set-danmaku-offset", { offset: danmakuTimeOffsetSec });
+    overlayPostMessage("set-danmaku-offset", { offset: danmakuTimeOffsetSec });
   }
   sidebarPostMessage("danmaku-state", { danmakuTimeOffsetSec: danmakuTimeOffsetSec });
+  if (danmakuBrowserWatch) pushBrowserTime(mpv.getNumber("time-pos"), true);
 }
 
 function applyDanmakuFont(fontFamily, fontWeight) {
@@ -303,7 +337,7 @@ function applyDanmakuFont(fontFamily, fontWeight) {
   preferences.set("danmakuFontWeight", danmakuFontWeight);
   syncPreferencesSoon();
   if (overlayReady) {
-    overlay.postMessage("set-danmaku-font", { fontFamily: danmakuFontFamily, fontWeight: danmakuFontWeight });
+    overlayPostMessage("set-danmaku-font", { fontFamily: danmakuFontFamily, fontWeight: danmakuFontWeight });
   }
   sidebarPostMessage("danmaku-state", { danmakuFontFamily: danmakuFontFamily, danmakuFontWeight: danmakuFontWeight });
 }
@@ -426,8 +460,9 @@ function checkNicoJsonDuration(encodedContent) {
   if (runDurationCompare(danmakuDuration)) return;
   // file-loaded 瞬间 mpv duration 可能还没就绪,延迟重试一次(仅当仍选中同一弹幕文件)
   var savedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+  let generation = danmakuLoadGeneration;
   setTimeout(function () {
-    if (savedPath && danmakuFileList.selectedPaths.length > 0 && danmakuFileList.selectedPaths[0] === savedPath) {
+    if (generation === danmakuLoadGeneration && savedPath && danmakuFileList.selectedPaths[0] === savedPath) {
       runDurationCompare(danmakuDuration);
     }
   }, 800);
@@ -467,6 +502,8 @@ function sendDanmakuFilterInfo() {
             var fthread = filteredData[fi];
             if (fthread && fthread.fork !== 'owner' && fthread.fork !== 'easy' && Array.isArray(fthread.comments)) {
               filteredCount += fthread.comments.length;
+            } else if (fthread && fthread.chat && !Array.isArray(fthread.chat) && fthread.chat.user_id && fthread.chat.deleted !== 1) {
+              filteredCount += 1;
             }
           }
           for (var i = 0; i < data.length; i++) {
@@ -517,7 +554,8 @@ function densityFilterNicoJsonComments(comments, density) {
   var candidates = [];
   for (var i = 0; i < comments.length; i++) {
     var c = comments[i];
-    if (c && c.nicoruCount >= 3) {
+    if (!c) continue;
+    if (c.nicoruCount >= 3) {
       nicoruKept.push(c);
     } else {
       candidates.push(c);
@@ -604,29 +642,36 @@ function ddpDensityRecords(list) {
 
 // XML 扫描: 一趟正则同时取出原文区间与归一化字段。
 // nico-xml 用 <chat vpos no>; bilibili-xml 用 <d p="秒,模式,颜色,时间戳,...">。
-function densityScanXml(rawStr, ft) {
-  var isNico = ft === 'nico-xml';
-  var re = isNico
-    ? /<chat\b([^>]*)>([\s\S]*?)<\/chat>/g
-    : /<d\s+p="([^"]*)"[^>]*>([\s\S]*?)<\/d>/g;
-  var entries = [];
-  var m;
+function getXmlAttribute(attributes, name) {
+  let re = /(?:^|\s)([\w:-]+)\s*=\s*(["'])([\s\S]*?)\2/g;
+  let match;
+  while ((match = re.exec(attributes)) !== null) {
+    if (match[1] === name) return decodeXmlText(match[3]);
+  }
+  return '';
+}
+
+function densityScanXml(rawStr, ft, includeText) {
+  let isNico = ft === 'nico-xml';
+  let re = isNico
+    ? /<!--[\s\S]*?-->|<chat\b((?:"[^"]*"|'[^']*'|[^'">])*)>((?:<!\[CDATA\[[\s\S]*?\]\]>|[\s\S])*?)<\/chat\s*>/g
+    : /<!--[\s\S]*?-->|<d\b((?:"[^"]*"|'[^']*'|[^'">])*)>((?:<!\[CDATA\[[\s\S]*?\]\]>|[\s\S])*?)<\/d\s*>/g;
+  let entries = [];
+  let m;
   while ((m = re.exec(rawStr)) !== null) {
-    var t = 0;
-    var o = null;
-    if (isNico) {
-      var vpos = /(?:^|\s)vpos="(-?\d+)"/.exec(m[1]);
-      t = vpos ? parseInt(vpos[1], 10) || 0 : 0;
-      var no = /(?:^|\s)no="(\d+)"/.exec(m[1]);
-      var noVal = no ? parseInt(no[1], 10) : 0;
-      o = noVal > 0 ? noVal : null;
-    } else {
-      var parts = m[1].split(',');
-      t = Math.round((parseFloat(parts[0]) || 0) * 100);
-      var ts = parseInt(parts[4], 10);
-      o = ts > 0 ? ts : null; // 部分导出把发送时间戳留 0, 视为无信号
-    }
-    entries.push({ index: m.index, length: m[0].length, t: t, o: o, protect: false });
+    if (m[1] === undefined) continue;
+    if (/\/\s*$/.test(m[1])) { re.lastIndex = m.index + (isNico ? 6 : 3) + m[1].length; continue; }
+    let parts = isNico ? [] : getXmlAttribute(m[1], 'p').split(',');
+    let mode = Number(parts[1]);
+    if (!isNico && (!Number.isInteger(mode) || mode < 1 || mode > 6 || !parts[0].trim())) continue;
+    let time = isNico ? Number(getXmlAttribute(m[1], 'vpos')) : Number(parts[0]) * 100;
+    if (!isFinite(time)) continue;
+    let order = Number(isNico ? getXmlAttribute(m[1], 'no') : parts[4]);
+    let position = includeText && isNico ? getCommentPosition(null, getXmlAttribute(m[1], 'mail'))
+      : mode === 5 ? 'ue' : mode === 4 ? 'shita' : 'naka';
+    entries.push({ index: m.index, length: m[0].length, t: Math.round(time),
+      o: order > 0 ? order : null, protect: false, text: includeText ? decodeXmlContent(m[2]) : '',
+      position: position, bodyStart: m.index + (isNico ? 6 : 3) + m[1].length, bodyLength: m[2].length });
   }
   return entries;
 }
@@ -700,6 +745,16 @@ function countDensityItems(encodedContent, ft, density) {
 
 function filterNicoJsonData(data) {
   if (!Array.isArray(data)) return data;
+  // Legacy API returns [{chat: {...}}, ...], including non-comment metadata.
+  if (danmakuFilterDensity > 0 && data.some(function (entry) { return entry && entry.chat && !Array.isArray(entry.chat); })) {
+    let records = data.map(function (entry) {
+      let chat = entry && entry.chat;
+      return { t: chat && chat.vpos || 0, o: chat && chat.no > 0 ? chat.no : null,
+        protect: !chat || !chat.user_id || chat.nicoru >= 3 };
+    });
+    let keep = selectDensityKeep(records, danmakuFilterDensity);
+    data = data.filter(function (_, index) { return keep[index]; });
+  }
   var filteredData = [];
   var hasFilter = false;
   for (var i = 0; i < data.length; i++) {
@@ -755,6 +810,7 @@ function applyNicoJsonFilters(encodedContent) {
 // load-danmaku 载荷统一构造。设置字段全量携带: overlay 端逐字段幂等应用,重复携带无副作用。
 function buildLoadDanmakuPayload(xmlContent, danmakuType) {
   return {
+    loadId: ++overlayLoadId,
     xmlContent: xmlContent,
     danmakuType: danmakuType,
     canvasMode: currentCanvasMode,
@@ -795,7 +851,7 @@ function applyDanmakuFilter(offset, limit) {
   if (!selectedPath) return;
   if (!danmakuCache[selectedPath]) return;
 
-  overlay.postMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), ft));
+  overlayPostMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), ft));
   sendDanmakuFilterInfo();
 }
 
@@ -846,13 +902,47 @@ function b64Encode(str) {
 }
 
 function decodeXmlText(text) {
+  let entities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
   if (text.indexOf('&') === -1) return text;
-  return text
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+  return text.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, function (entity, key) {
+    if (key.charAt(0) !== '#') return entities[key] === undefined ? entity : entities[key];
+    let code = key.charAt(1).toLowerCase() === 'x' ? parseInt(key.slice(2), 16) : Number(key.slice(1));
+    return code > 0 && code <= 0x10FFFF && !(code >= 0xD800 && code <= 0xDFFF) ? String.fromCodePoint(code) : entity;
+  });
+}
+
+function decodeXmlContent(content) {
+  // CDATA stays literal; ordinary text is decoded exactly once, like DOMParser.
+  return content.replace(/\r\n?/g, '\n').split(/(<!\[CDATA\[[\s\S]*?\]\]>|<!--[\s\S]*?-->)/g).map(function (part) {
+    if (part.indexOf('<!--') === 0) return '';
+    return part.indexOf('<![CDATA[') === 0 ? part.slice(9, -3) : decodeXmlText(part);
+  }).join('');
+}
+
+function simplifyFormattedContent(encodedContent, ft) {
+  if (!danmakuForceSimplified || !ensureBrowserSimplifier()) return encodedContent;
+  try {
+    let raw = decodeURIComponent(encodedContent);
+    if (ft === 'dandanplay') {
+      let list = JSON.parse(raw);
+      if (!Array.isArray(list)) return encodedContent;
+      list.forEach(function (item) {
+        if (item && typeof item.text === 'string') item.text = openccSimplifier(item.text);
+      });
+      return encodeContent(JSON.stringify(list));
+    }
+    let entries = densityScanXml(raw, ft, true);
+    let chunks = [], last = 0;
+    entries.forEach(function (entry) {
+      chunks.push(raw.slice(last, entry.bodyStart));
+      chunks.push(openccSimplifier(entry.text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+      last = entry.bodyStart + entry.bodyLength;
+    });
+    chunks.push(raw.slice(last));
+    return encodeContent(chunks.join(''));
+  } catch (e) {
+    return encodedContent;
+  }
 }
 
 // 简繁转换器(OpenCC hk→cn,与 overlay/lib/opencc.min.js 同一库同参数)。
@@ -947,9 +1037,6 @@ function mergeDuplicateItems(items, windowMs) {
 function isFixedCommentCommands(cmds, mail) {
   return getCommentPosition(cmds, mail) !== 'naka';
 }
-function isFixedCommentMail(mail) {
-  return isFixedCommentCommands(null, mail);
-}
 
 // 与引擎一致: 大小写不敏感,前 64 个命令中第一个位置命令生效;默认滚动。
 function getCommentPosition(commands, mail) {
@@ -962,16 +1049,6 @@ function getCommentPosition(commands, mail) {
   return 'naka';
 }
 
-function getXmlCommentPosition(element, ft) {
-  let tag = element.slice(0, element.indexOf('>') + 1);
-  if (ft === 'nico-xml') {
-    let mail = (tag.match(/\bmail="([^"]*)"/) || [0, ''])[1];
-    return getCommentPosition(null, decodeXmlText(mail));
-  }
-  let p = (tag.match(/\bp="([^"]*)"/) || [0, ''])[1];
-  let mode = parseInt(p.split(',')[1], 10);
-  return mode === 5 ? 'ue' : (mode === 4 ? 'shita' : 'naka');
-}
 
 function hasDanmakuBlocking() {
   return danmakuBlockTopEnabled || danmakuBlockBottomEnabled || (danmakuBlocklistEnabled && blockRegexes.length > 0);
@@ -997,6 +1074,12 @@ function filterBlockedNicoJson(encodedContent) {
   for (var i = 0; i < data.length; i++) {
     var thread = data[i];
     if (thread && thread.fork === 'owner') { filteredData.push(thread); continue; }
+    if (thread && thread.chat && !Array.isArray(thread.chat)) {
+      let chat = thread.chat;
+      if (chat.user_id && isBlockedComment(chat.content, getCommentPosition(null, chat.mail))) changed = true;
+      else filteredData.push(thread);
+      continue;
+    }
     // legacy nico-json(thread.chat)与现代表格(thread.comments)都处理
     var srcComments = thread ? (Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null)) : null;
     if (!srcComments) { filteredData.push(thread); continue; }
@@ -1042,26 +1125,16 @@ function filterBlockedContent(encodedContent, ft) {
     if (!changed) return encodedContent;
     return encodeContent(JSON.stringify(kept));
   }
-  // 用 ft 判断格式(内容嗅探 '<chat' 会误判含 <chatserver> 头部的 bilibili XML)
-  var re = ft === 'nico-xml'
-    ? /<chat\b[^>]*>([\s\S]*?)<\/chat>/g
-    : /<d\s+p="[^"]*"[^>]*>([\s\S]*?)<\/d>/g;
-  var out = [];
-  var last = 0;
-  var m;
-  var changed = false;
-  while ((m = re.exec(rawStr)) !== null) {
-    out.push(rawStr.slice(last, m.index));
-    if (isBlockedComment(decodeXmlText(m[1]), getXmlCommentPosition(m[0], ft))) {
-      changed = true; // 删除该弹幕行
-    } else {
-      out.push(m[0]);
-    }
-    last = m.index + m[0].length;
-  }
-  out.push(rawStr.slice(last));
-  if (!changed) return encodedContent;
-  return encodeContent(out.join(''));
+  let entries = densityScanXml(rawStr, ft, true);
+  let chunks = [], last = 0, xmlChanged = false;
+  entries.forEach(function (entry) {
+    chunks.push(rawStr.slice(last, entry.index));
+    if (isBlockedComment(entry.text, entry.position)) xmlChanged = true;
+    else chunks.push(rawStr.slice(entry.index, entry.index + entry.length));
+    last = entry.index + entry.length;
+  });
+  chunks.push(rawStr.slice(last));
+  return xmlChanged ? encodeContent(chunks.join('')) : encodedContent;
 }
 
 // 单源内容出口: 按当前设置返回"最终内容"(URI 编码形式)。
@@ -1079,27 +1152,13 @@ function getEffectiveContent(path) {
     out = filterBlockedNicoJson(out);
     return out;
   }
-  if (danmakuForceSimplified && ensureBrowserSimplifier()) {
-    try {
-      out = encodeContent(openccSimplifier(decodeURIComponent(encodedContent)));
-    } catch (e) {
-      out = encodedContent;
-    }
-  } else {
-    out = encodedContent;
-  }
+  out = simplifyFormattedContent(encodedContent, ft);
   // 密度先于屏蔽词, 与 nico-json 路径(applyNicoJsonFilters → filterBlockedNicoJson)同序;
   // 列表侧(buildDanmakuBrowserList)用同一份输入走同一个函数, 保证两侧保留集合一致。
   var densityOut = applyDensityFilter(out, ft, danmakuFilterDensity);
   if (densityOut) out = densityOut;
   out = filterBlockedContent(out, ft);
   return out;
-}
-
-// 逐条文本简繁转换(与 getEffectiveContent 的整串转换结果一致,OpenCC 逐字符幂等)
-function simplifyText(text) {
-  if (!text || !openccSimplifier || !danmakuForceSimplified) return text;
-  return openccSimplifier(text);
 }
 
 // 从原始内容构建 [{t, text, blocked}] 时间线(vpos 升序)。
@@ -1115,14 +1174,13 @@ function buildDanmakuBrowserList() {
   var encodedContent = danmakuCache[selectedPath];
   if (!encodedContent) return [];
   var ft = currentDanmakuStatus.fileType;
-  var base = ft === 'nico-json' ? applyNicoJsonFilters(encodedContent) : encodedContent;
+  var base = ft === 'nico-json' ? applyNicoJsonFilters(encodedContent) : simplifyFormattedContent(encodedContent, ft);
   var densityOut = applyDensityFilter(base, ft, danmakuFilterDensity);
   if (densityOut) base = densityOut;
   var rawStr;
   try {
     rawStr = decodeURIComponent(base);
   } catch (e) { return []; }
-  ensureBrowserSimplifier(); // 需要时构建转换器(非 nico-json + 强制简体)
   var items = [];
   try {
     if (ft === 'nico-json') {
@@ -1131,19 +1189,19 @@ function buildDanmakuBrowserList() {
         for (var i = 0; i < data.length; i++) {
           var thread = data[i];
           if (!thread) continue;
-          if (thread.fork === 'easy') continue;
-          var comments = Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null);
+          var comments = Array.isArray(thread.comments) ? thread.comments : (thread.chat && !Array.isArray(thread.chat) ? [thread.chat] : null);
           if (!comments) continue;
           var isOwnerThread = thread.fork === 'owner';
           for (var j = 0; j < comments.length; j++) {
             var c = comments[j];
-            if (!c) continue;
-            var t = c.vposMs !== undefined ? Math.round(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
+            if (!c || c.deleted === 1) continue;
+            let isOwner = isOwnerThread || !!(thread.chat && !c.user_id);
+            var t = c.vposMs !== undefined ? Math.floor(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
             var text = c.body !== undefined ? c.body : c.content;
             if (!isFinite(t) || !text) continue;
             // owner 弹幕进列表但不参与任何过滤: 不打屏蔽标记、不做展示层合并
             let position = getCommentPosition(c.commands, c.mail);
-            items.push({ t: t, text: text, blocked: !isOwnerThread && isBlockedComment(text, position), _fixed: isFixedCommentCommands(c.commands, c.mail), _owner: isOwnerThread || undefined });
+            items.push({ t: t, text: text, blocked: !isOwner && isBlockedComment(text, position), _fixed: isFixedCommentCommands(c.commands, c.mail), _owner: isOwner || undefined });
           }
         }
       }
@@ -1153,33 +1211,17 @@ function buildDanmakuBrowserList() {
         for (var k = 0; k < list.length; k++) {
           var d = list[k];
           if (!d || typeof d.t !== 'number' || !isFinite(d.t) || !d.text) continue;
-          var st = simplifyText(d.text);
+          var st = d.text;
           let position = getCommentPosition(d._commands);
           items.push({ t: Math.round(d.t), text: st, blocked: isBlockedComment(st, position), _fixed: isFixedCommentCommands(d._commands) });
         }
       }
     } else {
-      if (ft === 'nico-xml' || rawStr.indexOf('<packet') !== -1) {
-        var reChat = /<chat\b[^>]*\bvpos="(\d+)"[^>]*>([\s\S]*?)<\/chat>/g;
-        var m;
-        while ((m = reChat.exec(rawStr)) !== null) {
-          if (!m[2]) continue;
-          var ct = simplifyText(decodeXmlText(m[2]));
-          let position = getXmlCommentPosition(m[0], 'nico-xml');
-          items.push({ t: parseInt(m[1], 10) || 0, text: ct, blocked: isBlockedComment(ct, position), _fixed: isFixedCommentMail(position) });
-        }
-      } else {
-        var reD = /<d\s+p="([^"]*)"[^>]*>([\s\S]*?)<\/d>/g;
-        var m2;
-        while ((m2 = reD.exec(rawStr)) !== null) {
-          var parts = m2[1].split(',');
-          var sec = parseFloat(parts[0]);
-          if (!isFinite(sec) || !m2[2]) continue;
-          var bt = simplifyText(decodeXmlText(m2[2]));
-          let position = getXmlCommentPosition(m2[0], 'bilibili-xml');
-          items.push({ t: Math.round(sec * 100), text: bt, blocked: isBlockedComment(bt, position), _fixed: position !== 'naka' });
-        }
-      }
+      densityScanXml(rawStr, ft, true).forEach(function (entry) {
+        if (!entry.text) return;
+        items.push({ t: entry.t, text: entry.text,
+          blocked: isBlockedComment(entry.text, entry.position), _fixed: entry.position !== 'naka' });
+      });
     }
   } catch (e) {
     return [];
@@ -1214,6 +1256,7 @@ function sendDanmakuBrowserData(items) {
   var total = items.length;
   if (total === 0) {
     sidebarPostMessage("danmaku-browser-data", { payload: b64Encode('[]'), total: 0, chunkIndex: 0, done: true });
+    pushBrowserTime(mpv.getNumber('time-pos'), true);
     return;
   }
   var n = Math.ceil(total / CHUNK);
@@ -1225,10 +1268,12 @@ function sendDanmakuBrowserData(items) {
       done: c === n - 1
     });
   }
+  pushBrowserTime(mpv.getNumber('time-pos'), true);
 }
 
 // 播放时间推送(300ms 节流),sidebar 据此计算在屏弹幕窗口
 function pushBrowserTime(timeSec, force) {
+  if (typeof timeSec !== 'number' || !isFinite(timeSec)) return;
   var now = Date.now();
   if (!force && now - lastBrowserTimeSent < 300) return;
   lastBrowserTimeSent = now;
@@ -1253,7 +1298,7 @@ function resendDanmakuToOverlay() {
   if (!overlayReady) return;
   var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
   if (!selectedPath || !danmakuCache[selectedPath]) return;
-  overlay.postMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), currentDanmakuStatus.fileType));
+  overlayPostMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), currentDanmakuStatus.fileType));
 }
 
 function extractNumberFromName(name) {
@@ -1336,11 +1381,13 @@ function findDanmakuByEpisode(videoUrl) {
       var normalizedBaseName = fileBaseName.normalize('NFC');
       var isExactMatch = normalizedBaseName === videoBaseName;
       var isPrefixMatch = !isExactMatch && normalizedBaseName.startsWith(videoBaseName);
+      if (/\d$/.test(videoBaseName) && /^\d/.test(normalizedBaseName.slice(videoBaseName.length))) isPrefixMatch = false;
       var fileInfo = {
         filename: fname,
         path: filePath,
         relativePath: relativePath,
-        type: ext.toUpperCase()
+        type: ext.toUpperCase(),
+        _matchRank: (isExactMatch ? 0 : isPrefixMatch ? 4 : 8) + (d === 0 ? 0 : 2) + (ext === 'json' ? 0 : 1)
       };
 
       if (isExactMatch) {
@@ -1356,6 +1403,24 @@ function findDanmakuByEpisode(videoUrl) {
   var xmlFiles = exactXmlFiles.concat(prefixXmlFiles).concat(epNumXmlFiles);
   var jsonFiles = exactJsonFiles.concat(prefixJsonFiles).concat(epNumJsonFiles);
   return { xmlFiles: xmlFiles, jsonFiles: jsonFiles };
+}
+
+function localDanmakuCandidates() {
+  return danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles).filter(function (item) {
+    return item.type !== 'DDP';
+  }).sort(function (a, b) {
+    let rankA = a._matchRank === undefined ? 100 : a._matchRank;
+    let rankB = b._matchRank === undefined ? 100 : b._matchRank;
+    return rankA - rankB || a.path.localeCompare(b.path);
+  });
+}
+
+function loadFirstLocalDanmaku() {
+  let files = localDanmakuCandidates();
+  for (let i = 0; i < files.length; i++) {
+    if (loadDanmakuFile(files[i].path)) return true;
+  }
+  return false;
 }
 
 function encodeContent(str) {
@@ -1485,13 +1550,13 @@ function ddpConvertComments(ddpComments) {
   var write = 0;
   for (var i = 0; i < ddpComments.length; i++) {
     var c = ddpComments[i];
-    if (!c.p || !c.m) continue;
+    if (!c || typeof c.p !== 'string' || typeof c.m !== 'string' || !c.m) continue;
     var parts = c.p.split(',');
     if (parts.length < 3) continue;
     var timeSec = parseFloat(parts[0]);
     var mode = parseInt(parts[1]);
     var colorDec = parseInt(parts[2]);
-    if (isNaN(timeSec) || isNaN(mode) || isNaN(colorDec)) continue;
+    if (!isFinite(timeSec) || !isFinite(mode) || !isFinite(colorDec)) continue;
     if (mode < 1 || mode > 6) continue;
     if (colorDec < 0) colorDec = (colorDec >>> 0) & 0xFFFFFF;
     var colorHex = '#' + colorDec.toString(16).padStart(6, '0');
@@ -1505,7 +1570,7 @@ function ddpConvertComments(ddpComments) {
       text: c.m,
       _isOwner: false,
       _commands: commands,
-      _userId: parseInt(parts[3]) || 0,
+      _userId: parts[3] || '',
       _dateSec: 1767196800
     };
   }
@@ -1513,30 +1578,26 @@ function ddpConvertComments(ddpComments) {
   return list;
 }
 
+let ddpCacheDirPromise = null;
 function ensureCacheDir() {
+  if (ddpCacheDirPromise) return ddpCacheDirPromise;
   try {
-    if (ddpCacheDirPath) return ddpCacheDirPath;
-    var cacheDir = iina.utils.resolvePath('@data/danmaku-cache/');
-    if (!cacheDir) return null;
-    if (!file.exists(cacheDir)) {
-      try {
-        if (typeof file.mkdir === 'function') file.mkdir(cacheDir);
-      } catch (e2) {}
-      if (!file.exists(cacheDir)) {
-        var escaped = cacheDir.replace(/'/g, "'\\''");
-        try { iina.utils.exec('/bin/sh', ['-c', 'mkdir -p ' + "'" + escaped + "'"]); } catch (e3) {}
-      }
-    }
-    if (!file.exists(cacheDir)) return null;
-    // Remove the legacy video-map.json cache index.
-    var oldMap = cacheDir + '/video-map.json';
-    if (file.exists(oldMap)) {
-      try { file.delete(oldMap); } catch(e) {}
-    }
-    ddpCacheDirPath = cacheDir;
-    return cacheDir;
+    let cacheDir = iina.utils.resolvePath('@data/danmaku-cache/');
+    if (!cacheDir) return Promise.resolve(null);
+    if (file.exists(cacheDir)) return Promise.resolve(cacheDir);
+    // IINA has no file.mkdir API. Await mkdir before the first cache write.
+    ddpCacheDirPromise = iina.utils.exec('/bin/mkdir', ['-p', cacheDir]).then(function (result) {
+      return result && result.status === 0 ? cacheDir : null;
+    }).catch(function (error) {
+      console.log('[ddp] cache directory error: ' + error);
+      return null;
+    }).then(function (dir) {
+      ddpCacheDirPromise = null;
+      return dir;
+    });
+    return ddpCacheDirPromise;
   } catch (e) {
-    return null;
+    return Promise.resolve(null);
   }
 }
 
@@ -1556,35 +1617,38 @@ function ddpCacheFile(videoPath) {
 }
 
 function ddpSaveVideoCache(videoPath, episodeId, animeTitle, episodeTitle, comments) {
-  if (!videoPath || !episodeId) return;
-  try {
-    ensureCacheDir();
-    var f = ddpCacheFile(videoPath);
-    if (!f) return;
-    file.write(f, JSON.stringify({
-      episodeId: episodeId,
-      animeTitle: animeTitle || '',
-      episodeTitle: episodeTitle || '',
-      cachedAt: Date.now(),
-      comments: comments || []
-    }));
-  } catch (e) {
+  if (!videoPath || !episodeId) return Promise.resolve(false);
+  let content = JSON.stringify({
+    videoPath: videoPath,
+    episodeId: episodeId,
+    animeTitle: animeTitle || '',
+    episodeTitle: episodeTitle || '',
+    cachedAt: Date.now(),
+    comments: comments || []
+  });
+  return ensureCacheDir().then(function (dir) {
+    if (!dir) return false;
+    file.write(ddpCacheFile(videoPath), content);
+    return true;
+  }).catch(function (e) {
     console.log('[ddp] saveVideoCache error: ' + e);
-  }
+    return false;
+  });
 }
 
 function ddpReadVideoCache(videoPath) {
   if (!videoPath) return null;
   try {
-    ensureCacheDir();
     var f = ddpCacheFile(videoPath);
     if (!f || !file.exists(f)) return null;
     var content = file.read(f);
     if (!content) return null;
     var data = JSON.parse(content);
+    if (!data || !data.episodeId || !Array.isArray(data.comments)) return null;
+    if (data.videoPath && data.videoPath !== videoPath) return null;
     let cachedAt = Number(data.cachedAt);
     let age = Date.now() - cachedAt;
-    if (!isFinite(cachedAt) || age >= 24 * 60 * 60 * 1000) {
+    if (!isFinite(cachedAt) || cachedAt <= 0 || age < 0 || age >= 24 * 60 * 60 * 1000) {
       data.stale = true;
     }
     return data;
@@ -1627,6 +1691,7 @@ function sanitizeMatches(matches) {
 }
 
 function ddpResetState() {
+  ddpRequestGeneration += 1;
   dandanplayState = {
     status: 'idle',
     animeTitle: '',
@@ -1645,6 +1710,7 @@ function isManualDdpLoad(origin) {
 }
 
 function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
+  let requestGeneration = ++ddpRequestGeneration;
   if (origin === undefined) origin = DDP_LOAD_ORIGIN.AUTO;
   var isManual = isManualDdpLoad(origin);
   var loadEnabled = danmakuEnabled;
@@ -1671,31 +1737,36 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
   ddpSyncState();
 
   ddpMatchVideo(fileName, path).then(function(res) {
-    if (url !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration) return;
+    if (url !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
+    if (!isManual && !danmakuEnabled) { ddpResetState(); return; }
     var data = ddpParseBody(res);
     if (res.statusCode === 403) {
       dandanplayState.status = 'error';
-      dandanplayState.error = 'Auth error (403): ' + (res.reason || 'check AppId/AppSecret');
+      dandanplayState.error = t('ddp_auth_error');
       ddpSyncState();
+      ddpFallbackToLocal(true);
       return;
     }
     if (!data) {
       dandanplayState.status = 'error';
-      dandanplayState.error = 'API response error (status=' + res.statusCode + ', text=' + (res.text ? res.text.substring(0, 100) : 'empty') + ')';
+      dandanplayState.error = t('ddp_api_error');
       ddpSyncState();
+      ddpFallbackToLocal(true);
       return;
     }
     if (data.success === false) {
       dandanplayState.status = 'error';
-      dandanplayState.error = data.errorMessage || 'API error';
+      dandanplayState.error = data.errorMessage || t('ddp_api_error');
       ddpSyncState();
+      ddpFallbackToLocal(true);
       return;
     }
     if (!data.matches || data.matches.length === 0) {
       dandanplayState.status = 'no-match';
-      dandanplayState.error = 'No match found';
+      dandanplayState.error = t('ddp_no_match');
       ddpSyncState();
       core.osd(t('ddp_no_match'));
+      ddpFallbackToLocal();
       return;
     }
 
@@ -1708,11 +1779,12 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
       dandanplayState.matchType = 'hash';
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, forceLoad, origin, loadGeneration);
     } else {
+      dandanplayState.status = 'matched';
       ddpSyncState();
       ddpFallbackToLocal();
     }
   }).catch(function(err) {
-    if (url !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration) return;
+    if (url !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
     dandanplayState.status = 'error';
     dandanplayState.error = ddpErrStr(err);
     ddpSyncState();
@@ -1751,6 +1823,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
 }
 
 function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin, loadGeneration) {
+  let requestGeneration = ++ddpRequestGeneration;
   if (origin === undefined) origin = DDP_LOAD_ORIGIN.AUTO;
   var isManual = isManualDdpLoad(origin);
   var videoUrl = currentVideoUrl;
@@ -1762,11 +1835,12 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
   ddpSyncState();
 
   ddpGetComments(episodeId).then(function(res) {
-    if (videoUrl !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration) return;
-    if (!danmakuEnabled && forceLoad && !isManual) return;
+    if (videoUrl !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
+    if (!danmakuEnabled && !isManual) { ddpResetState(); return; }
+    if (!isManual && !dandanplayAutoNetwork) forceLoad = false;
     if (res.statusCode === 403) {
       dandanplayState.status = 'error';
-      dandanplayState.error = 'Auth error (403): ' + (res.reason || 'check AppId/AppSecret');
+      dandanplayState.error = t('ddp_auth_error');
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
@@ -1774,7 +1848,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
     var data = ddpParseBody(res);
     if (!data) {
       dandanplayState.status = 'error';
-      dandanplayState.error = 'API response error';
+      dandanplayState.error = t('ddp_api_error');
       ddpSyncState();
       core.osd(t('ddp_api_error'));
       ddpFallbackToLocal(true);
@@ -1782,7 +1856,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
     }
     if (!data.comments || data.comments.length === 0) {
       dandanplayState.status = 'error';
-      dandanplayState.error = 'No comments available';
+      dandanplayState.error = t('ddp_no_comments');
       ddpSyncState();
       core.osd(t('ddp_no_comments'));
       ddpFallbackToLocal(true);
@@ -1794,7 +1868,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
     if (converted.length === 0) {
       // 全部条目 malformed:视为下载失败,不覆盖磁盘上的 stale 缓存
       dandanplayState.status = 'error';
-      dandanplayState.error = 'No comments after conversion';
+      dandanplayState.error = t('ddp_no_comments');
       ddpSyncState();
       core.osd(t('ddp_no_comments'));
       ddpFallbackToLocal(true);
@@ -1808,7 +1882,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
     ddpSyncState();
     ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted, forceLoad, true);
   }).catch(function(err) {
-    if (videoUrl !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration) return;
+    if (videoUrl !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
     dandanplayState.status = 'error';
     dandanplayState.error = ddpErrStr(err);
     ddpSyncState();
@@ -1818,18 +1892,9 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
 }
 
 function ddpFallbackToLocal(allowStale) {
-  if (!dandanplayAutoNetwork) return;
+  if (!dandanplayAutoNetwork || !danmakuEnabled) return;
   if (currentDanmakuStatus.isLoaded) return;
-  var groups = [danmakuFileList.xmlFiles, danmakuFileList.jsonFiles];
-  for (var g = 0; g < groups.length; g++) {
-    var files = groups[g] || [];
-    for (var i = 0; i < files.length; i++) {
-      if (files[i].type !== 'DDP') {
-        loadDanmakuFile(files[i].path);
-        return;
-      }
-    }
-  }
+  if (loadFirstLocalDanmaku()) return;
   // 仅下载失败路径启用:无本地文件时回退到过期缓存(成功下载会覆盖写同一文件)
   if (!allowStale) return;
   var cached = ddpReadVideoCache(currentVideoUrl);
@@ -1843,6 +1908,8 @@ function addDDPToFileList(episodeId, animeTitle, episodeTitle, comments, stale) 
 }
 
 function loadDanmakuForVideo(url) {
+  setObserver(false);
+  overlayLoadId += 1;
   danmakuLoadGeneration += 1;
   var loadGeneration = danmakuLoadGeneration;
   danmakuCache = {};
@@ -1854,7 +1921,7 @@ function loadDanmakuForVideo(url) {
   resetNicoJsonFilterState();
 
   // 视频切换时无条件清掉旧 renderer,即使弹幕当前处于关闭状态。
-  if (overlayReady) overlay.postMessage("clear-danmaku", {});
+  if (overlayReady) overlayPostMessage("clear-danmaku", {});
 
   if (core.status.isNetworkResource) {
     core.osd(t('network_skip_local'));
@@ -1869,8 +1936,6 @@ function loadDanmakuForVideo(url) {
 
   // === Step 1: Build complete file list (local + cached DDP) ===
   var discovered = findDanmakuByEpisode(url);
-  var allLocalFiles = discovered.xmlFiles.concat(discovered.jsonFiles);
-  var hasLocal = allLocalFiles.length > 0;
 
   danmakuFileList = {
     xmlFiles: discovered.xmlFiles,
@@ -1907,9 +1972,8 @@ function loadDanmakuForVideo(url) {
     }
   } else {
     // local-first: prefer local files, fallback to DDP cache as last resort
-    if (hasLocal) {
-      loadDanmakuFile(allLocalFiles[0].path);
-    } else if (hasFreshDDPCache) {
+    if (loadFirstLocalDanmaku()) return;
+    if (hasFreshDDPCache) {
       ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, true, true);
     } else {
       danmakuNotFound();
@@ -1962,6 +2026,9 @@ function loadDanmakuFile(path, options) {
     return;
   }
 
+  // 用户选定本地来源后,此前的后台匹配/下载不得覆盖该选择。
+  if (enableDanmaku && path.indexOf('dandanplay://') !== 0) ddpResetState();
+
   danmakuCache[path] = encodedContent;
   danmakuFileList.selectedPaths = [path];
   resetNicoJsonFilterState();
@@ -1974,27 +2041,31 @@ function loadDanmakuFile(path, options) {
   sendDanmakuFilterInfo();
   notifyBrowserDataChanged();
 
-  let payload = buildLoadDanmakuPayload(getEffectiveContent(path), fileType);
   if (overlayReady) {
-    overlay.postMessage("load-danmaku", payload);
+    let payload = buildLoadDanmakuPayload(getEffectiveContent(path), fileType);
+    overlayPostMessage("load-danmaku", payload);
     loadedDanmakuVideoUrl = currentVideoUrl;
     osdAfterDanmakuLoad(fileName, loadedMessageKey);
   } else {
-    pendingDanmaku = { payload: payload, loadedMessageKey: loadedMessageKey };
+    pendingDanmaku = { loadedMessageKey: loadedMessageKey };
     core.osd(t('queued'));
   }
   if (enableDanmaku) ensureDanmakuEnabled();
   else if (overlayReady) setObserver(true);
+  return true;
 }
 
 function markOverlayReady() {
   if (overlayReady) return;
   overlayReady = true;
   overlay.show();
+  overlayPostMessage("toggle-danmaku", { enabled: danmakuEnabled });
+  overlayPostMessage("pause-state", { paused: !!core.status.paused });
 
   if (pendingDanmaku) {
     var pending = pendingDanmaku;
-    overlay.postMessage("load-danmaku", pending.payload);
+    let selectedPath = danmakuFileList.selectedPaths[0];
+    overlayPostMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), currentDanmakuStatus.fileType));
     loadedDanmakuVideoUrl = currentVideoUrl;
     var pendingPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : "";
     var pendingInfo = pendingPath ? findDanmakuFileByPath(pendingPath) : null;
@@ -2002,9 +2073,7 @@ function markOverlayReady() {
     osdAfterDanmakuLoad(loadedName, pending.loadedMessageKey);
     pendingDanmaku = null;
     setObserver(true);
-  } else if (danmakuEnabled && !core.status.idle && currentVideoUrl) {
-    loadDanmakuForVideo(currentVideoUrl);
-  } else if (danmakuEnabled && !core.status.idle && core.status.url) {
+  } else if (danmakuEnabled && !core.status.idle && !currentVideoUrl && core.status.url) {
     loadDanmakuForVideo(core.status.url);
   }
 }
@@ -2015,23 +2084,24 @@ function setObserver(start) {
   if (speedListenerID) { event.off("mpv.speed.changed", speedListenerID); speedListenerID = null; }
 
   if (start && overlayReady && danmakuEnabled) {
+    overlayPostMessage("pause-state", { paused: !!core.status.paused });
     timePosListenerID = event.on("mpv.time-pos.changed", function (t) {
-      overlay.postMessage("time-update", { time: t });
+      overlayPostMessage("time-update", { time: t });
       if (danmakuBrowserWatch) pushBrowserTime(t);
     });
     windowScaleListenerID = event.on("mpv.window-scale.changed", function () {
-      overlay.postMessage("resize", {});
+      overlayPostMessage("resize", {});
     });
     speedListenerID = event.on("mpv.speed.changed", function (speed) {
-      overlay.postMessage("playback-speed", { speed: speed });
+      overlayPostMessage("playback-speed", { speed: speed });
     });
     var t = mpv.getNumber("time-pos");
-    if (t !== undefined && t !== null) overlay.postMessage("time-update", { time: t });
+    if (t !== undefined && t !== null) overlayPostMessage("time-update", { time: t });
     var speed = mpv.getNumber("speed");
     if (speed !== undefined && speed !== null) {
-      overlay.postMessage("playback-speed", { speed: speed });
+      overlayPostMessage("playback-speed", { speed: speed });
     }
-    overlay.postMessage("resize", {});
+    overlayPostMessage("resize", {});
   }
 }
 
@@ -2039,7 +2109,7 @@ function toggleDanmaku() {
   danmakuEnabled = !danmakuEnabled;
   preferences.set("danmakuEnabled", danmakuEnabled);
   syncPreferencesSoon();
-  overlay.postMessage("toggle-danmaku", { enabled: danmakuEnabled });
+  overlayPostMessage("toggle-danmaku", { enabled: danmakuEnabled });
   if (danmakuEnabled) {
     overlay.show();
     if (currentVideoUrl && loadedDanmakuVideoUrl !== currentVideoUrl) {
@@ -2062,7 +2132,7 @@ function ensureDanmakuEnabled() {
   danmakuEnabled = true;
   preferences.set("danmakuEnabled", true);
   syncPreferencesSoon();
-  overlay.postMessage("toggle-danmaku", { enabled: true });
+  overlayPostMessage("toggle-danmaku", { enabled: true });
   overlay.show();
   setObserver(true);
   sidebarPostMessage("danmaku-state", { enabled: true, canvasMode: currentCanvasMode });
@@ -2096,7 +2166,7 @@ function registerSidebarHandlers() {
       entry[3](value);
       preferences.set(entry[1], value);
       syncPreferencesSoon();
-      overlay.postMessage(entry[0], data);
+      overlayPostMessage(entry[0], data);
     });
   });
 
@@ -2316,21 +2386,25 @@ function registerSidebarHandlers() {
   });
 
   sidebar.onMessage("dandanplay-search", function (data) {
+    let generation = ++ddpSearchGeneration;
+    let searchId = data.searchId;
     var keyword = data.keyword;
     if (!keyword) return;
     ddpSearchAnime(keyword).then(function(res) {
+      if (generation !== ddpSearchGeneration) return;
       var result = ddpParseBody(res);
       if (!result || !result.animes || result.animes.length === 0) {
-        sidebarPostMessage("dandanplay-search-result", { animes: [], error: 'No results found' });
+        sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: [], error: t('ddp_no_results') });
         return;
       }
       for (var i = 0; i < result.animes.length; i++) {
         if (result.animes[i].animeTitle) result.animes[i].animeTitle = sanitizeIPCString(result.animes[i].animeTitle);
       }
-      sidebarPostMessage("dandanplay-search-result", { animes: result.animes, error: null });
+      sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: result.animes, error: null });
     }).catch(function(err) {
+      if (generation !== ddpSearchGeneration) return;
       console.log('[search] API error: ' + ddpErrStr(err));
-      sidebarPostMessage("dandanplay-search-result", { animes: [], error: ddpErrStr(err) });
+      sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: [], error: ddpErrStr(err) });
     });
   });
 
@@ -2340,17 +2414,17 @@ function registerSidebarHandlers() {
     ddpGetBangumi(bangumiId).then(function(res) {
       var result = ddpParseBody(res);
       if (!result || !result.bangumi) {
-        sidebarPostMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: [], error: 'Parse error' });
+        sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: [], error: t('ddp_api_error') });
         return;
       }
       var episodes = result.bangumi.episodes || [];
       for (var i = 0; i < episodes.length; i++) {
         if (episodes[i].episodeTitle) episodes[i].episodeTitle = sanitizeIPCString(episodes[i].episodeTitle);
       }
-      sidebarPostMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: episodes });
+      sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: episodes });
     }).catch(function(err) {
       console.log('[bangumi] API error: ' + ddpErrStr(err));
-      sidebarPostMessage("dandanplay-bangumi-result", { animeTitle: animeTitle, episodes: [], error: ddpErrStr(err) });
+      sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: [], error: ddpErrStr(err) });
     });
   });
 
@@ -2406,12 +2480,10 @@ event.on("iina.window-loaded", function () {
   registerSidebarHandlers();
 });
 
-overlay.onMessage("overlay-ready", function (data) {
-  if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
-  markOverlayReady();
-});
 
 event.on("iina.plugin-overlay-loaded", function () {
+  registerOverlayHandlers();
+  overlayPostMessage("request-overlay-state", {});
   overlay.show();
   setTimeout(function () { if (!overlayReady) markOverlayReady(); }, 2000);
 });
@@ -2425,27 +2497,42 @@ event.on("iina.file-loaded", function (url) {
 
 event.on("mpv.pause.changed", function () {
   if (!overlayReady) return;
-  overlay.postMessage("pause-state", { paused: core.status.paused });
+  overlayPostMessage("pause-state", { paused: core.status.paused });
 });
 
-overlay.onMessage("danmaku-type", function (data) {
-  currentDanmakuStatus.fileType = data.type;
-  sidebarPostMessage("danmaku-type", currentDanmakuStatus);
-});
+function registerOverlayHandlers() {
+  // IINA replaces listeners by name; re-register after every overlay navigation.
+  overlay.onMessage("overlay-ready", function (data) {
+    if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
+    markOverlayReady();
+  });
 
-overlay.onMessage("seek-disable", function () { core.osd(t('seek_disable')); });
-overlay.onMessage("seek-enable", function () { core.osd(t('seek_enable')); });
+  overlay.onMessage("danmaku-load-result", function (data) {
+    if (!data || data.loadId !== overlayLoadId) return;
+    updateDanmakuStatus({ fileType: currentDanmakuStatus.fileType, isLoaded: !!data.success });
+    if (!data.success) {
+      let path = danmakuFileList.selectedPaths[0];
+      sidebarPostMessage("danmaku-file-error", { path: path, message: t('render_failed') });
+      core.osd(t('render_failed'));
+    } else {
+      sidebarPostMessage("danmaku-file-list", danmakuFileList);
+    }
+  });
 
-overlay.onMessage("jump", function (data) {
-  if (data.targetSec !== undefined && data.targetSec !== null) {
-    mpv.set("time-pos", data.targetSec);
-    if (data.message) core.osd(t('jump') + data.message);
-  }
-});
+  overlay.onMessage("seek-disable", function () { core.osd(t('seek_disable')); });
+  overlay.onMessage("seek-enable", function () { core.osd(t('seek_enable')); });
 
-overlay.onMessage("jump-video", function (data) {
-  if (data.videoId) core.osd(t('jump') + data.videoId + (data.message ? " " + data.message : ""));
-});
+  overlay.onMessage("jump", function (data) {
+    if (data.targetSec !== undefined && data.targetSec !== null) {
+      mpv.set("time-pos", data.targetSec);
+      if (data.message) core.osd(t('jump') + data.message);
+    }
+  });
+
+  overlay.onMessage("jump-video", function (data) {
+    if (data.videoId) core.osd(t('jump') + data.videoId + (data.message ? " " + data.message : ""));
+  });
+}
 
 menu.addItem(
   menu.item(t('menu_toggle'), function () { toggleDanmaku(); }, { keyBinding: "D" })

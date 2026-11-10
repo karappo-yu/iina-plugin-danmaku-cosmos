@@ -17,7 +17,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 ### 功能特性
 
-- **Niconico 格式完整支持**：Niconico XML、Niconico V1 JSON
+- **Niconico 格式支持**：Niconico XML、Niconico V1 JSON / legacy JSON
 - **Bilibili XML 基础支持**：普通滚动弹幕、顶部/底部固定弹幕，可通过风格预设切换 niconico 或 Bilibili 渲染风格
 - **弹弹play 网络弹幕**：自动匹配视频文件，从弹弹play API 获取网络弹幕，支持缓存和手动搜索
 - **繁简转换**：支持强制将繁体中文弹幕转换为简体中文，可在设置和 UI 中自由切换
@@ -44,7 +44,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 
 普通设置顶部的「风格预设」可一键切换：
 
-- **Nico**：恢复全部默认值（字体缩放 100%、粗细 400、描边 2.8px、滚动速度 100%）
+- **Nico**：恢复这四项参数的默认值（字体缩放 100%、粗细 400、描边 2.8px、滚动速度 100%）
 - **平衡（Balanced）**：字体缩放 50%、粗细 400、描边 3px、滚动速度 50%
 - **Bilibili**：字体缩放 35%、粗细 200、描边 2.5px、滚动速度 40%
 
@@ -82,7 +82,7 @@ CA 弹幕：
 - **自动加载开关**：开启（`dandanplayAutoNetwork=true`）时采用网络优先：新鲜缓存立即加载，否则自动匹配；关闭时采用本地优先，仅在没有本地弹幕时使用新鲜的弹弹play缓存
 - **弹幕冲突处理**：由上述自动加载开关决定网络优先或本地优先
 
-> **注意**：弹弹play 提供的网络弹幕内容以简体中文和繁体中文为主，不包含其他语言。若习惯阅读简体，可开启“强制繁转简”选项。
+> **注意**：弹弹play 提供的网络弹幕内容以简体中文和繁体中文为主。若习惯阅读简体，可开启“强制繁转简”选项。
 
 ### 渲染模式
 
@@ -97,7 +97,7 @@ CA 弹幕：
 
 侧边栏新增「过滤」tab，提供弹幕时间轴浏览与过滤功能：
 
-- **时间轴列表**：虚拟滚动，数万条弹幕流畅浏览；跟随播放位置实时滚动，高亮当前屏幕上的弹幕；列表数量只统计未被屏蔽的条目
+- **时间轴列表**：虚拟滚动，数万条弹幕流畅浏览；跟随播放位置实时滚动；列表数量只统计未被屏蔽的条目
 - **屏蔽词**：标签式屏蔽词列表，支持正则；被屏蔽的弹幕在列表中以删除线标记，且不参与渲染
 - **顶部／底部屏蔽**：独立屏蔽顶部或底部固定弹幕，默认关闭，设置会保存；被屏蔽的条目仍显示删除线，且不计入列表数量
 - **去重**：将设定时间窗内的相同弹幕合并为「原文xN」并自动配色；固定弹幕支持渐进合并（x2/x3）
@@ -131,7 +131,7 @@ CA 弹幕：
 
 - 本插件以 niconico 弹幕风格为核心，Bilibili 等中文弹幕默认以 niconico 风格渲染，可通过风格预设切换为 Bilibili 风格；不支持 Bilibili 高级弹幕、代码弹幕、BAS 弹幕等特有功能
 - CSS 模式下字符画（コメントアート）的垂直位置可能与 Canvas 模式略有差异
-- Canvas 模式下字符画在 IINA 的 WebKit 渲染中可能出现错位（Safari canvas 2D 无 GPU 加速）
+- Canvas 模式下字符画在 IINA 的 WebKit 渲染中可能出现错位，复杂布局可对比两种模式选择
 - 文件名包含特殊字符（如 `[`、`]`）可能导致自动加载失败
 
 ---
@@ -149,7 +149,7 @@ CA 弹幕：
 
 ### 機能
 
-- **Niconico フォーマット完全対応**：Niconico XML、Niconico V1 JSON
+- **Niconico フォーマット対応**：Niconico XML、Niconico V1 JSON / legacy JSON
 - **Bilibili XML 基本対応**：通常スクロールコメント、上部/下部固定コメント。スタイルプリセットで niconico / Bilibili スタイルを選択可能
 - **弹弹play ネットワークコメント**：動画ファイルを自動認識し、弹弹play API からネットワークコメントを取得。キャッシュ対応、手動検索可能
 - **繁体字から簡体字への変換**：繁体字中国語のコメントを強制的に簡体字に変換する機能を追加。設定および UI から切り替え可能
@@ -176,7 +176,7 @@ CA 弹幕：
 
 通常設定の上部にある「スタイルプリセット」でワンクリック切り替え：
 
-- **Nico**：全項目を既定値に戻す（フォント倍率 100%、太さ 400、縁取り 2.8px、スクロール速度 100%）
+- **Nico**：次の4項目を既定値に戻す（フォント倍率 100%、太さ 400、縁取り 2.8px、スクロール速度 100%）
 - **バランス**：フォント倍率 50%、太さ 400、縁取り 3px、スクロール速度 50%
 - **Bilibili**：フォント倍率 35%、太さ 200、縁取り 2.5px、スクロール速度 40%
 
@@ -186,7 +186,7 @@ CA 弹幕：
 
 サイドバーの新しい「フィルター」タブで、コメントタイムラインの表示とフィルターを提供します：
 
-- **タイムライン一覧**：仮想スクロールにより数万件のコメントもスムーズに表示。再生位置に追従してスクロールし、現在画面上のコメントをハイライト。一覧の件数はブロックされていない項目のみを集計
+- **タイムライン一覧**：仮想スクロールにより数万件のコメントもスムーズに表示。再生位置に追従してスクロール。一覧の件数はブロックされていない項目のみを集計
 - **NGワード**：タグ形式のNGワード一覧、正規表現対応。NG判定されたコメントは一覧上で取り消し線表示となり、描画からも除外
 - **上部／下部のブロック**：上部・下部の固定コメントを個別にブロック。既定はオフで、設定は保存されます。ブロックした項目は取り消し線付きで一覧に残り、件数には含まれません
 - **重複排除**：設定した時間窓内の同一コメントを「原文xN」に統合して自動着色。固定コメントは段階的マージ（x2/x3）に対応
@@ -210,7 +210,7 @@ CA 弹幕：
 - **自動読み込みトグル**：ON（`dandanplayAutoNetwork=true`）ではネットワーク優先（新鮮なキャッシュを即時ロードし、なければ自動マッチング）、OFF ではローカル優先で、ローカルコメントがない場合のみ新鮮な弹弹play キャッシュを使用
 - **競合処理**：上記の自動読み込みトグルによりネットワーク優先／ローカル優先を切り替え
 
-> **注意**：弹弹play から提供されるネットワークコメントは簡体字中国語・繁体字中国語が主体で、他の言語は含まれません。
+> **注意**：弹弹play から提供されるネットワークコメントは簡体字中国語・繁体字中国語が主体です。
 
 ### コメントファイルの読み込み
 
@@ -243,7 +243,7 @@ CA 弹幕：
 
 ### Features
 
-- **Full Niconico format support**: Niconico XML, Niconico V1 JSON
+- **Niconico format support**: Niconico XML, Niconico V1 JSON / legacy JSON
 - **Basic Bilibili XML support**: Normal scrolling, top/bottom fixed comments; render style switchable via Style Preset (niconico or Bilibili)
 - **Dandanplay network danmaku**: Auto-match videos via dandanplay API, with caching and manual search
 - **Traditional to Simplified Chinese Conversion**: Option to force convert Traditional Chinese danmaku to Simplified Chinese, configurable in settings and UI
@@ -268,9 +268,9 @@ Danmaku appearance can be freely combined via the customization options:
 - **Native niconico style** (engine default): large font, fast scrolling, bold weight
 - **Common Chinese danmaku style**: small font, slow scrolling, thin weight
 
-The **Style Preset** dropdown at the top of the general settings applies presets in one click:
+The **Style Preset** selector at the top of the general settings applies presets in one click:
 
-- **Nico**: restores all defaults (Font Scale 100%, Weight 400, Stroke Width 2.8px, Scroll Speed 100%)
+- **Nico**: restores these four defaults (Font Scale 100%, Weight 400, Stroke Width 2.8px, Scroll Speed 100%)
 - **Balanced**: Font Scale 50%, Weight 400, Stroke Width 3px, Scroll Speed 50%
 - **Bilibili**: Font Scale 35%, Weight 200, Stroke Width 2.5px, Scroll Speed 40%
 
@@ -285,7 +285,7 @@ The plugin integrates the dandanplay open platform API for automatic network dan
 - **Cache**: Network danmaku is cached locally; replay within 24 hours skips re-download
 - **Auto-load toggle**: ON (`dandanplayAutoNetwork=true`) uses network-first behavior (fresh cache loads immediately; otherwise auto-match); OFF uses local-first behavior and only falls back to a fresh Dandanplay cache
 
-> **Note**: Network danmaku provided by Dandanplay is predominantly Simplified Chinese and Traditional Chinese — other languages are not available.
+> **Note**: Network danmaku provided by Dandanplay is predominantly Simplified Chinese and Traditional Chinese.
 
 ### Render Modes
 
@@ -300,7 +300,7 @@ Toggle between modes in the sidebar's Advanced settings.
 
 A new **Filter** tab in the sidebar provides a danmaku timeline browser with filtering:
 
-- **Timeline list**: Virtual scrolling keeps tens of thousands of danmaku smooth; live-follows playback position and highlights danmaku currently on screen. The list count includes only unblocked entries
+- **Timeline list**: Virtual scrolling keeps tens of thousands of danmaku smooth; live-follows playback position. The list count includes only unblocked entries
 - **Block words**: Tag-list blocklist with regex support; blocked danmaku are shown with strikethrough in the list and excluded from rendering
 - **Top/bottom blocking**: Independently block fixed comments at the top or bottom. Both options default to off and their settings are saved. Blocked entries remain in the list with strikethrough and are excluded from the count
 - **Dedupe**: Merges identical danmaku within a configurable time window into `text xN` with auto-coloring; fixed comments support progressive merging (x2/x3)
@@ -334,7 +334,6 @@ Automatically searches in the same directory with this priority:
 
 - This plugin is designed around the niconico comment style. Bilibili and other Chinese danmaku formats have limited support — they are rendered in niconico style, and Bilibili-specific features like advanced comments (mode 7), scripting comments (mode 8), and BAS comments (mode 9) are not supported
 - Comment Art (CA) vertical positioning may differ slightly between CSS and Canvas modes
-- Canvas mode CA may appear misaligned in IINA's WebKit renderer (Safari canvas 2D lacks GPU acceleration)
 - Filenames with special characters (like `[`, `]`) may cause auto-load to fail
 - Minimizing and restoring the window causes danmaku to re-render (known limitation)
 
@@ -360,3 +359,10 @@ This plugin supports local playback of saved danmaku files and also retrieves da
 ## License
 
 MIT License.
+
+## Development checks
+
+The plugin runs directly from its JavaScript files; no build or dependency installation is needed.
+Run `node --test test/*.test.js` with Node.js 22 for the regression tests.
+Tagged releases validate syntax, tests, and the version in `Info.json` before packaging.
+Manual workflow runs on a branch upload a package artifact without creating a release.
