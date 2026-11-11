@@ -11,6 +11,7 @@ var toggleDanmaku = document.getElementById("toggle-danmaku");
 var canvasRendererToggle = document.getElementById("canvas-renderer-toggle");
 var danmakuForceSimplifiedToggle = document.getElementById("danmaku-force-simplified-toggle"); 
 var danmakuAutoOffsetToggle = document.getElementById("danmaku-auto-offset-toggle"); 
+let danmakuAutoOffsetRow = document.getElementById("danmaku-auto-offset-row");
 let blockTopToggle = document.getElementById("danmaku-block-top-toggle");
 let blockBottomToggle = document.getElementById("danmaku-block-bottom-toggle");
 var opacitySlider = document.getElementById("opacity-slider");
@@ -46,7 +47,7 @@ var filterHandleRight = document.getElementById("filter-handle-right");
 var densitySlider = document.getElementById("density-slider");
 var densityValue = document.getElementById("density-value");
 var densityCount = document.getElementById("density-count");
-// 滑块最右端不是密度值, 而是"关闭"哨兵; 与 index.html 的 max/value 必须一致
+// 滑块最右端不是密度值, 而是"不限制"哨兵; 与 index.html 的 max/value 必须一致
 var DENSITY_SLIDER_OFF = 550;
 var tabBasic = document.getElementById("tab-basic");
 var tabAdvanced = document.getElementById("tab-advanced");
@@ -99,6 +100,7 @@ var state = {
   scrollSpeed: 1.0,
   danmakuOffsetSeconds: 0,
   nicoJsonDurationDiff: null,
+  nicoJsonHasDuration: false,
   danmakuFontFamily: "",
   danmakuFontWeight: "400",
   stylePreset: "nico",
@@ -211,7 +213,7 @@ var i18n = {
     opacity: "Danmaku Opacity",
     font_scale: "Font Scale",
     danmaku_filter: "Date Slice",
-    density_filter: "Count (/min)",
+    density_filter: "Danmaku Density",
 
     tab_basic: "Basic",
     tab_advanced: "Advanced",
@@ -224,7 +226,7 @@ var i18n = {
     danmaku_font_family: "Font Family",
     danmaku_font_custom: "Custom Font",
     danmaku_font_weight: "Weight",
-    comment_limit: "Comment Limit",
+    comment_limit: "Max on Screen",
     stroke_color: "Stroke Color",
     stroke_inversion: "Invert Color",
     stroke_opacity: "Opacity",
@@ -232,6 +234,7 @@ var i18n = {
     scroll_speed: "Scroll Speed",
     file_add: "Add Local",
     off: "Off",
+    unlimited: "Unlimited",
     dandanplay_search_placeholder: "Anime title...",
     dandanplay_search: "Search",
     dandanplay_search_go: "Go",
@@ -273,7 +276,7 @@ var i18n = {
     opacity: "\u30b3\u30e1\u30f3\u30c8\u900f\u660e\u5ea6",
     font_scale: "\u30d5\u30a9\u30f3\u30c8\u500d\u7387",
     danmaku_filter: "\u65e5\u4ed8\u30b9\u30e9\u30a4\u30b9",
-    density_filter: "\u6570\u91cf",
+    density_filter: "\u30b3\u30e1\u30f3\u30c8\u5bc6\u5ea6",
 
     tab_basic: "\u57fa\u672c",
     tab_advanced: "\u8a73\u7d30",
@@ -286,7 +289,7 @@ var i18n = {
     danmaku_font_family: "\u30d5\u30a9\u30f3\u30c8",
     danmaku_font_custom: "\u30ab\u30b9\u30bf\u30e0\u30d5\u30a9\u30f3\u30c8",
     danmaku_font_weight: "\u592a\u3055",
-    comment_limit: "\u30b3\u30e1\u30f3\u30c8\u5236\u9650",
+    comment_limit: "\u540c\u6642\u8868\u793a\u4e0a\u9650",
     stroke_color: "\u7e01\u53d6\u308a\u306e\u8272",
     stroke_inversion: "\u9006\u7e01\u53d6\u308a\u8272",
     stroke_opacity: "\u7e01\u53d6\u308a\u900f\u660e\u5ea6",
@@ -294,6 +297,7 @@ var i18n = {
     scroll_speed: "\u30b9\u30af\u30ed\u30fc\u30eb\u901f\u5ea6",
     file_add: "\u30ed\u30fc\u30ab\u30eb\u8ffd\u52a0",
     off: "\u30aa\u30d5",
+    unlimited: "\u7121\u5236\u9650",
     dandanplay_search_placeholder: "\u30a2\u30cb\u30e1\u30bf\u30a4\u30c8\u30eb...",
     dandanplay_search: "\u691c\u7d22",
     dandanplay_search_go: "Go",
@@ -335,7 +339,7 @@ var i18n = {
     opacity: "\u5f39\u5e55\u900f\u660e\u5ea6",
     font_scale: "\u5b57\u4f53\u7f29\u653e",
     danmaku_filter: "\u65e5\u671f\u5207\u7247",
-    density_filter: "\u6570\u91cf",
+    density_filter: "\u5f39\u5e55\u5bc6\u5ea6",
 
     tab_basic: "\u57fa\u7840",
     tab_advanced: "\u9ad8\u7ea7",
@@ -348,7 +352,7 @@ var i18n = {
     danmaku_font_family: "\u5b57\u4f53",
     danmaku_font_custom: "\u81ea\u5b9a\u4e49\u5b57\u4f53",
     danmaku_font_weight: "\u7c97\u7ec6",
-    comment_limit: "\u5f39\u5e55\u4e0a\u9650",
+    comment_limit: "\u540c\u5c4f\u4e0a\u9650",
     stroke_color: "\u63cf\u8fb9\u989c\u8272",
     stroke_inversion: "\u53cd\u8272\u63cf\u8fb9",
     stroke_opacity: "\u63cf\u8fb9\u900f\u660e\u5ea6",
@@ -356,6 +360,7 @@ var i18n = {
     scroll_speed: "\u6eda\u52a8\u901f\u5ea6",
     file_add: "\u672c\u5730\u6dfb\u52a0",
     off: "\u5173\u95ed",
+    unlimited: "\u4e0d\u9650\u5236",
     dandanplay_search_placeholder: "\u52a8\u753b\u6807\u9898...",
     dandanplay_search: "\u624b\u52a8\u641c\u7d22",
     dandanplay_search_go: "\u641c\u7d22",
@@ -523,6 +528,10 @@ function updateUI() {
   if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
   if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified; 
   if (danmakuAutoOffsetToggle) danmakuAutoOffsetToggle.checked = state.danmakuAutoOffset; 
+  if (danmakuAutoOffsetRow) {
+    let showAutoOffset = state.danmakuLoaded && state.danmakuType === 'nico-json' && state.nicoJsonHasDuration;
+    danmakuAutoOffsetRow.style.display = showAutoOffset ? '' : 'none';
+  }
   updateOffsetUI();
   updateDurationDiffUI();
   updateFontUI();
@@ -556,7 +565,7 @@ function updateDensitySlider() {
     densityValue.textContent = density + ' /min';
   } else {
     densitySlider.value = DENSITY_SLIDER_OFF;
-    densityValue.textContent = t('off');
+    densityValue.textContent = t('unlimited');
   }
   if (densityCount) {
     densityCount.textContent = state.filteredCount > 0 ? '\uff08' + state.filteredCount + '\uff09' : '';
@@ -925,7 +934,7 @@ if (densitySlider) {
   densitySlider.addEventListener("input", function () {
     var val = parseInt(densitySlider.value, 10);
     if (val >= DENSITY_SLIDER_OFF) {
-      densityValue.textContent = t('off');
+      densityValue.textContent = t('unlimited');
     } else {
       densityValue.textContent = val + ' /min';
     }
@@ -963,6 +972,7 @@ onPluginMessage("danmaku-state", function (data) {
   if (data.scrollSpeed !== undefined) state.scrollSpeed = data.scrollSpeed;
   if (data.danmakuTimeOffsetSec !== undefined) state.danmakuOffsetSeconds = data.danmakuTimeOffsetSec;
   if (data.nicoJsonDurationDiff !== undefined) state.nicoJsonDurationDiff = data.nicoJsonDurationDiff;
+  if (data.nicoJsonHasDuration !== undefined) state.nicoJsonHasDuration = !!data.nicoJsonHasDuration;
   if (data.danmakuFontFamily !== undefined) state.danmakuFontFamily = data.danmakuFontFamily;
   if (data.danmakuFontWeight !== undefined) state.danmakuFontWeight = data.danmakuFontWeight;
   if (data.stylePreset !== undefined) state.stylePreset = data.stylePreset;

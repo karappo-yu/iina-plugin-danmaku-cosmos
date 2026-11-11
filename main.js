@@ -223,6 +223,7 @@ var nicoJsonTotalCount = 0;
 // 时长检测: nico-json main 线程的 duration(下载弹幕时原视频长度,秒)与当前视频时长的差值
 // null = 无检测结果(非 nico-json / 无 duration 字段 / 时长一致)
 var nicoJsonDurationDiff = null;
+let nicoJsonHasDuration = false;
 var danmakuFilterOffset = 0;
 var danmakuFilterLimit = 0;
 var danmakuFilterDensity = 0;
@@ -429,8 +430,15 @@ function setNicoJsonDurationDiff(diff) {
   sidebarPostMessage("danmaku-state", { nicoJsonDurationDiff: diff });
 }
 
+function setNicoJsonDurationAvailability(hasDuration) {
+  if (nicoJsonHasDuration === hasDuration) return;
+  nicoJsonHasDuration = hasDuration;
+  sidebarPostMessage("danmaku-state", { nicoJsonHasDuration: hasDuration });
+}
+
 function clearNicoJsonDuration() {
   setNicoJsonDurationDiff(null);
+  setNicoJsonDurationAvailability(false);
 }
 
 // nico-json 加载时自动检测时长差: diff = 视频时长 - 弹幕源时长
@@ -456,6 +464,7 @@ function runDurationCompare(danmakuDuration) {
 function checkNicoJsonDuration(encodedContent) {
   setNicoJsonDurationDiff(null);
   var danmakuDuration = extractNicoJsonDuration(encodedContent);
+  setNicoJsonDurationAvailability(danmakuDuration !== null);
   if (danmakuDuration === null) return;
   if (runDurationCompare(danmakuDuration)) return;
   // file-loaded 瞬间 mpv duration 可能还没就绪,延迟重试一次(仅当仍选中同一弹幕文件)
@@ -2389,6 +2398,7 @@ function registerSidebarHandlers() {
       danmakuLoaded: currentDanmakuStatus.isLoaded,
       danmakuFilterDensity: danmakuFilterDensity,
       nicoJsonDurationDiff: nicoJsonDurationDiff,
+      nicoJsonHasDuration: nicoJsonHasDuration,
     });
     sidebarPostMessage("danmaku-file-list", danmakuFileList);
     sendDanmakuFilterInfo();
