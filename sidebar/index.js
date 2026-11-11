@@ -87,7 +87,7 @@ var state = {
   enabled: true,
   useCanvasRenderer: false,
   danmakuForceSimplified: false, // 与 Info.json preferenceDefaults 一致
-  danmakuAutoOffset: true,
+  danmakuAutoOffset: false, // 与 main.js 的默认值一致: 需用户手动开启
   danmakuType: 'none',
   danmakuLoaded: false,
   canvasOpacity: 0.8,

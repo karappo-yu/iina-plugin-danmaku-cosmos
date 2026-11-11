@@ -996,6 +996,21 @@ test('duration availability reaches a lazily opened sidebar independently of dur
   }
 });
 
+test('automatic intro offset stays off until the user enables it', () => {
+  const h = createHarness(true);
+  h.setMpv('duration', 120);
+  h.setFile('/videos/with-duration.json', JSON.stringify([{fork: 'main', duration: 100, comments: []}]));
+  h.emitSidebar('select-danmaku-file', {path: encodeURIComponent('/videos/with-duration.json')});
+  assert.equal(h.context.danmakuTimeOffsetSec, 0);
+  assert.equal(h.context.nicoJsonDurationDiff, 20);
+  h.emitSidebar('request-state');
+  const state = h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data;
+  assert.equal(state.danmakuAutoOffset, false);
+  assert.equal(state.nicoJsonHasDuration, true);
+  h.emitSidebar('set-danmaku-auto-offset', {value: true});
+  assert.equal(h.context.danmakuTimeOffsetSec, -20);
+});
+
 test('switching sources clears duration availability for unsupported or missing metadata', () => {
   const h = createHarness(true, false, {danmakuAutoOffset: false});
   const sources = [

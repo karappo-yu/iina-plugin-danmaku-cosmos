@@ -10,8 +10,9 @@ var mpv = iina.mpv;
 
 var danmakuEnabled = preferences.get("danmakuEnabled");
 var danmakuForceSimplified = !!preferences.get("danmakuForceSimplified"); // 默认 false,与 Info.json preferenceDefaults 一致
-// 弹幕时长自动偏移检测(nico-json): 加载时对比弹幕源时长与视频时长,自动设置偏移
-var danmakuAutoOffset = preferences.get("danmakuAutoOffset") !== undefined ? preferences.get("danmakuAutoOffset") : true;
+// 弹幕时长自动偏移检测(nico-json): 加载时对比弹幕源时长与视频时长
+// 默认关闭: 时长差无法区分片头/片尾差异, 只提醒, 由用户在高级设置中手动开启自动设置
+var danmakuAutoOffset = preferences.get("danmakuAutoOffset") !== undefined ? preferences.get("danmakuAutoOffset") : false;
 var danmakuBlocklist = [];
 try { danmakuBlocklist = JSON.parse(preferences.get("danmakuBlocklist") || '[]') || []; } catch (e) { danmakuBlocklist = []; }
 if (!Array.isArray(danmakuBlocklist)) danmakuBlocklist = [];

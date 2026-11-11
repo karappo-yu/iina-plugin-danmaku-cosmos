@@ -37,7 +37,7 @@
     "dandanplayChConvert": 0,
     "dandanplayWithRelated": true,
     "danmakuForceSimplified": false,
-    "danmakuAutoOffset": true,
+    "danmakuAutoOffset": false,
     "danmakuBlocklistEnabled": false,
     "danmakuBlocklist": "[]",
     "danmakuBlockTopEnabled": false,
