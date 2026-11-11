@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
@@ -49,7 +50,7 @@ test('fullscreen state is restored on load and relayed after IINA transitions', 
   assert.equal(h.overlayMessages.findLast(m => m.name === 'set-fullscreen').data.fullscreen, true);
 });
 
-function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {}) {
+function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {}, weakMessageCallbacks = false) {
   const eventHandlers = new Map();
   const overlayHandlers = new Map();
   const sidebarHandlers = new Map();
@@ -84,18 +85,22 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     return handler;
   }
 
+  function registerMessage(map, name, handler) {
+    map.set(name, [weakMessageCallbacks ? new WeakRef(handler) : handler]);
+  }
+
   const iina = {
     overlay: {
       loadFile() { overlayHandlers.clear(); },
       show() {},
       hide() {},
       postMessage(name, data) { overlayMessages.push({ name, data }); },
-      onMessage(name, handler) { overlayHandlers.set(name, [handler]); },
+      onMessage(name, handler) { registerMessage(overlayHandlers, name, handler); },
     },
     sidebar: {
-      loadFile() {},
+      loadFile() { sidebarHandlers.clear(); },
       postMessage(name, data) { sidebarMessages.push({ name, data }); },
-      onMessage(name, handler) { register(sidebarHandlers, name, handler); },
+      onMessage(name, handler) { registerMessage(sidebarHandlers, name, handler); },
     },
     event: {
       on(name, handler) { return register(eventHandlers, name, handler); },
@@ -181,7 +186,11 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
   emit(eventHandlers, 'iina.window-loaded');
 
   function emit(map, name, data) {
-    for (const handler of map.get(name) || []) handler(data);
+    for (const handler of map.get(name) || []) {
+      const callback = handler instanceof WeakRef ? handler.deref() : handler;
+      assert.equal(typeof callback, 'function', `Message callback was collected: ${name}`);
+      callback(data);
+    }
   }
 
   return {
@@ -190,6 +199,8 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     httpRequests,
     overlayMessages,
     sidebarMessages,
+    sidebarHandlers,
+    overlayHandlers,
     fileReads,
     directoryReads,
     osdMessages,
@@ -233,6 +244,53 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     toggleDanmaku() { context.toggleDanmaku(); },
   };
 }
+
+test('WebView callbacks survive garbage collection and reloads', async () => {
+  // Run with real GC and weak native registrations; the default harness would
+  // otherwise keep callbacks alive and hide the IINA JSManagedValue failure.
+  if (typeof global.gc !== 'function') {
+    const child = spawnSync(process.execPath, [
+      '--expose-gc', '--test',
+      '--test-name-pattern=^WebView callbacks survive garbage collection and reloads$',
+      __filename,
+    ], { encoding: 'utf8', timeout: 30000 });
+    assert.equal(child.status, 0, child.error?.message || child.stdout + child.stderr);
+    return;
+  }
+
+  const h = createHarness(true, false, {}, true);
+  h.readyOverlay();
+
+  async function collectGarbage() {
+    // WeakRef targets remain alive until the current job ends.
+    for (let i = 0; i < 5; i++) {
+      await new Promise(resolve => setImmediate(resolve));
+      global.gc();
+    }
+  }
+
+  for (let reload = 0; reload < 3; reload++) {
+    await collectGarbage();
+    for (const handlers of [h.sidebarHandlers, h.overlayHandlers]) {
+      for (const [name, [weak]] of handlers) {
+        assert.equal(typeof weak.deref(), 'function', `Message callback was collected: ${name}`);
+      }
+    }
+    h.emitSidebar('set-fontscale', { scale: 0.5 });
+    assert.equal(h.preferences.get('niconicommentsFontScale'), 0.5);
+    const osdCount = h.osdMessages.length;
+    h.emitOverlay('seek-disable');
+    assert.equal(h.osdMessages.length, osdCount + 1);
+
+    const previousSidebar = h.sidebarHandlers.get('set-fontscale')[0];
+    const previousOverlay = h.overlayHandlers.get('overlay-ready')[0];
+    h.emitEvent('iina.window-loaded');
+    h.readyOverlay();
+    await collectGarbage();
+    assert.equal(previousSidebar.deref(), undefined, 'Replaced sidebar callbacks can be collected');
+    assert.equal(previousOverlay.deref(), undefined, 'Replaced overlay callbacks can be collected');
+  }
+});
 
 function loadedComments(messages) {
   return messages

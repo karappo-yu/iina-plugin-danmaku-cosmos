@@ -8,6 +8,11 @@ var file = iina.file;
 var preferences = iina.preferences;
 var mpv = iina.mpv;
 
+// Keep WebView callbacks rooted in JS even if IINA's JSManagedValue loses its
+// native owner. Replace by message name so navigation does not retain old handlers.
+let sidebarMessageHandlers = Object.create(null);
+let overlayMessageHandlers = Object.create(null);
+
 var danmakuEnabled = preferences.get("danmakuEnabled");
 var danmakuForceSimplified = !!preferences.get("danmakuForceSimplified"); // 默认 false,与 Info.json preferenceDefaults 一致
 // 弹幕时长自动偏移检测(nico-json): 加载时对比弹幕源时长与视频时长
@@ -300,6 +305,16 @@ function containsTemplateSyntax(value) {
   return Object.keys(value).some(function (key) {
     return containsTemplateSyntax(key) || containsTemplateSyntax(value[key]);
   });
+}
+
+function sidebarOnMessage(name, callback) {
+  sidebarMessageHandlers[name] = callback;
+  sidebar.onMessage(name, callback);
+}
+
+function overlayOnMessage(name, callback) {
+  overlayMessageHandlers[name] = callback;
+  overlay.onMessage(name, callback);
 }
 
 function sendWebViewMessage(target, key, data) {
@@ -2183,7 +2198,7 @@ function chooseDanmakuFile() {
 }
 
 function registerSidebarHandlers() {
-  sidebar.onMessage("toggle-danmaku", function () { toggleDanmaku(); });
+  sidebarOnMessage("toggle-danmaku", function () { toggleDanmaku(); });
 
   // 同构设置处理器: 更新全局变量 → 持久化 → 原样转发给 overlay。
   // [消息名, 偏好键, 载荷字段, 全局变量赋值]
@@ -2199,7 +2214,7 @@ function registerSidebarHandlers() {
     ["set-scroll-speed", "scrollSpeed", "speed", function (v) { scrollSpeed = v; }]
   ];
   simpleSettings.forEach(function (entry) {
-    sidebar.onMessage(entry[0], function (data) {
+    sidebarOnMessage(entry[0], function (data) {
       var value = data[entry[2]];
       entry[3](value);
       preferences.set(entry[1], value);
@@ -2208,7 +2223,7 @@ function registerSidebarHandlers() {
     });
   });
 
-  sidebar.onMessage("set-danmaku-force-simplified", function (data) {
+  sidebarOnMessage("set-danmaku-force-simplified", function (data) {
     danmakuForceSimplified = !!data.value;
 
     preferences.set("danmakuForceSimplified", danmakuForceSimplified);
@@ -2223,7 +2238,7 @@ function registerSidebarHandlers() {
     notifyBrowserDataChanged();
   });
 
-  sidebar.onMessage("set-danmaku-auto-offset", function (data) {
+  sidebarOnMessage("set-danmaku-auto-offset", function (data) {
     danmakuAutoOffset = !!data.value;
     preferences.set("danmakuAutoOffset", danmakuAutoOffset);
     syncPreferencesSoon();
@@ -2235,36 +2250,36 @@ function registerSidebarHandlers() {
     }
   });
 
-  sidebar.onMessage("set-danmaku-offset", function (data) {
+  sidebarOnMessage("set-danmaku-offset", function (data) {
     applyDanmakuOffset(data.offset);
   });
 
-  sidebar.onMessage("set-danmaku-font", function (data) {
+  sidebarOnMessage("set-danmaku-font", function (data) {
     applyDanmakuFont(data.fontFamily, data.fontWeight);
   });
 
-  sidebar.onMessage("set-style-preset", function (data) {
+  sidebarOnMessage("set-style-preset", function (data) {
     stylePreset = data.preset || "nico";
     preferences.set("stylePreset", stylePreset);
     syncPreferencesSoon();
   });
 
-  sidebar.onMessage("set-danmaku-filter", function (data) {
+  sidebarOnMessage("set-danmaku-filter", function (data) {
     applyDanmakuFilter(data.offset || 0, data.limit);
     notifyBrowserDataChanged(); // 范围切片变化 → 列表与 overlay 同步重建
   });
 
-  sidebar.onMessage("set-danmaku-filter-density", function (data) {
+  sidebarOnMessage("set-danmaku-filter-density", function (data) {
     applyDanmakuFilterDensity(data.density || 0);
     notifyBrowserDataChanged(); // 密度过滤变化 → 列表与 overlay 同步重建
   });
 
   // ── 屏蔽词 ──
-  sidebar.onMessage("danmaku-blocklist-request", function () {
+  sidebarOnMessage("danmaku-blocklist-request", function () {
     sidebarPostMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
   });
 
-  sidebar.onMessage("danmaku-blocklist-set-enabled", function (data) {
+  sidebarOnMessage("danmaku-blocklist-set-enabled", function (data) {
     danmakuBlocklistEnabled = !!data.enabled;
     preferences.set("danmakuBlocklistEnabled", danmakuBlocklistEnabled);
     syncPreferencesSoon();
@@ -2276,7 +2291,7 @@ function registerSidebarHandlers() {
     sidebarPostMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
   });
 
-  sidebar.onMessage("danmaku-blocklist-add", function (data) {
+  sidebarOnMessage("danmaku-blocklist-add", function (data) {
     // 入库前消毒: 含反引号的词会让 danmaku-blocklist-state 回显被 IPC 丢弃,
     // 且列表按词值回传删除时永远匹配不上——必须在源头杜绝
     var w = sanitizeIPCString(String(data.word || '')).trim();
@@ -2291,7 +2306,7 @@ function registerSidebarHandlers() {
   });
 
   // 按词值删除(不按下标): 渲染与点击之间列表可能变化,下标会删错词
-  sidebar.onMessage("danmaku-blocklist-remove", function (data) {
+  sidebarOnMessage("danmaku-blocklist-remove", function (data) {
     var word = data && data.word !== undefined ? String(data.word) : null;
     var idx = word !== null ? danmakuBlocklist.indexOf(word) : -1;
     if (idx < 0) return;
@@ -2312,9 +2327,9 @@ function registerSidebarHandlers() {
     });
   }
 
-  sidebar.onMessage("danmaku-position-filter-request", sendPositionFilterState);
+  sidebarOnMessage("danmaku-position-filter-request", sendPositionFilterState);
 
-  sidebar.onMessage("danmaku-position-filter-set", function (data) {
+  sidebarOnMessage("danmaku-position-filter-set", function (data) {
     if (!data) return;
     let top = typeof data.danmakuBlockTopEnabled === 'boolean' ? data.danmakuBlockTopEnabled : danmakuBlockTopEnabled;
     let bottom = typeof data.danmakuBlockBottomEnabled === 'boolean' ? data.danmakuBlockBottomEnabled : danmakuBlockBottomEnabled;
@@ -2331,12 +2346,12 @@ function registerSidebarHandlers() {
   });
 
   // ── 弹幕去重 ──
-  sidebar.onMessage("danmaku-dedupe-request", function () {
+  sidebarOnMessage("danmaku-dedupe-request", function () {
     sidebarPostMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
   });
 
   // 点击列表时间戳 → 跳转到该弹幕时间(弹幕 vpos 换算为视频秒,考虑弹幕偏移)
-  sidebar.onMessage("danmaku-seek", function (data) {
+  sidebarOnMessage("danmaku-seek", function (data) {
     if (!data || typeof data.vpos !== 'number' || !isFinite(data.vpos)) return;
     var sec = data.vpos / 100 - (danmakuTimeOffsetSec || 0);
     if (sec < 0) sec = 0;
@@ -2347,7 +2362,7 @@ function registerSidebarHandlers() {
     }
   });
 
-  sidebar.onMessage("danmaku-dedupe-set", function (data) {
+  sidebarOnMessage("danmaku-dedupe-set", function (data) {
     if (data.enabled !== undefined) danmakuDedupeEnabled = !!data.enabled;
     if (data.window !== undefined) {
       var w = parseFloat(data.window);
@@ -2361,7 +2376,7 @@ function registerSidebarHandlers() {
     sidebarPostMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
   });
 
-  sidebar.onMessage("danmaku-browser-vis-set", function (data) {
+  sidebarOnMessage("danmaku-browser-vis-set", function (data) {
     if (data && data.visible !== undefined) {
       danmakuBrowserVisible = !!data.visible;
       preferences.set("danmakuBrowserVisible", danmakuBrowserVisible);
@@ -2374,7 +2389,7 @@ function registerSidebarHandlers() {
     }
   });
 
-  sidebar.onMessage("request-state", function () {
+  sidebarOnMessage("request-state", function () {
     // 主进程在视频/弹幕切换时维护状态;侧栏懒加载只拉取快照,不能重建并覆盖会话文件列表。
     sidebarPostMessage("danmaku-state", {
       enabled: danmakuEnabled,
@@ -2406,25 +2421,25 @@ function registerSidebarHandlers() {
     ddpSyncState();
   });
 
-  sidebar.onMessage("sidebar-log", function (data) {
+  sidebarOnMessage("sidebar-log", function (data) {
     console.log('[sidebar] ' + data.msg);
   });
 
-  sidebar.onMessage("select-danmaku-file", function (data) {
+  sidebarOnMessage("select-danmaku-file", function (data) {
     // path 经 encodeIPCPath 编码传输,入口解码后查表
     if (data && data.path) loadDanmakuFile(decodeIPCPath(data.path), { enableDanmaku: true });
   });
 
-  sidebar.onMessage("danmaku-file-add", chooseDanmakuFile);
+  sidebarOnMessage("danmaku-file-add", chooseDanmakuFile);
 
-  sidebar.onMessage("dandanplay-set-auto-network", function (data) {
+  sidebarOnMessage("dandanplay-set-auto-network", function (data) {
     dandanplayAutoNetwork = !!data.autoNetwork;
     preferences.set("dandanplayAutoNetwork", dandanplayAutoNetwork);
     syncPreferencesSoon();
     ddpSyncState();
   });
 
-  sidebar.onMessage("dandanplay-search", function (data) {
+  sidebarOnMessage("dandanplay-search", function (data) {
     let generation = ++ddpSearchGeneration;
     let searchId = data.searchId;
     var keyword = data.keyword;
@@ -2447,7 +2462,7 @@ function registerSidebarHandlers() {
     });
   });
 
-  sidebar.onMessage("dandanplay-get-bangumi", function (data) {
+  sidebarOnMessage("dandanplay-get-bangumi", function (data) {
     var bangumiId = data.bangumiId;
     var animeTitle = data.animeTitle;
     ddpGetBangumi(bangumiId).then(function(res) {
@@ -2467,7 +2482,7 @@ function registerSidebarHandlers() {
     });
   });
 
-  sidebar.onMessage("dandanplay-select-match", function (data) {
+  sidebarOnMessage("dandanplay-select-match", function (data) {
     var match = data.match;
     if (match && match.episodeId) {
       dandanplayState.matchType = 'filename';
@@ -2475,24 +2490,24 @@ function registerSidebarHandlers() {
     }
   });
 
-  sidebar.onMessage("dandanplay-select-episode", function (data) {
+  sidebarOnMessage("dandanplay-select-episode", function (data) {
     dandanplayState.matchType = 'filename';
     ddpLoadComments(data.episodeId, data.animeTitle, data.episodeTitle, true, DDP_LOAD_ORIGIN.MANUAL);
   });
 
-  sidebar.onMessage("dandanplay-trigger-match", function () {
+  sidebarOnMessage("dandanplay-trigger-match", function () {
     if (currentVideoUrl) {
       ddpAutoMatchAndLoad(currentVideoUrl, DDP_LOAD_ORIGIN.MANUAL);
     }
   });
 
   // sidebar 加载即上报插件根目录并持久化(简繁转换器初始化不依赖过滤 tab 打开)
-  sidebar.onMessage("danmaku-sidebar-ready", function (data) {
+  sidebarOnMessage("danmaku-sidebar-ready", function (data) {
     if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
   });
 
   // 过滤 tab: sidebar 懒加载,只能由 sidebar 主动拉取弹幕列表;watch 控制播放时间推送
-  sidebar.onMessage("danmaku-browser-request", function (data) {
+  sidebarOnMessage("danmaku-browser-request", function (data) {
     if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
     sidebarPostMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible });
     if (danmakuBrowserVisible) {
@@ -2502,7 +2517,7 @@ function registerSidebarHandlers() {
     }
   });
 
-  sidebar.onMessage("danmaku-browser-watch", function (data) {
+  sidebarOnMessage("danmaku-browser-watch", function (data) {
     danmakuBrowserWatch = !!data.watch;
     if (danmakuBrowserWatch) {
       var t = mpv.getNumber("time-pos");
@@ -2551,12 +2566,12 @@ event.on("iina.window-fs.changed", function (fullscreen) {
 
 function registerOverlayHandlers() {
   // IINA replaces listeners by name; re-register after every overlay navigation.
-  overlay.onMessage("overlay-ready", function (data) {
+  overlayOnMessage("overlay-ready", function (data) {
     if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
     markOverlayReady();
   });
 
-  overlay.onMessage("danmaku-load-result", function (data) {
+  overlayOnMessage("danmaku-load-result", function (data) {
     if (!data || data.loadId !== overlayLoadId) return;
     updateDanmakuStatus({ fileType: currentDanmakuStatus.fileType, isLoaded: !!data.success });
     if (!data.success) {
@@ -2568,17 +2583,17 @@ function registerOverlayHandlers() {
     }
   });
 
-  overlay.onMessage("seek-disable", function () { core.osd(t('seek_disable')); });
-  overlay.onMessage("seek-enable", function () { core.osd(t('seek_enable')); });
+  overlayOnMessage("seek-disable", function () { core.osd(t('seek_disable')); });
+  overlayOnMessage("seek-enable", function () { core.osd(t('seek_enable')); });
 
-  overlay.onMessage("jump", function (data) {
+  overlayOnMessage("jump", function (data) {
     if (data.targetSec !== undefined && data.targetSec !== null) {
       mpv.set("time-pos", data.targetSec);
       if (data.message) core.osd(t('jump') + data.message);
     }
   });
 
-  overlay.onMessage("jump-video", function (data) {
+  overlayOnMessage("jump-video", function (data) {
     if (data.videoId) core.osd(t('jump') + data.videoId + (data.message ? " " + data.message : ""));
   });
 }

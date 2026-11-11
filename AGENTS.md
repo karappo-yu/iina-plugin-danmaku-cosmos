@@ -179,6 +179,7 @@ Hardcoded in `main.js (`DDP_APP_ID` / `DDP_APP_SECRET`)` as fallback defaults. N
 ### Message Communication (Core Pattern)
 
 - Register overlay message handlers after `iina.plugin-overlay-loaded`: IINA ignores registrations before the view exists and `overlay.loadFile()` clears listeners. Main then sends `request-overlay-state`, and overlay answers `overlay-ready` with its plugin root.
+- Register WebView callbacks through `sidebarOnMessage()` / `overlayOnMessage()` in main. These helpers keep the current function for each message name in a global JS table so IINA's `JSManagedValue` cannot lose an otherwise unreferenced callback during garbage collection. Re-registration replaces the saved function; do not clear the tables on video changes or WebView navigation before new callbacks are installed.
 - Main owns the selected file type; overlay no longer echoes `danmaku-type`. Render success/failure uses `danmaku-load-result` with a `loadId`; replies from an older source/video are ignored.
 - Use `sidebarPostMessage()` / `overlayPostMessage()` from main. Messages containing `${` or a backtick use a URI-encoded JSON `encodedPayload` envelope; `onPluginMessage()` in each WebView unwraps it. This keeps payloads plain objects and prevents IINA's template-literal bridge from evaluating text. The `xmlContent` URI encoding protocol is unchanged.
 
