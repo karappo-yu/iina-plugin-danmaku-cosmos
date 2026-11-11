@@ -48,6 +48,9 @@ Danmaku Cosmos/
 
 When `mode: "css"` is passed to NiconiComments, a `CSSRenderer` is created instead of using canvas drawing. The CSSRenderer:
 
+- Shares Canvas Auto's per-comment Flash/HTML5 selection: `date < flashThreshold` (1499871600; 2017-07-13 00:00 JST) or `nico:flash` selects Flash unless `gothic`, `mincho` or `defont` is present. New comments (including Bilibili/DDP's synthetic 2026 dates) use HTML5 by default.
+- Flash DOM uses `fontSize` / `scale` / `scaleX`, per-run fonts and measured advances, compatibility spacers, and Flash baseline/line offsets. Keep this path separate from HTML5 `charSize`; Flash's `charSize` is zero. The outer element owns animation and the measured collision box; an inner layer resolves fonts at their original size before applying Flash and display scales, preserving WebKit's color-emoji advances.
+
 - Creates a container (`[data-dm-css-container]`) matching the canvas's visible video rectangle, relative to its parent
 - Uses `--dm-unit` = displayed video height / 1080 for uniform coordinate mapping; 4:3 retains full-height text rather than shrinking into a 16:9 box
 - Renders each danmaku as a `div[data-dm-comment]` with `will-change: transform, opacity; contain: layout style`
@@ -64,7 +67,7 @@ Fonts are passed to the engine via init config `config.fonts`. **The engine's `i
 
 ```js
 {
-  flash: { gulim: 'normal 600 [size]px gulim, <stack>, Arial', simsun: '...' },  // Flash mode removed; keep template for validation
+  flash: { gulim: 'normal 600 [size]px gulim, <stack>, Arial', simsun: '...' },  // Used by old comments in Auto, also required for validation
   html5: {
     gothic: { font: <family>, offset: <n>, weight: <n> },   // offsets must be within ±1024
     mincho: { font: <family>, offset: <n>, weight: <n> },
@@ -73,7 +76,7 @@ Fonts are passed to the engine via init config `config.fonts`. **The engine's `i
 }
 ```
 
-CSS mode `applyFont()` reads `config.fonts.html5[type].font` / `.weight` per danmaku; Canvas mode reads the same source. When no custom font is set, default stacks (Yu Gothic / Yu Mincho / Hiragino Sans) with engine-default offsets are used so appearance matches stock. Weight range 100–900 (validated ≤1000).
+CSS mode `applyFont()` reads `config.fonts.html5[type].font` / `.weight` for HTML5 fonts, and `config.fonts.flash` templates for Flash `gulim` / `simsun` runs. Flash `defont` runs use the HTML5 defont config, matching Canvas `parseFont()`. When no custom font is set, default stacks (Yu Gothic / Yu Mincho / Hiragino Sans) with engine-default offsets are used so appearance matches stock. Weight range 100–900 (validated ≤1000).
 
 ### Canvas Mode (niconicomments original)
 

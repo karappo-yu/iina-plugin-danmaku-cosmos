@@ -93,6 +93,8 @@ CA 弹幕：
 
 在侧边栏「高级设置」中切换渲染模式。
 
+两种模式都使用 Auto 的弹幕样式判断：2017 年 7 月 13 日 00:00（日本时间）之前投稿的 Niconico 弹幕默认按 Flash 行为处理，之后按 HTML5 处理；`gothic`、`mincho`、`defont` 字体命令优先使用 HTML5，`nico:flash` 可指定 Flash。CSS 模式也保留 Flash 的字体分段、兼容空白、行距和缩放，可混排新旧弹幕。Bilibili 和弹弹play 转换数据默认按 HTML5 处理。
+
 ### 弹幕过滤
 
 侧边栏新增「过滤」tab，提供弹幕时间轴浏览与过滤功能：
@@ -156,6 +158,7 @@ CA 弹幕：
 - **デュアル描画モード**：
   - **CSS モード**（デフォルト）：WebKit GPU 合成加速（`transform` + `will-change`）により、IINA の WKWebView で Canvas より滑らかに描画
   - **Canvas モード**：改造 niconicomments、Canvas 描画が必要な場合に使用
+  - どちらも Auto の判定を使用：2017 年 7 月 13 日 00:00（日本時間）より前のニコニココメントは既定で Flash、それ以降は HTML5。`gothic` / `mincho` / `defont` は HTML5 を優先し、`nico:flash` は Flash を指定します。CSS でも Flash のフォント分割・互換空白・行間・縮小を反映し、新旧コメントを混在表示できます。Bilibili / 弹弹play の変換データは既定で HTML5。
 - **自動読み込み**：同じフォルダから優先順位に従って自動検索
 - **手動読み込み**：メニューやサイドバーからコメントファイルを選択
 - **サイドバーコントロール**：コメント表示、描画モード、繁簡変換、透明度、フォント倍率、スクロール速度などをリアルタイム調整
@@ -295,6 +298,8 @@ The plugin integrates the dandanplay open platform API for automatic network dan
 | **Canvas** | Canvas 2D rendering via niconicomments engine | When CSS mode doesn't suit |
 
 Toggle between modes in the sidebar's Advanced settings.
+
+Both modes follow Auto's per-comment style selection: Niconico comments posted before July 13, 2017 at 00:00 JST use Flash behavior by default; newer comments use HTML5. The `gothic`, `mincho` and `defont` font commands take priority for HTML5, while `nico:flash` can request Flash. CSS also preserves Flash font runs, compatibility spacers, line height and resizing, allowing old and new comments to share the screen. Converted Bilibili and Dandanplay data defaults to HTML5.
 
 ### Danmaku Filter
 

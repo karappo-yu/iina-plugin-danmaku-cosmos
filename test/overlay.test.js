@@ -57,6 +57,32 @@ test('formatted IDs handle prototype names and do not collide with numeric user 
   assert.equal(Engine.internal.inputParser.default(data, 'formatted').length, 6);
 });
 
+test('bundled CSS engine follows Canvas Auto dates and overrides after overlay rebuilds', () => {
+  const h = harness();
+  const input = [
+    {...comment('old', []), _dateSec: 1499871599},
+    {...comment('threshold', []), _dateSec: 1499871600},
+    comment('network', ['naka']),
+    {...comment('old gothic', ['gothic']), _dateSec: 1499871599},
+    comment('forced Flash', ['nico:flash']),
+    comment('font override', ['nico:flash', 'mincho']),
+  ];
+  load(h, input);
+  h.send('set-scroll-speed', {speed: 0.5});
+  h.send('set-fontscale', {scale: 0.35});
+  h.flush();
+  const data = h.read('nicoRawData');
+  assert.deepEqual(Array.from(data, c => c.date), input.map(c => c._dateSec));
+  for (const mode of ['css', 'default']) {
+    assert.deepEqual(Array.from(data, c => Engine.FlashComment.condition(c,
+      {flashThreshold: 1499871600}, {mode})), [true, false, false, false, true, false]);
+  }
+  assert.equal(h.instances.at(-1).options.mode, 'css');
+  h.send('set-canvas-mode', {mode: 'default'});
+  h.flush();
+  assert.equal(h.instances.at(-1).options.mode, 'default');
+});
+
 test('scroll speed follows first position, command limit, owner and explicit duration semantics', () => {
   const h = harness();
   load(h, [comment('scroll', ['naka','ue']), comment('fixed', ['UE','naka']), comment('custom', ['@4']), comment('owner', [], true), comment('late command', [...Array(64).fill('184'), 'ue'])]);
