@@ -979,6 +979,54 @@ test('a delayed duration comparison cannot cross video generations', () => {
   assert.equal(h.context.danmakuTimeOffsetSec, 0);
 });
 
+test('duration availability reaches a lazily opened sidebar independently of duration mismatch', () => {
+  for (const videoDuration of [0, 100, 120]) {
+    const h = createHarness(true, false, {danmakuAutoOffset: false});
+    h.setMpv('duration', videoDuration);
+    h.setFile('/videos/with-duration.json', JSON.stringify([{fork: 'main', duration: 100, comments: []}]));
+    h.emitSidebar('select-danmaku-file', {path: encodeURIComponent('/videos/with-duration.json')});
+    assert.equal(h.sidebarMessages.findLast(m => m.data?.nicoJsonHasDuration !== undefined).data.nicoJsonHasDuration, true);
+    h.emitSidebar('request-state');
+    const state = h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data;
+    assert.equal(state.danmakuLoaded, true);
+    assert.equal(state.danmakuFileType, 'nico-json');
+    assert.equal(state.nicoJsonHasDuration, true);
+    assert.equal(state.nicoJsonDurationDiff, videoDuration === 120 ? 20 : null);
+    assert.equal(state.danmakuAutoOffset, false);
+  }
+});
+
+test('switching sources clears duration availability for unsupported or missing metadata', () => {
+  const h = createHarness(true, false, {danmakuAutoOffset: false});
+  const sources = [
+    ['missing.json', [{fork: 'main', comments: []}]],
+    ['owner.json', [{fork: 'owner', duration: 100, comments: []}]],
+    ['string.json', [{fork: 'main', duration: '100', comments: []}]],
+    ['zero.json', [{fork: 'main', duration: 0, comments: []}]],
+    ['negative.json', [{fork: 'main', duration: -1, comments: []}]],
+    ['legacy.json', [{chat: {vpos: 100, content: 'legacy'}}]],
+    ['nico.xml', '<packet><chat vpos="100">nico</chat></packet>'],
+    ['bilibili.xml', '<i><d p="1,1,25,16777215,0,0,0,0">bilibili</d></i>'],
+    ['ddp.json', {source: 'dandanplay', comments: [{t: 100, text: 'network'}]}],
+  ];
+  h.setFile('/videos/with-duration.json', JSON.stringify([{fork: 'main', duration: 100, comments: []}]));
+  for (const [name, source] of sources) {
+    h.emitSidebar('select-danmaku-file', {path: encodeURIComponent('/videos/with-duration.json')});
+    const sourcePath = '/videos/' + name;
+    h.setFile(sourcePath, typeof source === 'string' ? source : JSON.stringify(source));
+    h.emitSidebar('select-danmaku-file', {path: encodeURIComponent(sourcePath)});
+    assert.equal(h.sidebarMessages.findLast(m => m.data?.nicoJsonHasDuration !== undefined).data.nicoJsonHasDuration, false, name);
+    h.emitSidebar('request-state');
+    assert.equal(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.nicoJsonHasDuration, false, name);
+  }
+  h.emitSidebar('select-danmaku-file', {path: encodeURIComponent('/videos/with-duration.json')});
+  h.setVideo('file:///videos/B.mp4');
+  h.emitSidebar('request-state');
+  const state = h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data;
+  assert.equal(state.nicoJsonHasDuration, false);
+  assert.equal(state.danmakuAutoOffset, false);
+});
+
 test('renderer errors update load status while stale replies cannot alter the new video', () => {
   const h = createHarness(true);
   h.readyOverlay();

@@ -129,12 +129,12 @@
 
       <div class="section" id="danmaku-density-section">
         <div class="section-title">
-          <span data-i18n="density_filter">密度过滤</span>
+          <span data-i18n="density_filter">弹幕密度</span>
           <span id="density-count" style="opacity:0.6;font-weight:normal;margin-left:4px"></span>
         </div>
         <div class="control-row">
           <input type="range" id="density-slider" data-clickable min="50" max="550" step="50" value="550" class="slider" />
-          <span id="density-value" class="value-text" data-i18n="off">关闭</span>
+          <span id="density-value" class="value-text" data-i18n="unlimited">不限制</span>
         </div>
       </div>
 
@@ -181,7 +181,7 @@
             <span class="switch-slider"></span>
           </label>
         </div>
-        <div class="toggle-row">
+        <div class="toggle-row" id="danmaku-auto-offset-row" style="display:none">
           <span class="toggle-label" data-i18n="danmaku_auto_offset">自动设置片头偏移</span>
           <label class="switch" data-clickable>
             <input type="checkbox" id="danmaku-auto-offset-toggle" checked />
@@ -200,7 +200,7 @@
 
 
 
-      <div class="section-title" data-i18n="comment_limit" style="margin-top:14px">评论数量限制</div>
+      <div class="section-title" data-i18n="comment_limit" style="margin-top:14px">同屏上限</div>
       <div class="control-row">
         <input type="range" id="comment-limit-slider" data-clickable min="0" max="200" step="10" value="0" class="slider" />
         <span id="comment-limit-value" class="value-text" data-i18n="off">关闭</span>
