@@ -27,6 +27,7 @@ let fixedComboEnabled = false; // 固定弹幕渐进合并(= main 的去重开�
 let nakaDedupeWindow = 0; // 滚动弹幕窗口去重(1/100s,0=关;= main 的去重窗口×100)
 
 let niconiComments = null;
+let domEmojiRenderer = null;
 let nicoRawData = null;
 let rawFormattedData = null; // 未注入滚动速度命令的原始 formatted 数据
 let rawNicoJsonData = null; // 未注入滚动速度的原始 nico-json JSON 文本
@@ -41,6 +42,115 @@ let danmakuVisible = true;
 let videoAspectRatio = 0;
 let videoFullscreen = false;
 let canvasViewportFrame = null;
+
+let emojiPresentationPattern = null;
+let emojiGraphemeSegmenter = null;
+try {
+  emojiPresentationPattern = new RegExp('\\p{Emoji_Presentation}|\\p{Extended_Pictographic}\\uFE0F|[0-9#*]\\uFE0F?\\u20E3', 'u');
+  if (typeof Intl.Segmenter === 'function') {
+    emojiGraphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  }
+} catch (_) { /* Older WebKit keeps the ordinary text path. */ }
+
+function getRepeatedEmoji(text) {
+  if (!emojiPresentationPattern || text.length < 8 || !emojiPresentationPattern.test(text)) return null;
+  const first = emojiGraphemeSegmenter
+    ? emojiGraphemeSegmenter.segment(text)[Symbol.iterator]().next().value.segment
+    : Array.from(text)[0];
+  if (!first || first.includes('\uFE0E') || !emojiPresentationPattern.test(first)) return null;
+  const count = text.length / first.length;
+  if (count < 8 || !Number.isInteger(count) || first.repeat(count) !== text) return null;
+  return { glyph: first, count: count };
+}
+
+// Long runs of color emoji are expensive to rasterize in every composited DOM
+// layer. Share a small glyph tile; the original text still determines layout,
+// and the engine keeps ownership of positioning, animation and element reuse.
+function createDomEmojiRenderer(container) {
+  if (!container || !emojiPresentationPattern || typeof MutationObserver === 'undefined') return null;
+  const tiles = new Map();
+  const density = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+
+  function getTile(glyph, style) {
+    const fontSize = parseFloat(style.fontSize);
+    const lineHeight = parseFloat(style.lineHeight) / fontSize;
+    if (!(fontSize > 0) || !isFinite(lineHeight) || lineHeight <= 0) return null;
+    const rasterFontSize = Math.max(100, Math.min(256, fontSize));
+    const ratio = rasterFontSize / fontSize;
+    const strokeWidth = parseFloat(style.webkitTextStrokeWidth) || 0;
+    const shadow = style.textShadow.match(/(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px/);
+    const key = JSON.stringify([glyph, style.fontFamily, style.fontWeight, rasterFontSize,
+      lineHeight, style.color, strokeWidth * ratio, style.webkitTextStrokeColor,
+      shadow ? shadow.slice(1).map(function (n) { return Number(n) * ratio; }) : null]);
+    if (tiles.has(key)) return tiles.get(key);
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const font = style.fontWeight + ' ' + rasterFontSize + 'px ' + style.fontFamily;
+    ctx.font = font;
+    const width = Math.ceil(ctx.measureText(glyph).width * density);
+    const height = Math.ceil(lineHeight * rasterFontSize * density);
+    if (width <= 0 || height <= 0 || width > 1024 || height > 1024) return null;
+    canvas.width = width;
+    canvas.height = height;
+    ctx.scale(density, density);
+    ctx.font = font;
+    const metrics = ctx.measureText('Ag');
+    const ascent = metrics.fontBoundingBoxAscent === undefined ? rasterFontSize * 0.9 : metrics.fontBoundingBoxAscent;
+    const descent = metrics.fontBoundingBoxDescent === undefined ? rasterFontSize * 0.1 : metrics.fontBoundingBoxDescent;
+    const baseline = (lineHeight * rasterFontSize - ascent - descent) / 2 + ascent;
+    ctx.fillStyle = style.color;
+    ctx.strokeStyle = style.webkitTextStrokeColor;
+    ctx.lineWidth = strokeWidth * ratio;
+    if (shadow) {
+      ctx.shadowColor = style.webkitTextStrokeColor;
+      ctx.shadowOffsetX = Number(shadow[1]) * ratio * density;
+      ctx.shadowOffsetY = Number(shadow[2]) * ratio * density;
+      ctx.shadowBlur = Number(shadow[3]) * ratio * density;
+    }
+    if (strokeWidth > 0) ctx.strokeText(glyph, 0, baseline);
+    ctx.fillText(glyph, 0, baseline);
+    const tile = { image: 'url("' + canvas.toDataURL() + '")', lineHeight: lineHeight };
+    canvas.width = canvas.height = 0;
+    if (tiles.size >= 32) tiles.delete(tiles.keys().next().value);
+    tiles.set(key, tile);
+    return tile;
+  }
+
+  const observer = new MutationObserver(function (records) {
+    const pending = new Set();
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node.nodeType === 3) {
+          pending.add(node);
+        } else if (node.nodeType === 1 && !node.closest('[data-dm-emoji-repeat]')) {
+          const walker = document.createTreeWalker(node, 4);
+          let text;
+          while ((text = walker.nextNode())) pending.add(text);
+        }
+      }
+    }
+    for (const node of pending) {
+      const parent = node.parentElement;
+      if (!parent || !container.contains(parent) || parent.closest('[data-dm-emoji-repeat]') ||
+          !parent.closest('[data-dm-comment]')) continue;
+      const repeated = getRepeatedEmoji(node.textContent);
+      if (!repeated) continue;
+      const tile = getTile(repeated.glyph, getComputedStyle(parent));
+      if (!tile) continue;
+      const span = document.createElement('span');
+      span.setAttribute('data-dm-emoji-repeat', '');
+      span.textContent = node.textContent;
+      span.style.backgroundImage = tile.image;
+      // Match the original run's actual advance, including WebKit rounding.
+      span.style.backgroundSize = (100 / repeated.count) + '% ' + tile.lineHeight + 'em';
+      parent.replaceChild(span, node);
+    }
+  });
+  observer.observe(container, { childList: true, subtree: true });
+  return { destroy: function () { observer.disconnect(); tiles.clear(); } };
+}
 
 function canvasSyncAnchor(videoTimeSec) {
   canvasVideoAnchorTime = videoTimeSec;
@@ -194,6 +304,10 @@ function unbindCanvasEvents(instance) {
 }
 
 function disposeCanvasRenderer() {
+  if (domEmojiRenderer) {
+    domEmojiRenderer.destroy();
+    domEmojiRenderer = null;
+  }
   if (!niconiComments) return;
   unbindCanvasEvents(niconiComments);
   niconiComments.clear();
@@ -320,6 +434,9 @@ function initCanvasRenderer(data) {
     },
   });
   nicoRawData = data;
+  if (useCssMode) {
+    domEmojiRenderer = createDomEmojiRenderer(document.querySelector('[data-dm-css-container]'));
+  }
   // 初始化时同步当前播放速度(CSS 模式滚动动画时长按倍率缩放)
   if (niconiComments && niconiComments.setPlaybackSpeed) {
     niconiComments.setPlaybackSpeed(playbackSpeed);

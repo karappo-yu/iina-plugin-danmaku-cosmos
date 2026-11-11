@@ -33,3 +33,13 @@ html, body {
   will-change: transform, opacity;
   backface-visibility: hidden;
 }
+
+[data-dm-emoji-repeat] {
+  display: inline-block;
+  background-repeat: repeat-x;
+  background-origin: content-box;
+  background-clip: content-box;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke-width: 0;
+  text-shadow: none;
+}

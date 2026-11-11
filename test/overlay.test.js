@@ -35,6 +35,19 @@ function harness() {
 const comment = (text, commands, owner = false, user = 'u') => ({t: 100, text, _commands: commands, _isOwner: owner, _dateSec: 1767196800, _userId: user});
 const load = (h, data) => h.send('load-danmaku', {danmakuType: 'dandanplay', xmlContent: encodeURIComponent(JSON.stringify(data)), canvasMode: 'css'});
 
+test('repeated emoji tiles preserve whole graphemes and leave mixed text and text presentation alone', () => {
+  const h = harness();
+  for (const glyph of ['🌀', '🔥', '👩🏽‍💻', '🇯🇵', '❤️', '1️⃣', '⌚']) {
+    const result = h.context.getRepeatedEmoji(glyph.repeat(8));
+    assert.equal(result.glyph, glyph);
+    assert.equal(result.count, 8);
+  }
+  for (const text of ['🌀'.repeat(7), '渦'.repeat(68), '🌀🔥'.repeat(8), '前文' + '🌀'.repeat(68),
+    '🌀'.repeat(68) + 'x2', '🌀'.repeat(8) + '\n', '❤'.repeat(8), '⌚\uFE0E'.repeat(8)]) {
+    assert.equal(h.context.getRepeatedEmoji(text), null);
+  }
+});
+
 test('formatted IDs handle prototype names and do not collide with numeric user IDs', () => {
   const h = harness();
   const input = ['1', 'other', '__proto__', 'constructor', '_nextId', '1'].map(user => comment(user, [], false, user));
