@@ -48,8 +48,8 @@ Danmaku Cosmos/
 
 When `mode: "css"` is passed to NiconiComments, a `CSSRenderer` is created instead of using canvas drawing. The CSSRenderer:
 
-- Creates a 16:9 aspect ratio container (`[data-dm-css-container]`) centered in the viewport
-- Uses `--dm-unit` CSS custom property (`min(100vh, 56.25vw) / 1080`) for responsive coordinate mapping
+- Creates a container (`[data-dm-css-container]`) matching the canvas's visible video rectangle, relative to its parent
+- Uses `--dm-unit` = displayed video height / 1080 for uniform coordinate mapping; 4:3 retains full-height text rather than shrinking into a 16:9 box
 - Renders each danmaku as a `div[data-dm-comment]` with `will-change: transform, opacity; contain: layout style`
 - Scroll danmaku: CSS `@keyframes dm-scroll` driven by JS-computed duration (inline `animation` style), matching `getPosX()` formula
 - Fixed danmaku (ue/shita): CSS `@keyframes dm-fade` animation
@@ -249,6 +249,14 @@ XML filtering, density sampling, and list building share `densityScanXml()`. It 
 
 Based on the `niconicomments` third-party library. XML and DDP use `buildFormattedCanvasData()`; Niconico JSON is passed through the engine's V1/legacy parser. Not recommended to modify Canvas mode internals.
 
+### Video Aspect Ratio
+
+- Main reads mpv `video-out-params/aspect` (falls back to `video-params/aspect`, then core video dimensions) and applies the reported rotation. Every load includes `videoAspectRatio`; output-parameter changes forward `set-video-aspect`.
+- Overlay fits `#danmaku-viewport` to that display ratio within the WebView. With unavailable metadata it uses the WebView ratio. Browser resize is observed even while paused.
+- The canvas keeps a logical height of 1080 and a width proportional to the video (1440 for 4:3, 1920 for 16:9, 2520 for 21:9; extreme allocation sizes are bounded). Call the engine's `resize(width, height)`, then redraw; do not rebuild/reparse comments for window resize.
+- The engine keeps the native layout stage and centers it in the output. 4:3 exposes the central area without reducing glyph size; intentionally full-width 16:9 CA can be cropped on 4:3. Wide viewports extend scrolling visibility while preserving collision lanes, pause and playback speed.
+- Video zoom/pan, embedded black bars and sidebar-specific video offsets are not inferred from aspect alone; such placement needs the actual video rectangle from IINA.
+
 ## Release Workflow
 
 - `node --test test/*.test.js` runs without installing dependencies. Regression tests include actual legacy data validated by the bundled engine parser.
@@ -281,7 +289,7 @@ Based on the `niconicomments` third-party library. XML and DDP use `buildFormatt
 
 ## Known Limitations
 
-- `canvas.width = 1920; canvas.height = 1080` is hardcoded and does not adapt to window aspect ratio
+- Video aspect uses centered contain layout; custom video zoom/pan and sidebars moving the video off-center are not reflected by aspect metadata alone
 - Filenames containing `[` or `]` may cause auto-load to fail (regex matching in `extractNumberFromName`, `[n]`-style only; special formats like `第3话` often fail)
 - Canvas mode receives the same filtered source content as CSS mode, but does not support CSS-specific animation/layout behavior.
 - CSS mode (niconicomments) Comment Art vertical positioning may differ slightly from Canvas mode

@@ -8,6 +8,31 @@ const vm = require('node:vm');
 
 const MAIN_JS = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 
+test('video display aspect follows output filters, rotation, and metadata fallback', () => {
+  const h = createHarness(true);
+  h.setMpv('video-out-params/aspect', 4 / 3);
+  h.setMpv('video-out-params/rotate', 0);
+  assert.equal(h.context.getVideoAspectRatio(), 4 / 3);
+  h.setMpv('video-out-params/rotate', 90);
+  assert.equal(h.context.getVideoAspectRatio(), 3 / 4);
+  h.setMpv('video-out-params/aspect', undefined);
+  h.setMpv('video-params/aspect', 16 / 9);
+  assert.equal(h.context.getVideoAspectRatio(), 16 / 9);
+  h.setMpv('video-params/aspect', NaN);
+  assert.equal(h.context.getVideoAspectRatio(), 0);
+});
+
+test('overlay receives video aspect on startup and output-parameter changes', () => {
+  const h = createHarness(true);
+  h.setMpv('video-out-params/aspect', 4 / 3);
+  h.readyOverlay();
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'set-video-aspect').data.aspect, 4 / 3);
+  h.setMpv('video-out-params/aspect', 21 / 9);
+  h.emitEvent('mpv.video-out-params.changed', {});
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'set-video-aspect').data.aspect, 21 / 9);
+  assert.equal(h.context.buildLoadDanmakuPayload('', 'nico-json').videoAspectRatio, 21 / 9);
+});
+
 function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {}) {
   const eventHandlers = new Map();
   const overlayHandlers = new Map();

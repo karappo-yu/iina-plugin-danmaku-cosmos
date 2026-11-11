@@ -10,23 +10,24 @@ const source = fs.readFileSync(path.join(__dirname, '../overlay/main.js'), 'utf8
 function harness() {
   const handlers = new Map(), timers = new Map(), instances = [], messages = [];
   let id = 0;
-  const canvas = {style: {}};
+  const canvas = {style: {}}, viewport = {style: {}};
   class Renderer {
     constructor(canvas, data, options) { this.data = data; this.options = options; this.draws = []; instances.push(this); }
     addEventListener() {} removeEventListener() {} clear() {} destroy() {}
     pauseCSS() {} resumeCSS() {} setPlaybackSpeed() {}
     drawCanvas(vpos) { this.draws.push(vpos); }
+    resize(width, height) { this.size = {width, height}; return true; }
   }
   const context = vm.createContext({
     iina: {onMessage(name, callback) { handlers.set(name, callback); }, postMessage(name, data) {messages.push({name, data});}},
-    document: {getElementById() { return canvas; }, querySelector() { return null; }},
-    window: {location: {href: 'file:///plugin/overlay/index.html'}}, URL, console,
+    document: {getElementById(id) { return id === 'danmaku-viewport' ? viewport : canvas; }, querySelector() { return null; }},
+    window: {location: {href: 'file:///plugin/overlay/index.html'}, innerWidth: 1280, innerHeight: 720}, URL, console,
     performance: {now() {return 1000;}}, NiconiComments: Renderer,
     setTimeout(callback) {timers.set(++id, callback); return id;}, clearTimeout(id) {timers.delete(id);},
     requestAnimationFrame() {return ++id;}, cancelAnimationFrame() {},
   });
   vm.runInContext(source, context);
-  return {context, instances, messages, send(name, data) {handlers.get(name)(data);},
+  return {context, instances, messages, canvas, viewport, send(name, data) {handlers.get(name)(data);},
     read(expr) {return vm.runInContext(expr, context);},
     flush() {for (const [id, callback] of Array.from(timers)) {timers.delete(id); callback();}}};
 }
@@ -97,4 +98,34 @@ test('invalid JSON reports a correlated load error instead of escaping the messa
   const result = h.messages.findLast(m => m.name === 'danmaku-load-result').data;
   assert.equal(result.loadId,7);
   assert.equal(result.success,false);
+});
+
+test('4:3 video uses full height and keeps its bounds in a wide window', () => {
+  const h = harness();
+  h.send('load-danmaku', {loadId: 1, danmakuType: 'dandanplay', xmlContent: encodeURIComponent(JSON.stringify([comment('test', [])])), videoAspectRatio: 4 / 3});
+  assert.equal(h.canvas.width, 1440);
+  assert.equal(h.canvas.height, 1080);
+  assert.deepEqual(h.viewport.style, {left: '160px', top: '0px', width: '960px', height: '720px'});
+  h.context.window.innerWidth = 960;
+  h.send('resize', {});
+  assert.equal(h.viewport.style.left, '0px');
+  assert.equal(h.viewport.style.height, '720px');
+  assert.equal(h.instances.length, 1, 'window resizing does not parse/rebuild CA');
+});
+
+test('video aspect changes resize the existing renderer while paused', () => {
+  const h = harness();
+  h.send('pause-state', {paused: true});
+  h.send('time-update', {time: 12});
+  load(h, [comment('test', [])]);
+  const renderer = h.instances[0];
+  h.send('set-video-aspect', {aspect: 4 / 3});
+  assert.deepEqual(renderer.size, {width: 1440, height: 1080});
+  assert.equal(renderer.draws.at(-1), 1200);
+  h.send('set-video-aspect', {aspect: 21 / 9});
+  assert.deepEqual(renderer.size, {width: 2520, height: 1080});
+  assert.equal(h.instances.length, 1);
+  assert.ok(parseFloat(h.viewport.style.top) > 0, 'wide video is letterboxed vertically');
+  h.send('set-video-aspect', {aspect: NaN});
+  assert.deepEqual(renderer.size, {width: 1920, height: 1080});
 });

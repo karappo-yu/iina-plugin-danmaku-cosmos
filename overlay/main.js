@@ -38,6 +38,8 @@ let canvasSystemAnchorTime = 0;
 let canvasIsPlaying = false;
 let playbackSpeed = 1.0;
 let danmakuVisible = true;
+let videoAspectRatio = 0;
+let canvasViewportFrame = null;
 
 function canvasSyncAnchor(videoTimeSec) {
   canvasVideoAnchorTime = videoTimeSec;
@@ -248,16 +250,54 @@ function scheduleCanvasRebuild() {
   }, 80);
 }
 
+function updateCanvasViewport() {
+  const viewport = document.getElementById('danmaku-viewport');
+  const canvas = document.getElementById('niconicomments-canvas');
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  if (!viewport || !canvas || !(width > 0 && height > 0)) return false;
+  const aspect = videoAspectRatio > 0 ? videoAspectRatio : width / height;
+  const displayHeight = Math.min(height, width / aspect);
+  const displayWidth = displayHeight * aspect;
+  viewport.style.left = (width - displayWidth) / 2 + 'px';
+  viewport.style.top = (height - displayHeight) / 2 + 'px';
+  viewport.style.width = displayWidth + 'px';
+  viewport.style.height = displayHeight + 'px';
+  // Keep a stable logical height. Changing only the window size then changes
+  // the display scale, without rebuilding comments or their collision lanes.
+  const sizeScale = Math.min(1, 8192 / (1080 * aspect));
+  const canvasWidth = Math.max(1, Math.round(1080 * aspect * sizeScale));
+  const canvasHeight = Math.max(1, Math.round(1080 * sizeScale));
+  if (niconiComments) return niconiComments.resize(canvasWidth, canvasHeight);
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  return true;
+}
+
+function refreshCanvasViewport() {
+  updateCanvasViewport();
+  if (niconiComments && danmakuVisible) drawCanvasAtVpos(canvasGetCurrentTime() * 100, true);
+}
+
+if (typeof window.addEventListener === 'function') {
+  window.addEventListener('resize', function () {
+    if (canvasViewportFrame !== null) return;
+    canvasViewportFrame = requestAnimationFrame(function () {
+      canvasViewportFrame = null;
+      refreshCanvasViewport();
+    });
+  });
+}
+
 function initCanvasRenderer(data) {
   if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
   canvasRebuildTimer = null;
   const canvas = document.getElementById('niconicomments-canvas');
   if (!canvas || typeof NiconiComments === 'undefined') return;
-  canvas.width = 1920;
-  canvas.height = 1080;
   const useCssMode = canvasNicoMode === 'css';
   canvas.style.opacity = useCssMode ? 0 : canvasOpacity;
   disposeCanvasRenderer();
+  updateCanvasViewport();
   niconiComments = new NiconiComments(canvas, data, {
     format: nicoRawFormat,
     mode: canvasNicoMode,
@@ -339,6 +379,10 @@ function applyOpacityToDom() {
 
 // load-danmaku 共用的逐字段幂等设置应用(重复携带无副作用)
 function applyOverlaySettings(data) {
+  if (data.videoAspectRatio !== undefined) {
+    const aspect = Number(data.videoAspectRatio);
+    videoAspectRatio = isFinite(aspect) && aspect > 0 ? aspect : 0;
+  }
   if (data.opacity !== undefined) { canvasOpacity = data.opacity; applyOpacityToDom(); }
   if (data.canvasFontScale !== undefined) canvasFontScale = data.canvasFontScale;
   if (data.canvasMode !== undefined) canvasNicoMode = data.canvasMode;
@@ -393,11 +437,12 @@ onPluginMessage("load-danmaku", (data) => {
   } catch (error) { reportCanvasError(error); }
 });
 
-onPluginMessage("resize", () => {
-  if (niconiComments) {
-    niconiComments.clear();
-    drawCanvasAtVpos(canvasGetCurrentTime() * 100, true);
-  }
+onPluginMessage("resize", refreshCanvasViewport);
+
+onPluginMessage("set-video-aspect", (data) => {
+  const aspect = Number(data && data.aspect);
+  videoAspectRatio = isFinite(aspect) && aspect > 0 ? aspect : 0;
+  refreshCanvasViewport();
 });
 
 onPluginMessage("pause-state", (data) => {

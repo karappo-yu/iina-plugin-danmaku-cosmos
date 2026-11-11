@@ -814,6 +814,7 @@ function buildLoadDanmakuPayload(xmlContent, danmakuType) {
     xmlContent: xmlContent,
     danmakuType: danmakuType,
     canvasMode: currentCanvasMode,
+    videoAspectRatio: getVideoAspectRatio(),
     opacity: canvasOpacity,
     canvasFontScale: canvasFontScale,
     strokeColor: strokeColor,
@@ -2055,10 +2056,32 @@ function loadDanmakuFile(path, options) {
   return true;
 }
 
+function getVideoAspectRatio() {
+  let aspect = mpv.getNumber("video-out-params/aspect");
+  let rotation = mpv.getNumber("video-out-params/rotate");
+  if (!(typeof aspect === "number" && isFinite(aspect) && aspect > 0)) {
+    aspect = mpv.getNumber("video-params/aspect");
+    rotation = mpv.getNumber("video-params/rotate");
+  }
+  if (!(typeof aspect === "number" && isFinite(aspect) && aspect > 0)) {
+    let width = core.status.videoWidth;
+    let height = core.status.videoHeight;
+    aspect = width > 0 && height > 0 ? width / height : 0;
+  }
+  if (!(typeof aspect === "number" && isFinite(aspect) && aspect > 0)) return 0;
+  if (typeof rotation === "number" && Math.abs(rotation % 180) === 90) aspect = 1 / aspect;
+  return aspect;
+}
+
+function postVideoAspect() {
+  if (overlayReady) overlayPostMessage("set-video-aspect", { aspect: getVideoAspectRatio() });
+}
+
 function markOverlayReady() {
   if (overlayReady) return;
   overlayReady = true;
   overlay.show();
+  postVideoAspect();
   overlayPostMessage("toggle-danmaku", { enabled: danmakuEnabled });
   overlayPostMessage("pause-state", { paused: !!core.status.paused });
 
@@ -2090,6 +2113,7 @@ function setObserver(start) {
       if (danmakuBrowserWatch) pushBrowserTime(t);
     });
     windowScaleListenerID = event.on("mpv.window-scale.changed", function () {
+      postVideoAspect();
       overlayPostMessage("resize", {});
     });
     speedListenerID = event.on("mpv.speed.changed", function (speed) {
@@ -2489,6 +2513,7 @@ event.on("iina.plugin-overlay-loaded", function () {
 });
 
 event.on("iina.file-loaded", function (url) {
+  postVideoAspect();
   // 偏移量因视频/弹幕文件而异(且不持久化),切换视频时归零并同步 overlay/sidebar
   applyDanmakuOffset(0);
   // 无论弹幕开关状态都重置视频相关状态,避免旧 renderer/弹幕残留到新视频。
@@ -2499,6 +2524,11 @@ event.on("mpv.pause.changed", function () {
   if (!overlayReady) return;
   overlayPostMessage("pause-state", { paused: core.status.paused });
 });
+
+// mpv's display aspect includes pixel-aspect and aspect overrides; output
+// parameters also include video filters. Property updates handle rotation/crop.
+event.on("mpv.video-out-params.changed", postVideoAspect);
+event.on("mpv.video-params.changed", postVideoAspect);
 
 function registerOverlayHandlers() {
   // IINA replaces listeners by name; re-register after every overlay navigation.
