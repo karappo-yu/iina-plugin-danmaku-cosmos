@@ -129,3 +129,35 @@ test('video aspect changes resize the existing renderer while paused', () => {
   h.send('set-video-aspect', {aspect: NaN});
   assert.deepEqual(renderer.size, {width: 1920, height: 1080});
 });
+
+test('fullscreen expands 4:3 output across pillarboxes without changing video height', () => {
+  const h = harness();
+  h.send('pause-state', {paused: true});
+  h.send('time-update', {time: 12});
+  h.send('set-video-aspect', {aspect: 4 / 3, fullscreen: false});
+  load(h, [comment('test', [])]);
+  const renderer = h.instances[0];
+  const videoHeight = h.viewport.style.height;
+  h.send('set-fullscreen', {fullscreen: true});
+  assert.deepEqual(h.viewport.style, {left: '0px', top: '0px', width: '1280px', height: videoHeight});
+  assert.deepEqual(renderer.size, {width: 1920, height: 1080});
+  assert.equal(renderer.draws.at(-1), 1200);
+  assert.equal(h.instances.length, 1);
+  h.send('set-fullscreen', {fullscreen: false});
+  assert.deepEqual(h.viewport.style, {left: '160px', top: '0px', width: '960px', height: videoHeight});
+  assert.deepEqual(renderer.size, {width: 1440, height: 1080});
+});
+
+test('fullscreen startup and resize use the full width, including ultrawide displays', () => {
+  const h = harness();
+  h.send('load-danmaku', {danmakuType: 'dandanplay', xmlContent: encodeURIComponent(JSON.stringify([comment('test', [])])), videoAspectRatio: 4 / 3, fullscreen: true});
+  assert.equal(h.canvas.width, 1920);
+  h.context.window.innerWidth = 1680;
+  h.send('resize', {});
+  assert.deepEqual(h.instances[0].size, {width: 2520, height: 1080});
+  assert.equal(h.viewport.style.width, '1680px');
+  assert.equal(h.viewport.style.height, '720px');
+  h.send('set-video-aspect', {aspect: 21 / 9});
+  assert.equal(h.viewport.style.width, '1680px');
+  assert.equal(h.viewport.style.top, '0px');
+});

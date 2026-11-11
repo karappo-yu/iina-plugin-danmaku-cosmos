@@ -39,6 +39,7 @@ let canvasIsPlaying = false;
 let playbackSpeed = 1.0;
 let danmakuVisible = true;
 let videoAspectRatio = 0;
+let videoFullscreen = false;
 let canvasViewportFrame = null;
 
 function canvasSyncAnchor(videoTimeSec) {
@@ -259,14 +260,18 @@ function updateCanvasViewport() {
   const aspect = videoAspectRatio > 0 ? videoAspectRatio : width / height;
   const displayHeight = Math.min(height, width / aspect);
   const displayWidth = displayHeight * aspect;
-  viewport.style.left = (width - displayWidth) / 2 + 'px';
+  // Fullscreen scrolls across pillarboxes, while font size and vertical
+  // placement still follow the video height. Windowed output fits the video.
+  const outputWidth = videoFullscreen ? width : displayWidth;
+  const outputAspect = outputWidth / displayHeight;
+  viewport.style.left = (width - outputWidth) / 2 + 'px';
   viewport.style.top = (height - displayHeight) / 2 + 'px';
-  viewport.style.width = displayWidth + 'px';
+  viewport.style.width = outputWidth + 'px';
   viewport.style.height = displayHeight + 'px';
   // Keep a stable logical height. Changing only the window size then changes
   // the display scale, without rebuilding comments or their collision lanes.
-  const sizeScale = Math.min(1, 8192 / (1080 * aspect));
-  const canvasWidth = Math.max(1, Math.round(1080 * aspect * sizeScale));
+  const sizeScale = Math.min(1, 8192 / (1080 * outputAspect));
+  const canvasWidth = Math.max(1, Math.round(1080 * outputAspect * sizeScale));
   const canvasHeight = Math.max(1, Math.round(1080 * sizeScale));
   if (niconiComments) return niconiComments.resize(canvasWidth, canvasHeight);
   canvas.width = canvasWidth;
@@ -379,6 +384,7 @@ function applyOpacityToDom() {
 
 // load-danmaku 共用的逐字段幂等设置应用(重复携带无副作用)
 function applyOverlaySettings(data) {
+  if (data.fullscreen !== undefined) videoFullscreen = !!data.fullscreen;
   if (data.videoAspectRatio !== undefined) {
     const aspect = Number(data.videoAspectRatio);
     videoAspectRatio = isFinite(aspect) && aspect > 0 ? aspect : 0;
@@ -442,6 +448,12 @@ onPluginMessage("resize", refreshCanvasViewport);
 onPluginMessage("set-video-aspect", (data) => {
   const aspect = Number(data && data.aspect);
   videoAspectRatio = isFinite(aspect) && aspect > 0 ? aspect : 0;
+  if (data && data.fullscreen !== undefined) videoFullscreen = !!data.fullscreen;
+  refreshCanvasViewport();
+});
+
+onPluginMessage("set-fullscreen", (data) => {
+  videoFullscreen = !!(data && data.fullscreen);
   refreshCanvasViewport();
 });
 

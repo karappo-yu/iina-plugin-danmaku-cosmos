@@ -815,6 +815,7 @@ function buildLoadDanmakuPayload(xmlContent, danmakuType) {
     danmakuType: danmakuType,
     canvasMode: currentCanvasMode,
     videoAspectRatio: getVideoAspectRatio(),
+    fullscreen: !!(core.window && core.window.fullscreen),
     opacity: canvasOpacity,
     canvasFontScale: canvasFontScale,
     strokeColor: strokeColor,
@@ -2074,7 +2075,10 @@ function getVideoAspectRatio() {
 }
 
 function postVideoAspect() {
-  if (overlayReady) overlayPostMessage("set-video-aspect", { aspect: getVideoAspectRatio() });
+  if (overlayReady) overlayPostMessage("set-video-aspect", {
+    aspect: getVideoAspectRatio(),
+    fullscreen: !!(core.window && core.window.fullscreen),
+  });
 }
 
 function markOverlayReady() {
@@ -2529,6 +2533,10 @@ event.on("mpv.pause.changed", function () {
 // parameters also include video filters. Property updates handle rotation/crop.
 event.on("mpv.video-out-params.changed", postVideoAspect);
 event.on("mpv.video-params.changed", postVideoAspect);
+
+event.on("iina.window-fs.changed", function (fullscreen) {
+  if (overlayReady) overlayPostMessage("set-fullscreen", { fullscreen: !!fullscreen });
+});
 
 function registerOverlayHandlers() {
   // IINA replaces listeners by name; re-register after every overlay navigation.

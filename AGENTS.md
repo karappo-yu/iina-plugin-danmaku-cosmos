@@ -252,8 +252,9 @@ Based on the `niconicomments` third-party library. XML and DDP use `buildFormatt
 ### Video Aspect Ratio
 
 - Main reads mpv `video-out-params/aspect` (falls back to `video-params/aspect`, then core video dimensions) and applies the reported rotation. Every load includes `videoAspectRatio`; output-parameter changes forward `set-video-aspect`.
-- Overlay fits `#danmaku-viewport` to that display ratio within the WebView. With unavailable metadata it uses the WebView ratio. Browser resize is observed even while paused.
-- The canvas keeps a logical height of 1080 and a width proportional to the video (1440 for 4:3, 1920 for 16:9, 2520 for 21:9; extreme allocation sizes are bounded). Call the engine's `resize(width, height)`, then redraw; do not rebuild/reparse comments for window resize.
+- In windowed mode, overlay fits `#danmaku-viewport` to the video display ratio. Fullscreen expands its horizontal extent to the entire WebView, including pillarboxes, while keeping the video's displayed height and vertical position. Fixed comments keep the same center and vertical alignment; scrolling comments can traverse the black side bars. With unavailable metadata it uses the WebView ratio. Browser resize is observed even while paused.
+- Fullscreen state comes from `core.window.fullscreen` on load/overlay readiness, and `iina.window-fs.changed` forwards `set-fullscreen`. The `set-video-aspect` payload also carries the current fullscreen state.
+- The canvas keeps a logical height of 1080 and a width proportional to the output rectangle (windowed 4:3 uses 1440, fullscreen on 16:9 uses 1920, 21:9 uses 2520; extreme allocation sizes are bounded). Call the engine's `resize(width, height)`, then redraw; do not rebuild/reparse comments for window or fullscreen changes.
 - The engine keeps the native layout stage and centers it in the output. 4:3 exposes the central area without reducing glyph size; intentionally full-width 16:9 CA can be cropped on 4:3. Wide viewports extend scrolling visibility while preserving collision lanes, pause and playback speed.
 - Video zoom/pan, embedded black bars and sidebar-specific video offsets are not inferred from aspect alone; such placement needs the actual video rectangle from IINA.
 

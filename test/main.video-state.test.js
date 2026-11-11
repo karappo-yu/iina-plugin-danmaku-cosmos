@@ -33,6 +33,22 @@ test('overlay receives video aspect on startup and output-parameter changes', ()
   assert.equal(h.context.buildLoadDanmakuPayload('', 'nico-json').videoAspectRatio, 21 / 9);
 });
 
+test('fullscreen state is restored on load and relayed after IINA transitions', () => {
+  const h = createHarness(true);
+  h.setFullscreen(true);
+  h.setMpv('video-out-params/aspect', 4 / 3);
+  h.readyOverlay();
+  const initial = h.overlayMessages.findLast(m => m.name === 'set-video-aspect');
+  assert.equal(initial.data.fullscreen, true);
+  assert.equal(h.context.buildLoadDanmakuPayload('', 'nico-json').fullscreen, true);
+  h.setFullscreen(false);
+  h.emitEvent('iina.window-fs.changed', false);
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'set-fullscreen').data.fullscreen, false);
+  h.setFullscreen(true);
+  h.emitEvent('iina.window-fs.changed', true);
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'set-fullscreen').data.fullscreen, true);
+});
+
 function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {}) {
   const eventHandlers = new Map();
   const overlayHandlers = new Map();
@@ -94,6 +110,7 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
       separator() { return {}; },
     },
     core: {
+      window: { fullscreen: false },
       status: { idle: false, isNetworkResource: false, paused: false, url: null },
       osd(message) { osdMessages.push(message); },
       seekTo() {},
@@ -202,6 +219,7 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     },
     emitOverlay(name, data = {}) { emit(overlayHandlers, name, data); },
     setPaused(value) { iina.core.status.paused = value; },
+    setFullscreen(value) { iina.core.window.fullscreen = value; },
     setMpv(name, value) { mpvValues[name] = value; },
     setExec(handler) { execHandler = handler; },
     fileWrites,
