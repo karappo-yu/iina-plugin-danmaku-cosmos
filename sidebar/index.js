@@ -26,6 +26,8 @@ var strokeColorInput = document.getElementById("stroke-color");
 var strokeInversionInput = document.getElementById("stroke-inversion-color");
 var commentLimitSlider = document.getElementById("comment-limit-slider");
 var commentLimitValue = document.getElementById("comment-limit-value");
+// The rightmost stop means unlimited; keep this in sync with index.html's max.
+let COMMENT_LIMIT_SLIDER_UNLIMITED = 210;
 var speedSlider = document.getElementById("speed-slider");
 var speedValue = document.getElementById("speed-value");
 var offsetInput = document.getElementById("danmaku-offset-input");
@@ -47,7 +49,7 @@ var filterHandleRight = document.getElementById("filter-handle-right");
 var densitySlider = document.getElementById("density-slider");
 var densityValue = document.getElementById("density-value");
 var densityCount = document.getElementById("density-count");
-// 滑块最右端不是密度值, 而是"不限制"哨兵; 与 index.html 的 max 必须一致
+// 滑块最右端不是密度值, 而是"无限制"哨兵; 与 index.html 的 max 必须一致
 var DENSITY_SLIDER_OFF = 550;
 var tabBasic = document.getElementById("tab-basic");
 var tabAdvanced = document.getElementById("tab-advanced");
@@ -361,7 +363,7 @@ var i18n = {
     scroll_speed: "\u6eda\u52a8\u901f\u5ea6",
     file_add: "\u672c\u5730\u6dfb\u52a0",
     off: "\u5173\u95ed",
-    unlimited: "\u4e0d\u9650\u5236",
+    unlimited: "\u65e0\u9650\u5236",
     dandanplay_search_placeholder: "\u52a8\u753b\u6807\u9898...",
     dandanplay_search: "\u624b\u52a8\u641c\u7d22",
     dandanplay_search_go: "\u641c\u7d22",
@@ -522,8 +524,8 @@ function updateUI() {
   strokeWidthValue.textContent = String(state.strokeWidth) + 'px';
   strokeColorInput.value = state.strokeColor;
   strokeInversionInput.value = state.strokeInversionColor;
-  commentLimitSlider.value = state.commentLimit;
-  commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : t('off');
+  commentLimitSlider.value = state.commentLimit > 0 ? state.commentLimit : COMMENT_LIMIT_SLIDER_UNLIMITED;
+  commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : t('unlimited');
   speedSlider.value = Math.round(state.scrollSpeed * 100);
   speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
   if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
@@ -716,10 +718,15 @@ strokeInversionInput.addEventListener("input", function () {
 });
 
 commentLimitSlider.addEventListener("input", function () {
-  var val = parseInt(commentLimitSlider.value, 10);
-  state.commentLimit = val;
-  commentLimitValue.textContent = val > 0 ? String(val) : t('off');
-  iina.postMessage("set-comment-limit", { limit: val });
+  let val = parseInt(commentLimitSlider.value, 10);
+  commentLimitValue.textContent = val >= COMMENT_LIMIT_SLIDER_UNLIMITED ? t('unlimited') : String(val);
+});
+
+commentLimitSlider.addEventListener("change", function () {
+  let val = parseInt(commentLimitSlider.value, 10);
+  let limit = val >= COMMENT_LIMIT_SLIDER_UNLIMITED ? 0 : val;
+  state.commentLimit = limit;
+  iina.postMessage("set-comment-limit", { limit: limit });
 });
 
 if (offsetInput) {
