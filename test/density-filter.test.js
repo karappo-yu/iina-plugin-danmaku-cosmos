@@ -200,6 +200,15 @@ test('密度未设置或条目本就少于配额时不做任何改写', () => {
   assert.equal(plugin.applyDensityFilter(encoded, 'nico-xml', 50), null);
   assert.equal(plugin.applyDensityFilter(encoded, 'bilibili-xml', 0), null);
   assert.equal(plugin.applyDensityFilter(encodeURIComponent(JSON.stringify(ddpList(5))), 'dandanplay', 50), null);
+  for (const [type, content] of [
+    ['nico-xml', nicoXml(5)],
+    ['bilibili-xml', biliXml(5)],
+    ['dandanplay', JSON.stringify(ddpList(5))],
+  ]) {
+    const counts = plugin.countDensityItems(encodeURIComponent(content), type, 0);
+    assert.equal(counts.total, 5, `${type} still reports the file total when density is unlimited`);
+    assert.equal(counts.kept, 5);
+  }
 });
 
 test('nico-json 完全不受新路径介入', () => {

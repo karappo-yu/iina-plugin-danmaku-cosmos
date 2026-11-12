@@ -111,7 +111,7 @@ CA 弹幕：
 
 密度控制以 **60 秒为一个时间窗口**：弹幕较少时原样保留，超出设定数量时才筛选；保留下来的弹幕仍按原来的时间点出现。以一分钟为单位调整数量，能在控制拥挤程度的同时，尽量保留弹幕随剧情起伏的节奏，减少对画面和字幕的干扰。
 
-在「基础」tab 调整每分钟数量，滑块最右端为关闭。字幕在底部时，可在「过滤」tab 开启「屏蔽底部弹幕」；顶部字幕则可对应开启顶部屏蔽。结合字号、去重等选项，可以按内容和观看习惯自由调整。位置屏蔽针对固定弹幕，滚动弹幕仍保留全屏布局。
+在「基础」tab 调整每分钟数量，默认 **不限制**（滑块最右端）。设置会自动保存，切换视频或重启 IINA 后继续生效。字幕在底部时，可在「过滤」tab 开启「屏蔽底部弹幕」；顶部字幕则可对应开启顶部屏蔽。结合字号、去重等选项，可以按内容和观看习惯自由调整。位置屏蔽针对固定弹幕，滚动弹幕仍保留全屏布局。
 
 ### 弹幕文件加载
 
@@ -201,7 +201,7 @@ CA 弹幕：
 
 密度調整は **60秒単位の時間枠**で行います。コメントが少ない時間枠はそのまま残し、設定数を超えたときだけ間引きます。残したコメントの表示時刻は変えません。1分単位で数を調整することで、画面の混雑を抑えつつ、動画の展開に応じたコメントの増減をできるだけ保ち、映像や字幕を見やすくします。
 
-「基本」タブで1分あたりの数を調整でき、スライダーの右端でオフにできます。字幕が下部にある場合は「フィルター」タブの下部ブロックを、上部にある場合は上部ブロックを利用できます。フォント倍率や重複排除と組み合わせ、動画や好みに応じて調整してください。位置によるブロックは固定コメントが対象で、スクロールコメントは画面全体に表示されます。
+「基本」タブで1分あたりの数を調整でき、初期値は **無制限**（スライダーの右端）です。設定は自動保存され、動画の切り替えや IINA の再起動後も維持されます。字幕が下部にある場合は「フィルター」タブの下部ブロックを、上部にある場合は上部ブロックを利用できます。フォント倍率や重複排除と組み合わせ、動画や好みに応じて調整してください。位置によるブロックは固定コメントが対象で、スクロールコメントは画面全体に表示されます。
 
 ### ネットワークコメント
 
@@ -317,7 +317,7 @@ Danmaku activity follows the story: quiet scenes attract fewer comments, while j
 
 Density control works in **60-second windows**. Windows with fewer comments are left intact; comments are filtered only when the configured count is exceeded. Retained comments keep their original display times. Adjusting counts over a minute helps control crowding while preserving as much of the story's natural rhythm of comment activity as possible, reducing interference with the video and subtitles.
 
-Adjust the per-minute count in the **Basic** tab; the slider's far-right position turns filtering off. For subtitles at the bottom, enable **Block Bottom Danmaku** in the **Filter** tab; use top blocking for subtitles at the top. Combine these controls with font scale and deduplication to suit the content and your viewing preferences. Position blocking applies to fixed comments, while scrolling comments retain the full-screen layout.
+Adjust the per-minute count in the **Basic** tab; the default is **unlimited** (the slider's far-right position). The setting is saved automatically and retained when switching videos or restarting IINA. For subtitles at the bottom, enable **Block Bottom Danmaku** in the **Filter** tab; use top blocking for subtitles at the top. Combine these controls with font scale and deduplication to suit the content and your viewing preferences. Position blocking applies to fixed comments, while scrolling comments retain the full-screen layout.
 
 ### Loading Comment Files
 

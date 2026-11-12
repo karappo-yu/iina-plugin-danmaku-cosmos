@@ -27,6 +27,7 @@
     "strokeOpacity": 0.4,
     "strokeWidth": 2.8,
     "commentLimit": 0,
+    "danmakuFilterDensity": 0,
     "scrollSpeed": 1.0,
     "danmakuFontFamily": "",
     "danmakuFontWeight": "400",

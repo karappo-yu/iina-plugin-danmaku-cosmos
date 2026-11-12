@@ -232,7 +232,7 @@ var nicoJsonDurationDiff = null;
 let nicoJsonHasDuration = false;
 var danmakuFilterOffset = 0;
 var danmakuFilterLimit = 0;
-var danmakuFilterDensity = 0;
+var danmakuFilterDensity = preferences.get("danmakuFilterDensity") !== undefined ? preferences.get("danmakuFilterDensity") : 0;
 var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听(控制播放时间推送)
 var lastBrowserTimeSent = 0;
 var danmakuBrowserVisible = preferences.get("danmakuBrowserVisible") !== undefined ? !!preferences.get("danmakuBrowserVisible") : true;
@@ -418,6 +418,24 @@ function computeNicoJsonCount(encodedContent) {
   return 0;
 }
 
+// 密度角标统计文件内的评论, 包括保留的 owner/easy, 不把 legacy 元数据当成评论。
+function countNicoJsonItems(data) {
+  let count = 0;
+  for (let i = 0; i < data.length; i++) {
+    let entry = data[i];
+    if (!entry) continue;
+    if (Array.isArray(entry.comments)) {
+      for (let j = 0; j < entry.comments.length; j++) {
+        let comment = entry.comments[j];
+        if (comment && comment.deleted !== 1) count += 1;
+      }
+    } else if (entry.chat && !Array.isArray(entry.chat) && entry.chat.deleted !== 1) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 // 读取 nico-json 中 main 线程的 duration 字段(下载弹幕时原视频的长度,单位秒)
 function extractNicoJsonDuration(encodedContent) {
   if (!encodedContent) return null;
@@ -510,6 +528,7 @@ function osdAfterDanmakuLoad(loadedName, loadedMessageKey) {
 function sendDanmakuFilterInfo() {
   var rangeStartDate = null;
   var rangeEndDate = null;
+  let sourceTotalCount = 0;
   var filteredCount = 0;
 
   var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
@@ -523,14 +542,8 @@ function sendDanmakuFilterInfo() {
         var data = JSON.parse(rawStr);
         if (Array.isArray(data)) {
           var filteredData = filterNicoJsonData(data);
-          for (var fi = 0; fi < filteredData.length; fi++) {
-            var fthread = filteredData[fi];
-            if (fthread && fthread.fork !== 'owner' && fthread.fork !== 'easy' && Array.isArray(fthread.comments)) {
-              filteredCount += fthread.comments.length;
-            } else if (fthread && fthread.chat && !Array.isArray(fthread.chat) && fthread.chat.user_id && fthread.chat.deleted !== 1) {
-              filteredCount += 1;
-            }
-          }
+          sourceTotalCount = countNicoJsonItems(data);
+          filteredCount = countNicoJsonItems(filteredData);
           for (var i = 0; i < data.length; i++) {
             var thread = data[i];
             if (thread && thread.fork !== 'owner' && thread.fork !== 'easy' && Array.isArray(thread.comments) && thread.comments.length > 0) {
@@ -554,14 +567,18 @@ function sendDanmakuFilterInfo() {
         }
       } catch (e) {}
     }
-  } else if (selectedPath && ft && danmakuFilterDensity > 0) {
+  } else if (selectedPath && ft) {
     var densityCounts = countDensityItems(danmakuCache[selectedPath], ft, danmakuFilterDensity);
-    if (densityCounts) filteredCount = densityCounts.kept;
+    if (densityCounts) {
+      sourceTotalCount = densityCounts.total;
+      filteredCount = densityCounts.kept;
+    }
   }
 
   sidebarPostMessage("danmaku-filter-info", {
     fileType: ft,
     totalCount: nicoJsonTotalCount,
+    sourceTotalCount: sourceTotalCount,
     filterOffset: danmakuFilterOffset,
     filterLimit: danmakuFilterLimit,
     filterDensity: danmakuFilterDensity,
@@ -751,9 +768,9 @@ function applyDensityFilter(encodedContent, ft, density) {
   return encodeContent(chunks.join(''));
 }
 
-// 侧栏角标用: 当前密度下会保留多少条 {total, kept}; 解析失败或无密度设置返回 null。
+// 侧栏角标用: 文件总数与当前密度下的保留数 {total, kept}; 不限制时两者相等。
 function countDensityItems(encodedContent, ft, density) {
-  if (!encodedContent || !density || density <= 0) return null;
+  if (!encodedContent) return null;
   var rawStr;
   try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return null; }
 
@@ -761,11 +778,11 @@ function countDensityItems(encodedContent, ft, density) {
     var list;
     try { list = JSON.parse(rawStr); } catch (e) { return null; }
     if (!Array.isArray(list)) return null;
-    return { total: list.length, kept: countKept(selectDensityKeep(ddpDensityRecords(list), density)) };
+    return { total: list.length, kept: density > 0 ? countKept(selectDensityKeep(ddpDensityRecords(list), density)) : list.length };
   }
   var entries = densityScanXml(rawStr, ft);
   if (entries.length === 0) return null;
-  return { total: entries.length, kept: countKept(selectDensityKeep(entries, density)) };
+  return { total: entries.length, kept: density > 0 ? countKept(selectDensityKeep(entries, density)) : entries.length };
 }
 
 function filterNicoJsonData(data) {
@@ -862,7 +879,6 @@ function resetNicoJsonFilterState() {
   clearNicoJsonDuration();
   danmakuFilterOffset = 0;
   danmakuFilterLimit = 0;
-  danmakuFilterDensity = 0;
 }
 
 function applyDanmakuFilter(offset, limit) {
@@ -884,6 +900,8 @@ function applyDanmakuFilter(offset, limit) {
 
 function applyDanmakuFilterDensity(density) {
   danmakuFilterDensity = density;
+  preferences.set("danmakuFilterDensity", danmakuFilterDensity);
+  syncPreferencesSoon();
   applyDanmakuFilter(danmakuFilterOffset, danmakuFilterLimit);
 }
 

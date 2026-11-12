@@ -47,7 +47,7 @@ var filterHandleRight = document.getElementById("filter-handle-right");
 var densitySlider = document.getElementById("density-slider");
 var densityValue = document.getElementById("density-value");
 var densityCount = document.getElementById("density-count");
-// 滑块最右端不是密度值, 而是"不限制"哨兵; 与 index.html 的 max/value 必须一致
+// 滑块最右端不是密度值, 而是"不限制"哨兵; 与 index.html 的 max 必须一致
 var DENSITY_SLIDER_OFF = 550;
 var tabBasic = document.getElementById("tab-basic");
 var tabAdvanced = document.getElementById("tab-advanced");
@@ -108,6 +108,7 @@ var state = {
   danmakuFilterOffset: 0,
   danmakuFilterLimit: 0,
   danmakuFilterDensity: 0,
+  sourceTotalCount: 0,
   filteredCount: 0,
   rangeStartDate: null,
   rangeEndDate: null,
@@ -568,7 +569,8 @@ function updateDensitySlider() {
     densityValue.textContent = t('unlimited');
   }
   if (densityCount) {
-    densityCount.textContent = state.filteredCount > 0 ? '\uff08' + state.filteredCount + '\uff09' : '';
+    densityCount.textContent = state.sourceTotalCount > 0
+      ? state.filteredCount + '/' + state.sourceTotalCount : '';
   }
 }
 
@@ -950,6 +952,7 @@ if (densitySlider) {
 onPluginMessage("danmaku-filter-info", function (data) {
   if (data.fileType !== undefined) state.danmakuType = data.fileType;
   state.nicoJsonTotalCount = data.totalCount || 0;
+  state.sourceTotalCount = data.sourceTotalCount || 0;
   state.danmakuFilterOffset = data.filterOffset || 0;
   state.danmakuFilterLimit = data.filterLimit || 0;
   state.danmakuFilterDensity = data.filterDensity || 0;

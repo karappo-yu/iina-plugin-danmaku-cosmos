@@ -392,6 +392,99 @@ test('position settings default off, persist independently and restore through l
   }
 });
 
+const densityXmlFixture = '<i>' + Array.from({ length: 400 }, (_, index) =>
+  `<d p="1,1,25,16777215,0,0,user${index},${index}">comment ${index}</d>`
+).join('') + '</i>';
+
+test('density defaults to unlimited and leaves the first video unfiltered before the sidebar opens', () => {
+  const harness = createHarness(true);
+  harness.setFile('/videos/A.xml', densityXmlFixture);
+  harness.readyOverlay();
+  harness.setVideo('file:///videos/A.mp4');
+  assert.equal(loadedComments(harness.overlayMessages).at(-1).match(/<d\b/g).length, 400);
+  harness.emitSidebar('request-state');
+  assert.equal(harness.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.danmakuFilterDensity, 0);
+  const info = harness.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
+  assert.equal(info.filteredCount, 400);
+  assert.equal(info.sourceTotalCount, 400);
+});
+
+for (const density of [300, 0]) {
+  test(`density ${density || 'unlimited'} persists through restart, source selection and video changes`, () => {
+    const harness = createHarness(true);
+    let syncCount = 0;
+    harness.context.iina.preferences.sync = () => { syncCount += 1; };
+    harness.emitSidebar('set-danmaku-filter-density', { density });
+    assert.equal(harness.preferences.get('danmakuFilterDensity'), density);
+    assert.equal(syncCount, 0);
+    harness.runTimers(250);
+    assert.equal(syncCount, 1);
+
+    const restarted = createHarness(true, false, Object.fromEntries(harness.preferences));
+    restarted.setFile('/videos/A.xml', densityXmlFixture);
+    restarted.setFile('/videos/B.xml', densityXmlFixture);
+    restarted.readyOverlay();
+    restarted.setVideo('file:///videos/A.mp4');
+    restarted.emitSidebar('request-state');
+    assert.equal(restarted.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.danmakuFilterDensity, density);
+    assert.equal(loadedComments(restarted.overlayMessages).at(-1).match(/<d\b/g).length, density || 400);
+
+    restarted.emitSidebar('select-danmaku-file', { path: encodeURIComponent('/videos/B.xml') });
+    assert.equal(loadedComments(restarted.overlayMessages).at(-1).match(/<d\b/g).length, density || 400);
+    restarted.setVideo('file:///videos/B.mp4');
+    const info = restarted.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
+    assert.equal(info.filterDensity, density);
+    assert.equal(info.filteredCount, density || 400);
+    assert.equal(info.sourceTotalCount, 400);
+    assert.equal(loadedComments(restarted.overlayMessages).at(-1).match(/<d\b/g).length, density || 400);
+  });
+}
+
+test('V1 density counts include protected threads and keep the original file total after date slicing', () => {
+  const harness = createHarness(true, false, { danmakuFilterDensity: 5 });
+  harness.readyOverlay();
+  harness.setFile('/videos/counts.json', JSON.stringify([
+    { fork: 'main', comments: Array.from({ length: 20 }, (_, index) =>
+      ({ no: index + 1, vposMs: 1000, body: `comment ${index}`, commands: [] })) },
+    { fork: 'owner', comments: [{ vposMs: 1000, body: 'owner', commands: [] }] },
+    { fork: 'easy', comments: [{ vposMs: 1000, body: 'easy', commands: [] }] },
+  ]));
+  harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent('/videos/counts.json') });
+  function assertCounts(kept) {
+    harness.emitSidebar('request-state');
+    const info = harness.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
+    assert.equal(info.sourceTotalCount, 22);
+    assert.equal(info.filteredCount, kept);
+    assert.equal(info.totalCount, 20, 'date selector keeps its own main-thread count');
+  }
+  assertCounts(7);
+  harness.emitSidebar('set-danmaku-filter', { offset: 0, limit: 3 });
+  assertCounts(5);
+  harness.emitSidebar('set-danmaku-filter-density', { density: 0 });
+  assertCounts(5);
+  harness.emitSidebar('set-danmaku-filter', { offset: 0, limit: 0 });
+  assertCounts(22);
+});
+
+test('legacy density counts include owner comments and exclude metadata records', () => {
+  const harness = createHarness(true, false, { danmakuFilterDensity: 5 });
+  harness.readyOverlay();
+  harness.setFile('/videos/legacy-counts.json', JSON.stringify([
+    { thread: { resultcode: 0 } },
+    { chat: { vpos: 100, content: 'owner' } },
+    ...Array.from({ length: 20 }, (_, index) =>
+      ({ chat: { no: index + 1, vpos: 100, content: `comment ${index}`, user_id: 'viewer' } })),
+  ]));
+  harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent('/videos/legacy-counts.json') });
+  let info = harness.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
+  assert.equal(info.sourceTotalCount, 21);
+  assert.equal(info.filteredCount, 6);
+  harness.emitSidebar('set-danmaku-filter-density', { density: 0 });
+  info = harness.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
+  assert.equal(info.sourceTotalCount, 21);
+  assert.equal(info.filteredCount, 21);
+});
+
 test('position blocking combines with word blocking and keeps blocked fixed comments out of list deduplication', () => {
   const harness = createHarness(true);
   setPositionSource(harness, 'dandanplay', JSON.stringify([
