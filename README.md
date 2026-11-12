@@ -105,6 +105,8 @@ CA 弹幕：
 - **去重**：将设定时间窗内的相同弹幕合并为「原文xN」并自动配色；固定弹幕支持渐进合并（x2/x3）
 - **点击跳转**：点击时间戳跳转视频到对应位置；弹幕文本内的时间（如「空降 01:39」）也可点击跳转
 
+Nico JSON（V1／旧版）还可以在「基础」tab 按**投稿日期**切片：滑条按每天的弹幕数量分配宽度，弹幕多的日期占更长一段；两端滑块按日本时间的自然日选择，包含起止当天，最小可选一天。只支持拖动两端滑块调整范围，选中滑块后用方向键可切换到前一个或后一个有弹幕的日期；没有弹幕的日期会自动跳过。日期和条数会随拖动更新，进度条上的条数是密度过滤前的普通评论数量。密度计数显示「密度过滤后数量／日期切片后数量」。日期切片保留 owner／easy 评论及缺少有效日期的评论，切换弹幕来源或视频后恢复完整日期范围。
+
 #### 密度控制的设计思路
 
 弹幕的数量会随着剧情变化：平静片段较少，笑点、名场面或高潮时集中出现。这种疏密起伏本身就是观看体验的一部分。将弹幕限制在屏幕上方四分之一等固定区域，会把这些变化挤进很小的空间，让弹幕的展开方式和观看节奏显得死板。因此，本插件选择通过密度控制减少过量弹幕，保留完整的显示空间。
@@ -310,6 +312,8 @@ A new **Filter** tab in the sidebar provides a danmaku timeline browser with fil
 - **Top/bottom blocking**: Independently block fixed comments at the top or bottom. Both options default to off and their settings are saved. Blocked entries remain in the list with strikethrough and are excluded from the count
 - **Dedupe**: Merges identical danmaku within a configurable time window into `text xN` with auto-coloring; fixed comments support progressive merging (x2/x3)
 - **Click-to-seek**: Click a timestamp to seek the video to that position; times inside danmaku text (e.g. `空降 01:39`) are also clickable
+
+For Nico JSON (V1 and legacy), the **Basic** tab also offers a **posting-date range**. Each day's track width is proportional to its comment count, so busier days occupy more space. Both handles snap to calendar days in Japan time, including the entire start and end dates; the minimum range is one day. Drag either handle to adjust the range, or focus it and use the arrow keys to move to the previous or next date with comments. Empty dates are skipped automatically. Dates and the ordinary-comment count on the range update while dragging, before density filtering. The density badge shows the count after density filtering divided by the count after date slicing. Owner/easy comments and comments without valid dates are retained. Changing the comment source or video restores the full date range.
 
 #### Why density control uses one-minute windows
 

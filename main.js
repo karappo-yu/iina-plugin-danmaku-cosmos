@@ -225,13 +225,13 @@ var danmakuFileList = {
 
 var danmakuCache = {};
 
-var nicoJsonTotalCount = 0;
+let nicoJsonDateInfo = emptyNicoJsonDateInfo();
 // 时长检测: nico-json main 线程的 duration(下载弹幕时原视频长度,秒)与当前视频时长的差值
 // null = 无检测结果(非 nico-json / 无 duration 字段 / 时长一致)
 var nicoJsonDurationDiff = null;
 let nicoJsonHasDuration = false;
-var danmakuFilterOffset = 0;
-var danmakuFilterLimit = 0;
+let danmakuFilterStartDay = null;
+let danmakuFilterEndDay = null;
 var danmakuFilterDensity = preferences.get("danmakuFilterDensity") !== undefined ? preferences.get("danmakuFilterDensity") : 0;
 var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听(控制播放时间推送)
 var lastBrowserTimeSent = 0;
@@ -401,21 +401,66 @@ function detectDanmakuType(content) {
   return 'bilibili-xml';
 }
 
-function computeNicoJsonCount(encodedContent) {
-  if (!encodedContent) return 0;
+function emptyNicoJsonDateInfo() {
+  return { totalCount: 0, firstDay: null, lastDay: null, dayCounts: [], undatedCount: 0 };
+}
+
+// Calendar-day numbers use Japan time for both V1 postedAt and legacy Unix dates.
+// UTC arithmetic on these numbers keeps day steps independent of the host's DST.
+function getNicoCommentDay(comment, legacy) {
+  if (!comment) return null;
+  let timestamp;
+  if (legacy) {
+    let seconds = Number(comment.date);
+    if (!isFinite(seconds) || seconds <= 0) return null;
+    timestamp = seconds * 1000;
+  } else {
+    if (typeof comment.postedAt !== 'string' || !comment.postedAt) return null;
+    let postedAt = comment.postedAt;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(postedAt)) postedAt += 'T00:00:00+09:00';
+    else if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(postedAt)) postedAt += '+09:00';
+    timestamp = Date.parse(postedAt);
+  }
+  if (!isFinite(timestamp) || !isFinite(new Date(timestamp).getTime())) return null;
+  return Math.floor((timestamp + 9 * 60 * 60 * 1000) / 86400000);
+}
+
+function computeNicoJsonDateInfo(encodedContent) {
+  let info = emptyNicoJsonDateInfo();
+  if (!encodedContent) return info;
   try {
-    var raw = decodeURIComponent(encodedContent);
-    var data = JSON.parse(raw);
-    if (!Array.isArray(data)) return 0;
-    var count = 0;
-    for (var i = 0; i < data.length; i++) {
-      if (data[i] && data[i].fork !== 'owner' && data[i].fork !== 'easy' && Array.isArray(data[i].comments)) {
-        count += data[i].comments.length;
+    let data = JSON.parse(decodeURIComponent(encodedContent));
+    if (!Array.isArray(data)) return info;
+    let counts = {};
+    function addComment(comment, legacy) {
+      if (!comment || comment.deleted === 1) return;
+      info.totalCount += 1;
+      let day = getNicoCommentDay(comment, legacy);
+      if (day === null) { info.undatedCount += 1; return; }
+      counts[day] = (counts[day] || 0) + 1;
+      if (info.firstDay === null || day < info.firstDay) info.firstDay = day;
+      if (info.lastDay === null || day > info.lastDay) info.lastDay = day;
+    }
+    for (let i = 0; i < data.length; i++) {
+      let entry = data[i];
+      if (!entry) continue;
+      if (Array.isArray(entry.comments) && entry.fork !== 'owner' && entry.fork !== 'easy') {
+        entry.comments.forEach(function (comment) { addComment(comment, false); });
+      } else if (entry.chat && !Array.isArray(entry.chat) && entry.chat.user_id) {
+        addComment(entry.chat, true);
       }
     }
-    return count;
+    info.dayCounts = Object.keys(counts).map(function (day) { return [Number(day), counts[day]]; })
+      .sort(function (a, b) { return a[0] - b[0]; });
   } catch (e) {}
-  return 0;
+  return info;
+}
+
+function matchesNicoDateRange(comment, legacy) {
+  if (danmakuFilterStartDay === null || danmakuFilterEndDay === null) return true;
+  let day = getNicoCommentDay(comment, legacy);
+  // Undated comments cannot be assigned a day; retain them instead of guessing.
+  return day === null || (day >= danmakuFilterStartDay && day <= danmakuFilterEndDay);
 }
 
 // 密度角标统计文件内的评论, 包括保留的 owner/easy, 不把 legacy 元数据当成评论。
@@ -526,8 +571,6 @@ function osdAfterDanmakuLoad(loadedName, loadedMessageKey) {
 }
 
 function sendDanmakuFilterInfo() {
-  var rangeStartDate = null;
-  var rangeEndDate = null;
   let sourceTotalCount = 0;
   var filteredCount = 0;
 
@@ -542,28 +585,8 @@ function sendDanmakuFilterInfo() {
         var data = JSON.parse(rawStr);
         if (Array.isArray(data)) {
           var filteredData = filterNicoJsonData(data);
-          sourceTotalCount = countNicoJsonItems(data);
+          sourceTotalCount = countNicoJsonItems(filterNicoJsonData(data, 0));
           filteredCount = countNicoJsonItems(filteredData);
-          for (var i = 0; i < data.length; i++) {
-            var thread = data[i];
-            if (thread && thread.fork !== 'owner' && thread.fork !== 'easy' && Array.isArray(thread.comments) && thread.comments.length > 0) {
-              var comments = thread.comments.slice().sort(function(a, b) { return (a.no || 0) - (b.no || 0); });
-              var offset = danmakuFilterOffset || 0;
-              var limit = danmakuFilterLimit > 0 ? danmakuFilterLimit : comments.length;
-              if (offset + limit > comments.length) {
-                offset = Math.max(0, comments.length - limit);
-              }
-              var startIdx = offset;
-              var endIdx = Math.min(offset + limit - 1, comments.length - 1);
-              for (var k = startIdx; k <= endIdx; k++) {
-                var pa = comments[k].postedAt;
-                if (!pa) continue;
-                if (rangeStartDate === null || pa < rangeStartDate) rangeStartDate = pa;
-                if (rangeEndDate === null || pa > rangeEndDate) rangeEndDate = pa;
-              }
-              break;
-            }
-          }
         }
       } catch (e) {}
     }
@@ -577,14 +600,13 @@ function sendDanmakuFilterInfo() {
 
   sidebarPostMessage("danmaku-filter-info", {
     fileType: ft,
-    totalCount: nicoJsonTotalCount,
+    totalCount: nicoJsonDateInfo.totalCount,
     sourceTotalCount: sourceTotalCount,
-    filterOffset: danmakuFilterOffset,
-    filterLimit: danmakuFilterLimit,
+    filterStartDay: danmakuFilterStartDay,
+    filterEndDay: danmakuFilterEndDay,
     filterDensity: danmakuFilterDensity,
     filteredCount: filteredCount,
-    rangeStartDate: rangeStartDate,
-    rangeEndDate: rangeEndDate
+    dateInfo: nicoJsonDateInfo
   });
 }
 
@@ -785,16 +807,23 @@ function countDensityItems(encodedContent, ft, density) {
   return { total: entries.length, kept: density > 0 ? countKept(selectDensityKeep(entries, density)) : entries.length };
 }
 
-function filterNicoJsonData(data) {
+function filterNicoJsonData(data, density) {
   if (!Array.isArray(data)) return data;
+  if (density === undefined) density = danmakuFilterDensity;
   // Legacy API returns [{chat: {...}}, ...], including non-comment metadata.
-  if (danmakuFilterDensity > 0 && data.some(function (entry) { return entry && entry.chat && !Array.isArray(entry.chat); })) {
+  if (danmakuFilterStartDay !== null && danmakuFilterEndDay !== null) {
+    data = data.filter(function (entry) {
+      let chat = entry && entry.chat;
+      return !chat || Array.isArray(chat) || !chat.user_id || matchesNicoDateRange(chat, true);
+    });
+  }
+  if (density > 0 && data.some(function (entry) { return entry && entry.chat && !Array.isArray(entry.chat); })) {
     let records = data.map(function (entry) {
       let chat = entry && entry.chat;
       return { t: chat && chat.vpos || 0, o: chat && chat.no > 0 ? chat.no : null,
         protect: !chat || !chat.user_id || chat.nicoru >= 3 };
     });
-    let keep = selectDensityKeep(records, danmakuFilterDensity);
+    let keep = selectDensityKeep(records, density);
     data = data.filter(function (_, index) { return keep[index]; });
   }
   var filteredData = [];
@@ -810,15 +839,12 @@ function filterNicoJsonData(data) {
     } else {
       var comments = thread.comments;
       var sliced = comments;
-      if (danmakuFilterLimit > 0 && danmakuFilterLimit < comments.length) {
-        var sorted = comments.slice().sort(function(a, b) { return (a.no || 0) - (b.no || 0); });
-        var start = Math.min(danmakuFilterOffset, sorted.length - danmakuFilterLimit);
-        if (start < 0) start = 0;
-        sliced = sorted.slice(start, start + danmakuFilterLimit);
+      if (danmakuFilterStartDay !== null && danmakuFilterEndDay !== null) {
+        sliced = comments.filter(function (comment) { return matchesNicoDateRange(comment, false); });
         hasFilter = true;
       }
-      if (danmakuFilterDensity > 0) {
-        sliced = densityFilterNicoJsonComments(sliced, danmakuFilterDensity);
+      if (density > 0) {
+        sliced = densityFilterNicoJsonComments(sliced, density);
         hasFilter = true;
       }
       if (sliced !== comments) {
@@ -838,7 +864,7 @@ function filterNicoJsonData(data) {
 }
 
 function applyNicoJsonFilters(encodedContent) {
-  if (danmakuFilterDensity <= 0 && danmakuFilterLimit <= 0) return encodedContent;
+  if (danmakuFilterDensity <= 0 && danmakuFilterStartDay === null) return encodedContent;
   var rawStr;
   try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return encodedContent; }
   var data;
@@ -875,18 +901,33 @@ function buildLoadDanmakuPayload(xmlContent, danmakuType) {
 }
 
 function resetNicoJsonFilterState() {
-  nicoJsonTotalCount = 0;
+  nicoJsonDateInfo = emptyNicoJsonDateInfo();
   clearNicoJsonDuration();
-  danmakuFilterOffset = 0;
-  danmakuFilterLimit = 0;
+  danmakuFilterStartDay = null;
+  danmakuFilterEndDay = null;
 }
 
-function applyDanmakuFilter(offset, limit) {
-  danmakuFilterOffset = offset;
-  danmakuFilterLimit = limit;
-  if (!overlayReady) return;
+function applyDanmakuFilter(startDay, endDay) {
+  if (startDay === null && endDay === null) {
+    danmakuFilterStartDay = null;
+    danmakuFilterEndDay = null;
+  } else {
+    if (!Number.isInteger(startDay) || !Number.isInteger(endDay) || startDay > endDay || nicoJsonDateInfo.firstDay === null) return;
+    let days = nicoJsonDateInfo.dayCounts;
+    let startIndex = 0;
+    while (startIndex < days.length - 1 && days[startIndex][0] < startDay) startIndex += 1;
+    let endIndex = startIndex;
+    while (endIndex < days.length - 1 && days[endIndex + 1][0] <= endDay) endIndex += 1;
+    startDay = days[startIndex][0];
+    endDay = days[endIndex][0];
+    let fullRange = startDay === nicoJsonDateInfo.firstDay && endDay === nicoJsonDateInfo.lastDay;
+    danmakuFilterStartDay = fullRange ? null : startDay;
+    danmakuFilterEndDay = fullRange ? null : endDay;
+  }
+  refreshDanmakuFilters();
+}
 
-  // offset/limit 只对 nico-json 生效, 其他格式不读这两个值
+function refreshDanmakuFilters() {
   var ft = currentDanmakuStatus.fileType;
   if (!ft) return;
 
@@ -894,7 +935,7 @@ function applyDanmakuFilter(offset, limit) {
   if (!selectedPath) return;
   if (!danmakuCache[selectedPath]) return;
 
-  overlayPostMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), ft));
+  if (overlayReady) overlayPostMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), ft));
   sendDanmakuFilterInfo();
 }
 
@@ -902,14 +943,14 @@ function applyDanmakuFilterDensity(density) {
   danmakuFilterDensity = density;
   preferences.set("danmakuFilterDensity", danmakuFilterDensity);
   syncPreferencesSoon();
-  applyDanmakuFilter(danmakuFilterOffset, danmakuFilterLimit);
+  refreshDanmakuFilters();
 }
 
 // ── 过滤 tab: 弹幕时间线列表 ──────────────────────────────────────────
 // 数据源为 danmakuCache(main.js 本就持有已加载的弹幕内容,发给 overlay 渲染的同一份),
 // 不经 overlay。sidebar 懒加载,只能由 sidebar 主动拉取(danmaku-browser-request);
 // 播放时间以 danmaku-visible-time 节流推送,sidebar 按时间线锚定跟随。
-// 列表与 overlay 渲染内容保持一致: nico-json 应用与 overlay 相同的 offset/limit/密度
+// 列表与 overlay 渲染内容保持一致: nico-json 应用与 overlay 相同的日期范围/密度
 // 切片(applyNicoJsonFilters);其他格式文本过强制简体转换(OpenCC,与 overlay 同一库同参数)。
 
 // 纯 JS base64(UTF-8)——main.js 运行在 IINA 的 JavaScriptCore 环境,不保证有 btoa/unescape
@@ -2078,7 +2119,7 @@ function loadDanmakuFile(path, options) {
   danmakuFileList.selectedPaths = [path];
   resetNicoJsonFilterState();
   if (fileType === 'nico-json') {
-    nicoJsonTotalCount = computeNicoJsonCount(encodedContent);
+    nicoJsonDateInfo = computeNicoJsonDateInfo(encodedContent);
     checkNicoJsonDuration(encodedContent);
   }
   updateDanmakuStatus({ fileType: fileType, isLoaded: true });
@@ -2283,7 +2324,7 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("set-danmaku-filter", function (data) {
-    applyDanmakuFilter(data.offset || 0, data.limit);
+    applyDanmakuFilter(data.startDay, data.endDay);
     notifyBrowserDataChanged(); // 范围切片变化 → 列表与 overlay 同步重建
   });
 

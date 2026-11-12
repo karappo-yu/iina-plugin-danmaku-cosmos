@@ -39,8 +39,8 @@ var fontWeightSlider = document.getElementById("danmaku-font-weight-slider");
 var fontWeightValue = document.getElementById("danmaku-font-weight-value");
 var stylePresetSegmented = document.getElementById("style-preset-segmented");
 var filterSection = document.getElementById("danmaku-filter-section");
-var filterDateNew = document.getElementById("danmaku-filter-date-new");
-var filterDateOld = document.getElementById("danmaku-filter-date-old");
+let filterDateStart = document.getElementById("danmaku-filter-date-start");
+let filterDateEnd = document.getElementById("danmaku-filter-date-end");
 var filterCount = document.getElementById("filter-count");
 var rangeSelector = document.getElementById("danmaku-range-selector");
 var filterCoverage = document.getElementById("filter-coverage");
@@ -107,13 +107,12 @@ var state = {
   danmakuFontWeight: "400",
   stylePreset: "nico",
   nicoJsonTotalCount: 0,
-  danmakuFilterOffset: 0,
-  danmakuFilterLimit: 0,
+  danmakuFilterStartDay: null,
+  danmakuFilterEndDay: null,
+  dateInfo: { firstDay: null, lastDay: null, dayCounts: [], undatedCount: 0 },
   danmakuFilterDensity: 0,
   sourceTotalCount: 0,
   filteredCount: 0,
-  rangeStartDate: null,
-  rangeEndDate: null,
 };
 
 var fileListState = {
@@ -216,6 +215,8 @@ var i18n = {
     opacity: "Danmaku Opacity",
     font_scale: "Font Scale",
     danmaku_filter: "Date Slice",
+    date_filter_start: "Start date",
+    date_filter_end: "End date",
     density_filter: "Danmaku Density",
 
     tab_basic: "Basic",
@@ -279,6 +280,8 @@ var i18n = {
     opacity: "\u30b3\u30e1\u30f3\u30c8\u900f\u660e\u5ea6",
     font_scale: "\u30d5\u30a9\u30f3\u30c8\u500d\u7387",
     danmaku_filter: "\u65e5\u4ed8\u30b9\u30e9\u30a4\u30b9",
+    date_filter_start: "\u958b\u59cb\u65e5",
+    date_filter_end: "\u7d42\u4e86\u65e5",
     density_filter: "\u30b3\u30e1\u30f3\u30c8\u5bc6\u5ea6",
 
     tab_basic: "\u57fa\u672c",
@@ -342,6 +345,8 @@ var i18n = {
     opacity: "\u5f39\u5e55\u900f\u660e\u5ea6",
     font_scale: "\u5b57\u4f53\u7f29\u653e",
     danmaku_filter: "\u65e5\u671f\u5207\u7247",
+    date_filter_start: "\u5f00\u59cb\u65e5\u671f",
+    date_filter_end: "\u7ed3\u675f\u65e5\u671f",
     density_filter: "\u5f39\u5e55\u5bc6\u5ea6",
 
     tab_basic: "\u57fa\u7840",
@@ -413,6 +418,9 @@ function applyI18n() {
     if (dict[key]) el.textContent = dict[key];
   });
   document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n-aria-label]").forEach(function (el) {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria-label')));
+  });
   document.querySelectorAll("[data-i18n-label]").forEach(function (el) {
     el.label = t(el.getAttribute("data-i18n-label"));
   });
@@ -551,7 +559,7 @@ function syncStylePresetUI() {
 }
 
 function updateFilterUI() {
-  var showRange = state.enabled && state.danmakuLoaded && state.danmakuType === 'nico-json' && state.nicoJsonTotalCount > 100;
+  let showRange = state.enabled && state.danmakuLoaded && state.danmakuType === 'nico-json' && state.dateInfo.firstDay !== null;
   if (filterSection) filterSection.style.display = showRange ? '' : 'none';
   if (showRange) {
     updateRangeSelector();
@@ -576,41 +584,85 @@ function updateDensitySlider() {
   }
 }
 
+function getSelectedDateRange() {
+  let days = filterDateAxis.days;
+  if (!days.length) return null;
+  let startIndex = state.danmakuFilterStartDay === null ? 0
+    : Math.min(days.length - 1, filterDayIndex(state.danmakuFilterStartDay));
+  let endIndex = state.danmakuFilterEndDay === null ? days.length - 1
+    : Math.max(startIndex, filterDayIndex(state.danmakuFilterEndDay + 1) - 1);
+  return { start: days[startIndex], end: days[endIndex], startIndex: startIndex, endIndex: endIndex };
+}
+
+function formatFilterDay(day) {
+  return new Date(day * 86400000).toISOString().slice(0, 10);
+}
+
+// Each dated comment gets the same track width; handles snap to whole-day boundaries.
+let filterDateAxis = { days: [], counts: [0], total: 0 };
+
+function buildFilterDateAxis(info) {
+  let axis = { days: [], counts: [0], total: 0 };
+  info.dayCounts.forEach(function (entry) {
+    if (entry[1] <= 0) return;
+    axis.days.push(entry[0]);
+    axis.total += entry[1];
+    axis.counts.push(axis.total);
+  });
+  return axis;
+}
+
+function filterDayIndex(day) {
+  let low = 0;
+  let high = filterDateAxis.days.length;
+  while (low < high) {
+    let mid = Math.floor((low + high) / 2);
+    if (filterDateAxis.days[mid] < day) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+function filterDayToCount(day) {
+  return filterDateAxis.counts[filterDayIndex(day)];
+}
+
+function filterCountToDay(count, isEnd) {
+  let axis = filterDateAxis;
+  count = Math.max(0, Math.min(axis.total, count));
+  let low = 0;
+  let high = axis.counts.length - 1;
+  while (low < high) {
+    let mid = Math.floor((low + high) / 2);
+    if (axis.counts[mid] < count) low = mid + 1;
+    else high = mid;
+  }
+  if (low > 0 && count - axis.counts[low - 1] < axis.counts[low] - count) low -= 1;
+  return axis.days[Math.max(0, Math.min(axis.days.length - 1, isEnd ? low - 1 : low))];
+}
+
 function updateRangeSelector() {
-  var total = state.nicoJsonTotalCount;
-  if (total <= 0) {
-    if (filterCount) filterCount.textContent = '0';
-    if (filterDateNew) filterDateNew.textContent = '';
-    if (filterDateOld) filterDateOld.textContent = '';
-    if (filterCoverage) {
-      filterCoverage.style.left = '0%';
-      filterCoverage.style.width = '100%';
-    }
-    return;
-  }
-  var offset = state.danmakuFilterOffset || 0;
-  var limit = state.danmakuFilterLimit > 0 ? state.danmakuFilterLimit : total;
-  if (offset + limit > total) {
-    offset = Math.max(0, total - limit);
-  }
+  let range = getSelectedDateRange();
+  if (!range || filterDateAxis.total <= 0) return;
+  let info = state.dateInfo;
+  let startCount = filterDayToCount(range.start);
+  let endCount = filterDayToCount(range.end + 1);
   if (filterCoverage) {
-    var leftPct = (offset / total) * 100;
-    var widthPct = (limit / total) * 100;
-    filterCoverage.style.left = leftPct + '%';
-    filterCoverage.style.width = widthPct + '%';
+    filterCoverage.style.left = (startCount / filterDateAxis.total * 100) + '%';
+    filterCoverage.style.width = ((endCount - startCount) / filterDateAxis.total * 100) + '%';
   }
-  if (filterCount) {
-    filterCount.textContent = limit;
-  }
-  if (filterDateNew && filterDateOld) {
-    if (state.rangeStartDate && state.rangeEndDate) {
-      filterDateNew.textContent = state.rangeStartDate;
-      filterDateOld.textContent = state.rangeEndDate;
-    } else {
-      filterDateNew.textContent = '';
-      filterDateOld.textContent = '';
-    }
-  }
+  let count = info.undatedCount + endCount - startCount;
+  if (filterCount) filterCount.textContent = String(count);
+  if (filterDateStart) filterDateStart.textContent = formatFilterDay(range.start);
+  if (filterDateEnd) filterDateEnd.textContent = formatFilterDay(range.end);
+  [[filterHandleLeft, range.start, info.firstDay, range.end],
+    [filterHandleRight, range.end, range.start, info.lastDay]].forEach(function (entry) {
+    if (!entry[0]) return;
+    entry[0].setAttribute('aria-valuenow', entry[1]);
+    entry[0].setAttribute('aria-valuetext', formatFilterDay(entry[1]));
+    entry[0].setAttribute('aria-valuemin', entry[2]);
+    entry[0].setAttribute('aria-valuemax', entry[3]);
+  });
 }
 
 toggleDanmaku.addEventListener("change", function () {
@@ -795,118 +847,85 @@ if (stylePresetSegmented) {
   });
 }
 
-var MIN_FILTER_LIMIT = 100;
-var filterDragMode = null;
-var filterDragStartX = 0;
-var filterDragStartOffset = 0;
-var filterDragStartLimit = 0;
-var filterTimer = null;
+let filterDragMode = null;
+let filterDragStartX = 0;
+let filterDragStartDay = null;
+let filterDragEndDay = null;
+let filterTimer = null;
 
-function sendFilterChange(offset, limit) {
-  state.danmakuFilterOffset = offset;
-  state.danmakuFilterLimit = limit;
+function flushFilterChange() {
+  if (!filterTimer) return;
+  clearTimeout(filterTimer);
+  filterTimer = null;
+  iina.postMessage("set-danmaku-filter", {
+    startDay: state.danmakuFilterStartDay,
+    endDay: state.danmakuFilterEndDay
+  });
+}
+
+function sendFilterChange(startDay, endDay) {
+  let current = getSelectedDateRange();
+  if (current && current.start === startDay && current.end === endDay) return;
+  state.danmakuFilterStartDay = startDay;
+  state.danmakuFilterEndDay = endDay;
+  updateRangeSelector();
   if (filterTimer) clearTimeout(filterTimer);
-  filterTimer = setTimeout(function () {
-    iina.postMessage("set-danmaku-filter", { offset: offset, limit: limit });
-    filterTimer = null;
-  }, 300);
+  filterTimer = setTimeout(flushFilterChange, 300);
 }
 
 function applyFilterDrag(clientX) {
-  var total = state.nicoJsonTotalCount;
-  if (total <= 0) return;
-  var trackRect = rangeSelector.getBoundingClientRect();
-  var trackWidth = trackRect.width;
+  let info = state.dateInfo;
+  if (info.firstDay === null || filterDateAxis.total <= 0) return;
+  let trackWidth = rangeSelector.getBoundingClientRect().width;
   if (trackWidth <= 0) return;
-  var dx = clientX - filterDragStartX;
-  var dxCount = Math.round((dx / trackWidth) * total);
-
-  if (filterDragMode === 'move') {
-    var newOffset = filterDragStartOffset + dxCount;
-    var limit = filterDragStartLimit;
-    if (newOffset < 0) newOffset = 0;
-    if (newOffset + limit > total) newOffset = total - limit;
-    if (newOffset < 0) newOffset = 0;
-    var finalLimit = limit < total ? limit : 0;
-    updateRangeSelectorState(newOffset, finalLimit, total);
-    sendFilterChange(newOffset, finalLimit);
-  } else if (filterDragMode === 'resize-left') {
-    var newLimit = filterDragStartLimit - dxCount;
-    var newOffset2 = filterDragStartOffset + dxCount;
-    if (newLimit < MIN_FILTER_LIMIT) {
-      newLimit = MIN_FILTER_LIMIT;
-      newOffset2 = filterDragStartOffset + (filterDragStartLimit - MIN_FILTER_LIMIT);
+  let deltaCount = (clientX - filterDragStartX) / trackWidth * filterDateAxis.total;
+  let start = filterDragStartDay;
+  let end = filterDragEndDay;
+  if (deltaCount !== 0) {
+    if (filterDragMode === 'resize-left') {
+      start = Math.min(end, filterCountToDay(filterDayToCount(start) + deltaCount, false));
+    } else if (filterDragMode === 'resize-right') {
+      end = Math.max(start, filterCountToDay(filterDayToCount(end + 1) + deltaCount, true));
     }
-    if (newOffset2 < 0) {
-      newLimit = newLimit + newOffset2;
-      newOffset2 = 0;
-      if (newLimit < MIN_FILTER_LIMIT) newLimit = MIN_FILTER_LIMIT;
-    }
-    if (newOffset2 + newLimit > total) {
-      newLimit = total - newOffset2;
-    }
-    var finalLimit2 = newLimit < total ? newLimit : 0;
-    updateRangeSelectorState(newOffset2, finalLimit2, total);
-    sendFilterChange(newOffset2, finalLimit2);
-  } else if (filterDragMode === 'resize-right') {
-    var newLimit3 = filterDragStartLimit + dxCount;
-    if (newLimit3 < MIN_FILTER_LIMIT) newLimit3 = MIN_FILTER_LIMIT;
-    if (filterDragStartOffset + newLimit3 > total) {
-      newLimit3 = total - filterDragStartOffset;
-    }
-    var finalLimit3 = newLimit3 < total ? newLimit3 : 0;
-    updateRangeSelectorState(filterDragStartOffset, finalLimit3, total);
-    sendFilterChange(filterDragStartOffset, finalLimit3);
   }
+  sendFilterChange(start, end);
 }
 
-function updateRangeSelectorState(offset, limit, total) {
-  var displayLimit = limit > 0 ? limit : total;
-  state.danmakuFilterOffset = offset;
-  state.danmakuFilterLimit = limit;
-  if (filterCoverage) {
-    var leftPct = (offset / total) * 100;
-    var widthPct = (displayLimit / total) * 100;
-    filterCoverage.style.left = leftPct + '%';
-    filterCoverage.style.width = widthPct + '%';
-  }
-  if (filterCount) {
-    filterCount.textContent = displayLimit;
-  }
+function beginFilterDrag(mode, e) {
+  let range = getSelectedDateRange();
+  if (!range) return;
+  filterDragMode = mode;
+  filterDragStartX = e.clientX;
+  filterDragStartDay = range.start;
+  filterDragEndDay = range.end;
+  e.preventDefault();
 }
 
-if (filterCoverage) {
-  filterCoverage.addEventListener("mousedown", function (e) {
-    if (e.target.classList.contains('range-handle')) return;
-    filterDragMode = 'move';
-    filterDragStartX = e.clientX;
-    filterDragStartOffset = state.danmakuFilterOffset || 0;
-    filterDragStartLimit = state.danmakuFilterLimit > 0 ? state.danmakuFilterLimit : state.nicoJsonTotalCount;
-    e.preventDefault();
-  });
-}
-
-if (filterHandleLeft) {
-  filterHandleLeft.addEventListener("mousedown", function (e) {
-    filterDragMode = 'resize-left';
-    filterDragStartX = e.clientX;
-    filterDragStartOffset = state.danmakuFilterOffset || 0;
-    filterDragStartLimit = state.danmakuFilterLimit > 0 ? state.danmakuFilterLimit : state.nicoJsonTotalCount;
-    e.preventDefault();
+function bindDateHandle(handle, isStart) {
+  if (!handle) return;
+  handle.addEventListener("mousedown", function (e) {
+    handle.focus();
+    beginFilterDrag(isStart ? 'resize-left' : 'resize-right', e);
     e.stopPropagation();
   });
-}
-
-if (filterHandleRight) {
-  filterHandleRight.addEventListener("mousedown", function (e) {
-    filterDragMode = 'resize-right';
-    filterDragStartX = e.clientX;
-    filterDragStartOffset = state.danmakuFilterOffset || 0;
-    filterDragStartLimit = state.danmakuFilterLimit > 0 ? state.danmakuFilterLimit : state.nicoJsonTotalCount;
+  handle.addEventListener("keydown", function (e) {
+    let range = getSelectedDateRange();
+    if (!range || e.metaKey || e.ctrlKey || e.altKey) return;
+    let delta = e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -1
+      : e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 1 : 0;
+    if (!delta && e.key !== 'Home' && e.key !== 'End') return;
     e.preventDefault();
     e.stopPropagation();
+    let min = isStart ? 0 : range.startIndex;
+    let max = isStart ? range.endIndex : filterDateAxis.days.length - 1;
+    let index = e.key === 'Home' ? min : e.key === 'End' ? max : (isStart ? range.startIndex : range.endIndex) + delta;
+    let day = filterDateAxis.days[Math.max(min, Math.min(max, index))];
+    sendFilterChange(isStart ? day : range.start, isStart ? range.end : day);
   });
 }
+
+bindDateHandle(filterHandleLeft, true);
+bindDateHandle(filterHandleRight, false);
 
 document.addEventListener("keydown", function (e) {
   var target = e.target || {};
@@ -936,7 +955,9 @@ document.addEventListener("mousemove", function (e) {
 });
 
 document.addEventListener("mouseup", function () {
+  if (!filterDragMode) return;
   filterDragMode = null;
+  flushFilterChange();
 });
 
 if (densitySlider) {
@@ -960,12 +981,14 @@ onPluginMessage("danmaku-filter-info", function (data) {
   if (data.fileType !== undefined) state.danmakuType = data.fileType;
   state.nicoJsonTotalCount = data.totalCount || 0;
   state.sourceTotalCount = data.sourceTotalCount || 0;
-  state.danmakuFilterOffset = data.filterOffset || 0;
-  state.danmakuFilterLimit = data.filterLimit || 0;
+  if (!filterDragMode && !filterTimer) {
+    state.danmakuFilterStartDay = data.filterStartDay == null ? null : data.filterStartDay;
+    state.danmakuFilterEndDay = data.filterEndDay == null ? null : data.filterEndDay;
+  }
+  state.dateInfo = data.dateInfo || { firstDay: null, lastDay: null, dayCounts: [], undatedCount: 0 };
+  filterDateAxis = buildFilterDateAxis(state.dateInfo);
   state.danmakuFilterDensity = data.filterDensity || 0;
   state.filteredCount = data.filteredCount || 0;
-  state.rangeStartDate = data.rangeStartDate || null;
-  state.rangeEndDate = data.rangeEndDate || null;
   updateFilterUI();
 });
 

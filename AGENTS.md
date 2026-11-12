@@ -129,6 +129,14 @@ Three data paths in `overlay/main.js`:
 
 `set-danmaku-offset` → `applyDanmakuOffset()` (session-only; not persisted). The offset resets to zero on each video load, then forwards to overlay and sidebar. Overlay adds `danmakuTimeOffsetSec` inside `canvasGetCurrentTime()` (base time + offset), so both CSS and Canvas modes shift instantly. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; step = |current offset|, fallback 1 — quirky but works); both send `set-danmaku-offset`.
 
+### Nico JSON Date Slice
+
+- The sidebar axis uses cumulative dated-comment counts: each day's width is proportional to its comment count before density filtering. Empty days take no width; undated comments remain in the displayed count but do not affect the axis. Only dates with comments are selectable. Handles snap to whole-day boundaries; arrow keys jump to the previous/next populated date, skipping empty days. Only the two handles can be dragged; the range body does not move the selection. Incoming date ranges snap their boundaries to populated dates; an entirely empty range advances to the next populated date.
+- `set-danmaku-filter` sends `{startDay, endDay}` as integer calendar-day numbers; both `null` mean the full range. Days use Japan time (UTC+9) for V1 `postedAt` and legacy `chat.date`; day-number arithmetic uses UTC to avoid host timezone/DST changes.
+- Main caches only `nicoJsonDateInfo` (source bounds, per-day counts and undated count), not a second parsed comment tree. `danmaku-filter-info` restores the bounds and selected days to the lazy sidebar. The count on the range previews ordinary comments after the date slice and before density filtering. The density badge shows `filteredCount / sourceTotalCount`, where `sourceTotalCount` is the input after date slicing (including retained owner/easy and undated comments), not the original file total. It uses `filterNicoJsonData(data, 0)` to share the same date-filter rules while disabling density for that count.
+- `filterNicoJsonData()` applies the same inclusive date range to every eligible thread before density filtering; comment numbers and array order do not define date selection. Owner/easy comments, legacy metadata, and comments with missing/invalid dates are retained. Overlay and list use this shared filter.
+- Date selection resets on source/video changes. Sources without valid dates hide the selector; small files and single-day sources remain supported.
+
 ### Danmaku Deduplication (engine-side render merge, plugin-side list merge)
 
 Dedup is split across two sides with the SAME window semantics (greedy from earliest, first-in-group wins, text + `xN` suffix, other members hidden):

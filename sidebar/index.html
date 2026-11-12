@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="index.css?v=56" />
+  <link rel="stylesheet" href="index.css?v=59" />
   <title>Danmaku Control</title>
 </head>
 
@@ -112,18 +112,18 @@
 
       <div class="section" id="danmaku-filter-section" style="display:none">
         <div class="adv-separator"></div>
-        <div class="section-title" data-i18n="danmaku_filter">弹幕数量</div>
+        <div class="section-title" data-i18n="danmaku_filter">日期切片</div>
         <div class="range-selector" id="danmaku-range-selector">
           <div class="range-track"></div>
           <div class="range-coverage" id="filter-coverage">
-            <div class="range-handle range-handle-left" id="filter-handle-left"></div>
-            <div class="range-handle range-handle-right" id="filter-handle-right"></div>
+            <div class="range-handle range-handle-left" id="filter-handle-left" data-clickable tabindex="0" role="slider" data-i18n-aria-label="date_filter_start"></div>
+            <div class="range-handle range-handle-right" id="filter-handle-right" data-clickable tabindex="0" role="slider" data-i18n-aria-label="date_filter_end"></div>
             <span id="filter-count" class="range-count">0</span>
           </div>
         </div>
         <div class="range-labels">
-          <span id="danmaku-filter-date-new"></span>
-          <span id="danmaku-filter-date-old"></span>
+          <span id="danmaku-filter-date-start"></span>
+          <span id="danmaku-filter-date-end"></span>
         </div>
       </div>
 
@@ -341,7 +341,7 @@
     </div>
 
   </div>
-  <script src="index.js?v=52"></script>
+  <script src="index.js?v=57"></script>
 </body>
 
 </html>

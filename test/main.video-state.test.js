@@ -440,29 +440,33 @@ for (const density of [300, 0]) {
   });
 }
 
-test('V1 density counts include protected threads and keep the original file total after date slicing', () => {
+test('V1 density counts use the date-sliced input total and include protected threads', () => {
   const harness = createHarness(true, false, { danmakuFilterDensity: 5 });
   harness.readyOverlay();
   harness.setFile('/videos/counts.json', JSON.stringify([
     { fork: 'main', comments: Array.from({ length: 20 }, (_, index) =>
-      ({ no: index + 1, vposMs: 1000, body: `comment ${index}`, commands: [] })) },
+      ({ no: index + 1, vposMs: 1000, body: `comment ${index}`, commands: [],
+        postedAt: index < 3 ? '2026-01-01T12:00:00+09:00' : '2026-01-02T12:00:00+09:00' })) },
     { fork: 'owner', comments: [{ vposMs: 1000, body: 'owner', commands: [] }] },
     { fork: 'easy', comments: [{ vposMs: 1000, body: 'easy', commands: [] }] },
   ]));
   harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent('/videos/counts.json') });
-  function assertCounts(kept) {
+  function assertCounts(kept, inputCount = 22) {
     harness.emitSidebar('request-state');
     const info = harness.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
-    assert.equal(info.sourceTotalCount, 22);
+    assert.equal(info.sourceTotalCount, inputCount);
     assert.equal(info.filteredCount, kept);
     assert.equal(info.totalCount, 20, 'date selector keeps its own main-thread count');
   }
   assertCounts(7);
-  harness.emitSidebar('set-danmaku-filter', { offset: 0, limit: 3 });
-  assertCounts(5);
+  const firstDay = Date.UTC(2026, 0, 1) / 86400000;
+  harness.emitSidebar('set-danmaku-filter', { startDay: firstDay, endDay: firstDay });
+  assertCounts(5, 5);
+  harness.emitSidebar('set-danmaku-filter-density', { density: 1 });
+  assertCounts(3, 5);
   harness.emitSidebar('set-danmaku-filter-density', { density: 0 });
-  assertCounts(5);
-  harness.emitSidebar('set-danmaku-filter', { offset: 0, limit: 0 });
+  assertCounts(5, 5);
+  harness.emitSidebar('set-danmaku-filter', { startDay: null, endDay: null });
   assertCounts(22);
 });
 
@@ -1232,4 +1236,127 @@ test('XML scans skip comments and self-closing elements without consuming the ne
   assert.equal(list.length,1);
   assert.equal(list[0].t,200);
   assert.equal(list[0].text,'real');
+});
+
+function calendarDay(date) {
+  return Date.parse(date + 'T00:00:00Z') / 86400000;
+}
+
+function loadDateFixture(harness, data, filePath = '/videos/dates.json') {
+  harness.setFile(filePath, JSON.stringify(data));
+  harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent(filePath) });
+}
+
+function latestFilterInfo(harness) {
+  return harness.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
+}
+
+test('date slicing uses inclusive Japan calendar days across all V1 threads, independent of comment numbers', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  const comment = (body, no, postedAt) => ({ body, no, postedAt, vposMs: 1000, commands: [] });
+  const data = [
+    { fork: 'main', comments: [
+      comment('late number, old date', 999, '2026-01-01T23:59:59+09:00'),
+      comment('start midnight', 3, '2026-01-01T15:00:00Z'),
+      comment('end midnight minus 1ms', 1, '2026-01-02T23:59:59.999+09:00'),
+      comment('next day', 2, '2026-01-03T00:00:00+09:00'),
+      comment('undated', 4, undefined),
+      comment('bad date', 5, 'invalid'),
+    ] },
+    { fork: 'main', id: 2, comments: [
+      comment('second thread', 800, '2026-01-02T01:00:00+09:00'),
+      comment('last source day', 100, '2026-01-05T01:00:00+09:00'),
+    ] },
+    { fork: 'owner', comments: [comment('owner', 1, '2010-01-01T00:00:00+09:00')] },
+    { fork: 'easy', comments: [comment('easy', 1, '2030-01-01T00:00:00+09:00')] },
+  ];
+  loadDateFixture(h, data);
+  const day = calendarDay('2026-01-02');
+  const originalInfo = latestFilterInfo(h);
+  assert.equal(originalInfo.dateInfo.firstDay, day - 1);
+  assert.equal(originalInfo.dateInfo.lastDay, day + 3, 'bounds include every eligible thread');
+  assert.equal(originalInfo.dateInfo.undatedCount, 2);
+  assert.deepEqual(Array.from(originalInfo.dateInfo.dayCounts, pair => Array.from(pair)), [
+    [day - 1, 1], [day, 3], [day + 1, 1], [day + 3, 1],
+  ]);
+  h.emitSidebar('set-danmaku-filter', { startDay: day, endDay: day });
+  const filtered = JSON.parse(loadedComments(h.overlayMessages).at(-1));
+  assert.deepEqual(filtered[0].comments.map(c => c.body), ['start midnight', 'end midnight minus 1ms', 'undated', 'bad date']);
+  assert.equal(filtered[0].commentCount, 4);
+  assert.deepEqual(filtered[1].comments.map(c => c.body), ['second thread']);
+  assert.deepEqual(filtered[2], data[2]);
+  assert.deepEqual(filtered[3], data[3]);
+  assert.deepEqual(Array.from(h.context.buildDanmakuBrowserList(), item => item.text).sort(),
+    filtered.flatMap(thread => thread.comments.map(c => c.body)).sort());
+  assert.equal(latestFilterInfo(h).sourceTotalCount, 7);
+  assert.equal(latestFilterInfo(h).filteredCount, 7);
+  assert.equal(latestFilterInfo(h).dateInfo.lastDay, day + 3, 'filtering does not shrink the slider domain');
+
+  h.emitSidebar('set-danmaku-filter', { startDay: day + 2, endDay: day + 2 });
+  const gap = JSON.parse(loadedComments(h.overlayMessages).at(-1));
+  assert.deepEqual(gap[0].comments.map(c => c.body), ['undated', 'bad date']);
+  assert.deepEqual(gap[1].comments.map(c => c.body), ['last source day'], 'an empty date snaps forward to the next populated date');
+  assert.equal(latestFilterInfo(h).filterStartDay, day + 3);
+  assert.equal(latestFilterInfo(h).filterEndDay, day + 3);
+  h.emitSidebar('set-danmaku-filter', { startDay: day - 1, endDay: day + 3 });
+  assert.equal(loadedComments(h.overlayMessages).at(-1), JSON.stringify(data), 'full range restores the pristine source order');
+  assert.equal(latestFilterInfo(h).filterStartDay, null);
+});
+
+test('date filters restore on sidebar pull and reset on source/video changes, including before overlay readiness', () => {
+  const h = createHarness(true);
+  const data = [{ fork: 'main', comments: [
+    { no: 1, vposMs: 1000, body: 'first', commands: [], postedAt: '2024-02-28' },
+    { no: 2, vposMs: 1000, body: 'leap day', commands: [], postedAt: '2024-02-29' },
+    { no: 3, vposMs: 1000, body: 'third', commands: [], postedAt: '2024-03-01' },
+  ] }];
+  loadDateFixture(h, data);
+  const day = calendarDay('2024-02-29');
+  h.emitSidebar('set-danmaku-filter', { startDay: day, endDay: day });
+  h.emitSidebar('request-state');
+  assert.equal(latestFilterInfo(h).filterStartDay, day);
+  assert.equal(latestFilterInfo(h).filterEndDay, day);
+  assert.equal(latestFilterInfo(h).filteredCount, 1);
+  h.readyOverlay();
+  assert.deepEqual(JSON.parse(loadedComments(h.overlayMessages).at(-1))[0].comments.map(c => c.body), ['leap day']);
+  for (const range of [{ startDay: day + 1, endDay: day - 1 }, { startDay: day + 0.5, endDay: day + 1 }, {}]) {
+    h.emitSidebar('set-danmaku-filter', range);
+    h.emitSidebar('request-state');
+    assert.equal(latestFilterInfo(h).filterStartDay, day);
+  }
+  loadDateFixture(h, data, '/videos/other-dates.json');
+  assert.equal(latestFilterInfo(h).filterStartDay, null);
+  assert.equal(latestFilterInfo(h).filteredCount, 3);
+  h.setVideo('file:///videos/A.mp4');
+  assert.equal(latestFilterInfo(h).dateInfo.firstDay, null);
+  assert.equal(latestFilterInfo(h).filterEndDay, null);
+});
+
+test('legacy date slicing precedes density and preserves owners, undated comments and metadata', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  const chat = (content, no, date, extra = {}) => ({ chat: { content, no, date, user_id: 'viewer', vpos: 100, ...extra } });
+  const seconds = stamp => Date.parse(stamp) / 1000;
+  const data = [
+    { thread: { resultcode: 0 } },
+    chat('old with largest number', 1000, seconds('2026-01-01T14:59:59Z')),
+    chat('first selected', 1, seconds('2026-01-01T15:00:00Z')),
+    chat('last selected', 2, seconds('2026-01-02T14:59:59Z')),
+    chat('next day', 3, seconds('2026-01-02T15:00:00Z')),
+    chat('undated', 0, undefined, { nicoru: 3 }),
+    chat('owner', 0, seconds('2010-01-01T00:00:00Z'), { user_id: undefined }),
+  ];
+  loadDateFixture(h, data);
+  const day = calendarDay('2026-01-02');
+  assert.equal(latestFilterInfo(h).dateInfo.firstDay, day - 1);
+  assert.equal(latestFilterInfo(h).dateInfo.lastDay, day + 1);
+  h.emitSidebar('set-danmaku-filter', { startDay: day, endDay: day });
+  h.emitSidebar('set-danmaku-filter-density', { density: 1 });
+  const filtered = JSON.parse(loadedComments(h.overlayMessages).at(-1));
+  assert.deepEqual(filtered[0], data[0]);
+  assert.deepEqual(filtered.filter(e => e.chat).map(e => e.chat.content), ['last selected', 'undated', 'owner']);
+  assert.equal(latestFilterInfo(h).sourceTotalCount, 4);
+  assert.equal(latestFilterInfo(h).filteredCount, 3);
+  assert.deepEqual(Array.from(h.context.buildDanmakuBrowserList(), item => item.text).sort(), ['last selected', 'owner', 'undated']);
 });
