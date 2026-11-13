@@ -131,11 +131,16 @@ The sidebar previews speed on input and commits on change. Speed/weight state ec
 - `projectDanmaku()` slices normalized comments before density filtering. Owners, easy comments and undated comments are protected from date slicing; owners/easy and nicoru >= 3 are protected from density quotas. Legacy metadata is consumed at the parse boundary and never becomes a comment. Nico XML dates are also supported.
 - Date selection resets on source/video changes. Sources without valid dates hide the selector; small files and single-day sources remain supported.
 
-### Danmaku Deduplication (shared static projection)
+### Danmaku Deduplication (hybrid: static projection + engine progressive fixed chains)
 
-`mergeProjectedComments()` in `danmaku-document.js` is the only plugin dedupe implementation. It greedily groups from the earliest item within an inclusive window, by displayed text + normalized position + blocked state. Owners never merge. Both fixed and scrolling comments use the same static policy; the first host's style is retained and its `xN` suffix is passed as formatted metadata with a stable accent color.
+`mergeProjectedComments()` in `danmaku-document.js` is the only plugin-side dedupe implementation. It greedily groups from the earliest item within an inclusive window, by displayed text + normalized position + blocked state. Owners never merge. The first host's style is retained and its `xN` suffix is passed as formatted metadata with a stable accent color.
 
-The sidebar and overlay consume the same merged projection. Engine `fixedCombo`, `nakaDedupeWindow` and CA duplicate removal are disabled for these already-projected arrays. Use `keepCA: true, dedupeCA: false` so `changeCALayer()` still assigns CA layers without deleting repeated viewers or owners. The engine option defaults to true for compatibility; the plugin must explicitly disable it. Do not reintroduce independent list merging or progressive fixed counts. The engine still supports those APIs for other consumers.
+The two consumers apply it differently:
+
+- **Sidebar list** (`items`): static merge for every position, so duplicate fixed rows stay compact.
+- **Screen feed** (`formatted`): static merge for scrolling (naka) comments only. Fixed (ue/shita) comments pass through unmerged and without a suffix; when dedupe is on, the overlay enables the engine's `fixedCombo` (the dedupe toggle travels as `fixedCombo` in the load-danmaku payload and is applied in `applyOverlaySettings`). The engine chains duplicate fixed comments whose display windows overlap (chain capped at 120 s), grows the on-screen count progressively (text → x2 → x3), and extends the host lifetime across the chain. A chain's final count can therefore exceed the corresponding static list row count — the list is a compact summary, not a frame-accurate mirror.
+
+Engine `nakaDedupeWindow` stays 0 (the projection owns scrolling merges), and CA duplicate removal stays off: use `keepCA: true, dedupeCA: false` so `changeCALayer()` still assigns CA layers without deleting repeated viewers or owners. Because `fixedCombo` only travels in the load-danmaku payload, `sendCurrentDanmaku` treats a flag change as a projection change and resends even when the formatted comments are identical.
 
 ## Dandanplay Network Danmaku
 

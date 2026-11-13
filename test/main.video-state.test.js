@@ -519,7 +519,7 @@ test('legacy density counts include owner comments and exclude metadata records'
   assert.equal(info.filteredCount, 21);
 });
 
-test('position blocking and shared static deduplication produce identical screen and list groups', () => {
+test('position blocking and hybrid dedupe produce merged lists but progressive fixed feeds', () => {
   const harness = createHarness(true);
   setPositionSource(harness, 'dandanplay', JSON.stringify([
     { t: 100, text: 'same', _commands: ['ue'] },
@@ -542,8 +542,30 @@ test('position blocking and shared static deduplication produce identical screen
   ]);
   harness.emitSidebar('danmaku-position-filter-set', { danmakuBlockTopEnabled: false });
   const source = harness.context.getEffectiveContent('/videos/positions');
-  assert.deepEqual(Array.from(source, item => item.content), ['samex2', 'same', 'visiblex2']);
+  // Fixed comments stay individual (engine fixedCombo chains them on screen);
+  // scrolling comments keep the static merged suffix.
+  assert.deepEqual(Array.from(source, item => item.content), ['same', 'same', 'same', 'visiblex2']);
+  assert.deepEqual(Array.from(source, item => item.comboSuffix), [undefined, undefined, undefined, 'x2']);
   assert.equal(source.some((item) => item.content === 'blocked-word'), false, '关闭位置过滤仍保留屏蔽词过滤');
+  assert.equal(harness.context.buildLoadDanmakuPayload([], 'dandanplay').fixedCombo, true);
+  harness.emitSidebar('danmaku-dedupe-set', { enabled: false });
+  assert.equal(harness.context.buildLoadDanmakuPayload([], 'dandanplay').fixedCombo, false);
+});
+
+test('dedupe toggle resends the payload when only the fixedCombo flag changes', () => {
+  const harness = createHarness(true);
+  harness.readyOverlay();
+  harness.setVideo('file:///videos/A.mp4');
+  const before = harness.overlayMessages.filter(m => m.name === 'load-danmaku').length;
+  harness.emitSidebar('danmaku-dedupe-set', { enabled: true });
+  let loads = harness.overlayMessages.filter(m => m.name === 'load-danmaku');
+  assert.equal(loads.length, before + 1, 'identical comments still resend for the flag change');
+  assert.equal(loads.at(-1).data.fixedCombo, true);
+  assert.deepEqual(loads.at(-1).data.comments.map(c => c.content), ['A comment']);
+  harness.emitSidebar('danmaku-dedupe-set', { enabled: false });
+  loads = harness.overlayMessages.filter(m => m.name === 'load-danmaku');
+  assert.equal(loads.length, before + 2);
+  assert.equal(loads.at(-1).data.fixedCombo, false);
 });
 
 test('position classification follows case insensitive first-command semantics and preserves Niconico owners', () => {

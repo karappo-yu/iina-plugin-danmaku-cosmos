@@ -38,7 +38,8 @@ pluginState.danmakuBlockTopEnabled = !!preferences.get("danmakuBlockTopEnabled")
 pluginState.danmakuBlockBottomEnabled = !!preferences.get("danmakuBlockBottomEnabled");
 var blockRegexes = []; // 编译缓存(列表变化时重建)
 rebuildBlockRegexes();
-// 弹幕去重: 开关 + 区间(秒,1-5)。窗口内重复文本合并为 "原文xN",时间取组内最早。
+// 弹幕去重: 开关 + 区间(秒,1-5)。滚动弹幕在投影内静态合并为 "原文xN"(时间取组内最早);
+// 固定弹幕(顶部/底部)不在投影合并,由引擎 fixedCombo 在屏上渐进接续(计数 x2→x3,宿主生命周期延长)。
 pluginState.danmakuDedupeEnabled = !!preferences.get("danmakuDedupeEnabled");
 pluginState.danmakuDedupeWindow = parseFloat(preferences.get("danmakuDedupeWindow"));
 if (!isFinite(pluginState.danmakuDedupeWindow) || pluginState.danmakuDedupeWindow < 1 || pluginState.danmakuDedupeWindow > 5) pluginState.danmakuDedupeWindow = 2;
@@ -552,7 +553,7 @@ function buildLoadDanmakuPayload(comments, danmakuType) {
     danmakuTimeOffsetSec: pluginState.danmakuTimeOffsetSec,
     danmakuFontFamily: pluginState.danmakuFontFamily,
     danmakuFontWeight: pluginState.danmakuFontWeight,
-    fixedCombo: false,
+    fixedCombo: pluginState.danmakuDedupeEnabled,
     nakaDedupeWindow: 0,
   };
 }
@@ -739,9 +740,11 @@ function sendCurrentDanmaku(force) {
   let doc = path && danmakuCache[path];
   if (!overlayReady || !pluginState.danmakuEnabled || !doc) return false;
   let comments = getEffectiveContent(path);
+  // fixedCombo 只随 load-danmaku 载荷下发,投影不变但开关变化时也必须重发。
   if (!force && lastOverlayProjection && lastOverlayProjection.doc === doc &&
+      lastOverlayProjection.fixedCombo === pluginState.danmakuDedupeEnabled &&
       sameFormattedComments(lastOverlayProjection.comments, comments)) return false;
-  lastOverlayProjection = {doc: doc, comments: comments};
+  lastOverlayProjection = {doc: doc, comments: comments, fixedCombo: pluginState.danmakuDedupeEnabled};
   updateDanmakuStatus({fileType: pluginState.currentDanmakuStatus.fileType, isLoaded: false});
   overlayPostMessage('load-danmaku', buildLoadDanmakuPayload(comments, pluginState.currentDanmakuStatus.fileType));
   loadedDanmakuVideoUrl = currentVideoUrl;

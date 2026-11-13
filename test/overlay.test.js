@@ -406,10 +406,12 @@ test('an atomic preset remains deferred while hidden and applies once on enable'
   assert.equal(h.instances[1].options.config.scrollSpeed, 1);
 });
 
-test('overlay keeps CA layers but disables the engine duplicate-removal pass', () => {
+test('overlay keeps CA layers and passes the fixedCombo flag through to the engine', () => {
   const h = harness(); load(h, [comment('test', [])]);
   assert.equal(h.instances[0].options.keepCA, true);
   assert.equal(h.instances[0].options.dedupeCA, false);
   assert.equal(h.instances[0].options.config.fixedCombo, false);
   assert.equal(h.instances[0].options.config.nakaDedupeWindow, 0);
+  h.send('load-danmaku', {danmakuType: 'dandanplay', comments: formatted([comment('fixed', ['ue'])]), canvasMode: 'css', fixedCombo: true});
+  assert.equal(h.instances[1].options.config.fixedCombo, true);
 });

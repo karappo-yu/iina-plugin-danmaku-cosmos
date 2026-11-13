@@ -22,6 +22,9 @@ let strokeWidth = 0;
 let cssTextShadowBlur = 2;
 let commentLimit = 0;
 let scrollSpeed = 1.0;
+// 固定弹幕(顶部/底部)渐进合并开关(= main 的去重开关): 投影不预合并固定弹幕,
+// 引擎 fixedCombo 在屏上把仍在显示中的同文本弹幕接成链(x2→x3,宿主生命周期延长)。
+let fixedComboEnabled = false;
 let danmakuTimeOffsetSec = 0;
 let danmakuFontFamily = "";
 let danmakuFontWeight = "";
@@ -322,8 +325,8 @@ function initCanvasRenderer(data) {
       commentLimit: commentLimit > 0 ? commentLimit : undefined,
       fonts: buildDanmakuFontConfig(),
       scrollSpeed: scrollSpeed,
-      fixedCombo: false,
-      nakaDedupeWindow: 0,
+      fixedCombo: fixedComboEnabled,
+      nakaDedupeWindow: 0, // 滚动弹幕由投影静态合并,引擎不再二次去重
     },
   });
   formattedComments = data;
@@ -402,6 +405,7 @@ function applyOverlaySettings(data) {
   if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
   if (data.danmakuFontFamily !== undefined) danmakuFontFamily = data.danmakuFontFamily || "";
   if (data.danmakuFontWeight !== undefined) danmakuFontWeight = data.danmakuFontWeight || "";
+  if (data.fixedCombo !== undefined) fixedComboEnabled = !!data.fixedCombo;
 }
 
 onPluginMessage("time-update", (data) => {

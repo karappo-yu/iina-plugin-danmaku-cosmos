@@ -38,7 +38,7 @@
 - **密度控制**:按每分钟弹幕数上限筛选,弹幕少时原样保留,保留弹幕随剧情起伏的节奏;默认不限制
 - **日期切片**(Nico JSON):按投稿日期范围筛选,只看某段时间的弹幕
 - **屏蔽**:屏蔽词列表(支持正则)、顶部 / 底部固定弹幕独立屏蔽
-- **去重合并**:时间窗内的重复弹幕合并为「原文 xN」,后缀独立着色
+- **去重合并**:时间窗内的重复滚动弹幕合并为「原文 xN」,后缀独立着色;重复的顶部 / 底部固定弹幕则接续显示,计数随到达渐进增长(x2→x3)
 - **时间轴列表**:流畅浏览数万条弹幕,跟随播放位置滚动,点击时间戳跳转;弹幕文本里的时间(如「空降 01:39」)也可点击跳转
 
 #### 播放辅助
@@ -106,7 +106,7 @@ IINA で動画を見ながらコメントを流せるプラグイン。Niconico 
 - **密度調整**:1 分あたりのコメント数の上限で絞り込みます。コメントが少ない時間帯はそのままなので、物語の展開に応じたコメントの増減が保たれます。デフォルトは無制限
 - **投稿日で絞り込み**(Nico JSON):投稿日の範囲を指定して、特定の期間のコメントだけを表示
 - **NG 設定**:NG ワードリスト(正規表現対応)、上部 / 下部の固定コメントを個別にブロック
-- **重複コメントの集約**:一定時間内の重複コメントを「原文 xN」にまとめ、件数部分は別色で表示
+- **重複コメントの集約**:一定時間内の重複スクロールコメントを「原文 xN」にまとめ、件数部分は別色で表示。上部 / 下部の固定コメントは表示中に到着した分だけ件数が増えていきます(x2→x3)
 - **タイムライン一覧**:数万件のコメントもスムーズに表示。再生位置に追従してスクロールし、タイムスタンプをクリックするとその位置にシーク。コメント本文の時刻表記もクリックでシークできます
 
 #### 再生サポート
@@ -174,7 +174,7 @@ Display danmaku comments while watching videos in IINA: supports Niconico / Bili
 - **Density control**: cap the number of comments per minute. Quiet moments stay untouched, preserving the natural ebb and flow of comments as the story unfolds. Unlimited by default
 - **Date slicing** (Nico JSON): filter by posting date range to show only comments from a chosen period
 - **Blocking**: block-word list (regex supported), plus independent blocking of top / bottom fixed comments
-- **Dedupe merge**: repeated comments within a time window merge into "text xN", with the count shown in its own color
+- **Dedupe merge**: repeated scrolling comments within a time window merge into "text xN", with the count shown in its own color; duplicate top / bottom fixed comments chain on screen, growing the count as they arrive (x2 → x3)
 - **Timeline list**: smoothly browse tens of thousands of comments; follows the playback position, click a timestamp to seek. Times written inside comment text are clickable too
 
 #### Playback Aids

@@ -221,9 +221,11 @@ function selectDensity(comments, density) {
   return comments.filter(function (c) { return keep.has(c); });
 }
 
-// Shared static policy for the screen and list: greedy earliest host, inclusive
-// window, same text AND position, owners excluded, blocked groups kept separate.
-// Fixed comments use this same static policy rather than a second progressive UI.
+// Shared static policy: greedy earliest host, inclusive window, same text AND
+// position, owners excluded, blocked groups kept separate. The screen feed
+// applies it to scrolling comments only — fixed (ue/shita) comments stay
+// individual so the engine's fixedCombo can chain them progressively — while
+// the list applies it to every position to keep duplicate rows compact.
 function mergeProjectedComments(items, windowVpos) {
   if (!(windowVpos > 0)) return items;
   const hosts = new Map(), result = [];
@@ -257,12 +259,29 @@ function projectDanmaku(doc, settings) {
     }
     return {comment: c, text: text, blocked: !c.isOwner && !!(settings.isBlocked && settings.isBlocked(text, c.pos)), count: 1};
   });
-  const merged = mergeProjectedComments(items, settings.dedupeWindow);
+  const listMerged = mergeProjectedComments(items, settings.dedupeWindow);
+  // Screen feed: static merge for scrolling (naka) comments only. Fixed
+  // comments pass through unmerged; the overlay engine's fixedCombo rebuilds
+  // them into progressive chains (count grows as duplicates arrive, host
+  // lifetime extends), which a static projection cannot express. Without a
+  // dedupe window nothing merges and the source order is kept as is.
+  const screenMerged = settings.dedupeWindow > 0
+    ? mergeProjectedComments(items.filter(function (item) {
+      return item.comment.pos === 'naka';
+    }), settings.dedupeWindow).concat(items.filter(function (item) {
+      return item.comment.pos !== 'naka';
+    })).sort(function (a, b) { return a.comment.vpos - b.comment.vpos || a.comment.id - b.comment.id; })
+    : items.slice();
   const users = new Map(), formatted = [], browserItems = [];
   const suffixColors = ['#ff8080', '#80d8ff', '#ffd580', '#b9f6a5', '#d5a6ff', '#ffb3da'];
-  merged.forEach(function (item) {
+  listMerged.forEach(function (item) {
+    const c = item.comment;
+    browserItems.push({id: c.id, t: c.vpos, text: item.text + (item.count > 1 ? 'x' + item.count : ''),
+      blocked: item.blocked, count: item.count, _fixed: c.pos !== 'naka', _owner: c.isOwner});
+  });
+  browserItems.sort(function (a, b) { return a.t - b.t || a.id - b.id; });
+  screenMerged.forEach(function (item) {
     const c = item.comment, text = item.text + (item.count > 1 ? 'x' + item.count : '');
-    browserItems.push({id: c.id, t: c.vpos, text: text, blocked: item.blocked, count: item.count, _fixed: c.pos !== 'naka', _owner: c.isOwner});
     if (item.blocked) return;
     if (!users.has(c.userId)) users.set(c.userId, users.size);
     formatted.push({id: c.id, no: c.no, vpos: c.vpos, content: text, date: c.dateSec, date_usec: c.dateUsec,
@@ -270,7 +289,6 @@ function projectDanmaku(doc, settings) {
       comboSuffix: item.count > 1 ? 'x' + item.count : undefined,
       comboSuffixColor: item.count > 1 ? suffixColors[c.id % suffixColors.length] : undefined});
   });
-  browserItems.sort(function (a, b) { return a.t - b.t || a.id - b.id; });
   return {formatted: formatted, items: browserItems, totalCount: doc.comments.length, sourceTotalCount: sliced.length,
     filteredCount: kept.length, dateSlicedCount: sliced.length, densityKeptCount: kept.length};
 }

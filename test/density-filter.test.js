@@ -72,12 +72,16 @@ test('projection caches conversion only and matches blocking after conversion', 
   assert.deepEqual(bodies(project(doc)), ['c0', 'c1']);
 });
 
-test('screen and list share greedy inclusive dedupe groups for all positions', () => {
+test('screen merges scrolling comments statically while fixed comments stay individual for engine fixedCombo', () => {
   const rows = [0, 200, 201, 300].map(t => ({t, text: 'same', _commands: ['ue']}));
   rows.push({t: 0, text: 'same', _commands: ['naka']}, {t: 0, text: 'same', _commands: ['ue'], _isOwner: true});
   const result = project(parse(rows, '', 'dandanplay'), {dedupeWindow: 200});
-  assert.deepEqual(bodies(result), result.items.filter(c => !c.blocked).map(c => c.text));
-  assert.deepEqual(bodies(result), ['samex2', 'same', 'same', 'samex2']);
+  // Screen feed: fixed comments pass through unmerged (the overlay engine chains
+  // them progressively); scrolling and owner comments are unaffected singletons.
+  assert.deepEqual(bodies(result), ['same', 'same', 'same', 'same', 'same', 'same']);
+  assert.equal(result.formatted.every(c => c.comboSuffix === undefined), true);
+  // The list keeps the static greedy merge for every position.
+  assert.deepEqual(result.items.filter(c => !c.blocked).map(c => c.text), ['samex2', 'same', 'same', 'samex2']);
 });
 
 test('OpenCC preserves owner control text while converting ordinary owner text', () => {
