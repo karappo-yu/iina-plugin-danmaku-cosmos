@@ -451,19 +451,34 @@ function fontFamilyToPresetKey(family) {
   return "custom";
 }
 
+// View-only edit state: an empty Custom choice is not a preference change.
+let fontCustomEmptyChoice = false;
+let fontCustomComposing = false;
+let pendingFontFamily = null;
+
+function submitCustomFont() {
+  let family = fontCustomInput.value.trim();
+  if (fontCustomEmptyChoice && !family) return;
+  fontCustomEmptyChoice = false;
+  if (family === pendingFontFamily || (pendingFontFamily === null && family === state.danmakuFontFamily)) return;
+  pendingFontFamily = family;
+  iina.postMessage('set-danmaku-font', {fontFamily: family, fontWeight: fontWeightSlider ? fontWeightSlider.value : state.danmakuFontWeight});
+}
+
 function updateFontUI() {
   if (!fontSelect || !fontCustomInput || !fontCustomRow) return;
-  var key = state.danmakuFontFamily ? fontFamilyToPresetKey(state.danmakuFontFamily) : "";
+  let family = pendingFontFamily !== null ? pendingFontFamily : state.danmakuFontFamily;
+  var key = fontCustomEmptyChoice ? 'custom' : family ? fontFamilyToPresetKey(family) : "";
   // State echoes may arrive for every keystroke. The focused field owns its
   // draft (including spaces, composition and selection) until editing ends.
-  if (document.activeElement !== fontCustomInput) {
+  if (document.activeElement !== fontCustomInput && !fontCustomComposing) {
     fontSelect.value = key;
     fontCustomRow.style.display = key === "custom" ? "" : "none";
-    if (key === "custom" && fontCustomInput.value !== state.danmakuFontFamily) {
-      fontCustomInput.value = state.danmakuFontFamily;
+    if (key === "custom" && !fontCustomEmptyChoice && fontCustomInput.value !== family) {
+      fontCustomInput.value = family;
     }
   }
-  if (fontWeightSlider) {
+  if (fontWeightSlider && document.activeElement !== fontWeightSlider) {
     fontWeightSlider.value = state.danmakuFontWeight || "400";
   }
   if (fontWeightValue) {
@@ -516,7 +531,7 @@ function updateUI() {
   if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified; 
   if (danmakuAutoOffsetToggle) danmakuAutoOffsetToggle.checked = state.danmakuAutoOffset; 
   if (danmakuAutoOffsetRow) {
-    let showAutoOffset = state.danmakuLoaded && state.danmakuType === 'nico-json' && state.nicoJsonHasDuration;
+    let showAutoOffset = (state.danmakuLoaded || fileListState.selectedPaths.length > 0) && state.danmakuType === 'nico-json' && state.nicoJsonHasDuration;
     danmakuAutoOffsetRow.style.display = showAutoOffset ? '' : 'none';
   }
   updateOffsetUI();
@@ -535,7 +550,7 @@ function syncStylePresetUI() {
 }
 
 function updateFilterUI() {
-  let showRange = state.enabled && state.danmakuLoaded && state.dateInfo.firstDay !== null;
+  let showRange = state.enabled && (state.danmakuLoaded || fileListState.selectedPaths.length > 0) && state.dateInfo.firstDay !== null;
   if (filterSection) filterSection.style.display = showRange ? '' : 'none';
   if (showRange) {
     updateRangeSelector();
@@ -753,32 +768,47 @@ if (fontSelect) {
   fontSelect.addEventListener("change", function () {
     var key = fontSelect.value;
     if (key === "custom") {
+      fontCustomEmptyChoice = !fontCustomInput.value.trim();
       fontCustomRow.style.display = "";
       fontCustomInput.focus();
       var customFamily = fontCustomInput.value.trim();
       if (customFamily) {
-        iina.postMessage("set-danmaku-font", { fontFamily: customFamily, fontWeight: state.danmakuFontWeight });
+        submitCustomFont();
       }
     } else {
+      fontCustomEmptyChoice = false;
       fontCustomRow.style.display = "none";
       var preset = FONT_PRESETS[key] !== undefined ? FONT_PRESETS[key] : "";
+      pendingFontFamily = preset !== state.danmakuFontFamily || pendingFontFamily !== null ? preset : null;
       iina.postMessage("set-danmaku-font", { fontFamily: preset, fontWeight: state.danmakuFontWeight });
     }
   });
 }
 
 if (fontCustomInput) {
-  fontCustomInput.addEventListener("blur", updateFontUI);
+  fontCustomInput.addEventListener('compositionstart', function () {
+    fontCustomComposing = true;
+  });
+  fontCustomInput.addEventListener('compositionend', function () {
+    fontCustomComposing = false;
+    submitCustomFont();
+    updateFontUI();
+  });
+  fontCustomInput.addEventListener("blur", function () {
+    if (fontCustomComposing) return;
+    if (!fontCustomEmptyChoice) submitCustomFont();
+    updateFontUI();
+  });
   fontCustomInput.addEventListener("input", function (event) {
-    if (event.isComposing) return;
-    iina.postMessage("set-danmaku-font", { fontFamily: fontCustomInput.value.trim(), fontWeight: state.danmakuFontWeight });
+    if (event.isComposing || fontCustomComposing) return;
+    submitCustomFont();
   });
 }
 
 if (fontWeightSlider) {
   fontWeightSlider.addEventListener("input", function () {
     if (fontWeightValue) fontWeightValue.textContent = fontWeightSlider.value;
-    iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: fontWeightSlider.value });
+    iina.postMessage("set-danmaku-font", { fontFamily: pendingFontFamily !== null ? pendingFontFamily : state.danmakuFontFamily, fontWeight: fontWeightSlider.value });
     });
 }
 
@@ -957,7 +987,10 @@ onPluginMessage("danmaku-state", function (data) {
   if (data.danmakuTimeOffsetSec !== undefined) state.danmakuOffsetSeconds = data.danmakuTimeOffsetSec;
   if (data.nicoJsonDurationDiff !== undefined) state.nicoJsonDurationDiff = data.nicoJsonDurationDiff;
   if (data.nicoJsonHasDuration !== undefined) state.nicoJsonHasDuration = !!data.nicoJsonHasDuration;
-  if (data.danmakuFontFamily !== undefined) state.danmakuFontFamily = data.danmakuFontFamily;
+  if (data.danmakuFontFamily !== undefined) {
+    state.danmakuFontFamily = data.danmakuFontFamily;
+    if (pendingFontFamily === data.danmakuFontFamily) pendingFontFamily = null;
+  }
   if (data.danmakuFontWeight !== undefined) state.danmakuFontWeight = data.danmakuFontWeight;
   if (data.stylePreset !== undefined) state.stylePreset = data.stylePreset;
   if (data.danmakuForceSimplified !== undefined) state.danmakuForceSimplified = !!data.danmakuForceSimplified;
@@ -1580,9 +1613,11 @@ var blocklistToggle = document.getElementById("danmaku-blocklist-toggle");
 var blocklistPanel = document.getElementById("danmaku-blocklist-panel");
 var blocklistList = document.getElementById("danmaku-blocklist-list");
 var blocklistWords = [];
+let blocklistEdit = null;
 
 function renderBlocklist() {
-  if (!blocklistList) return;
+  if (!blocklistList || blocklistEdit) return;
+  if (blocklistPanel && blocklistToggle) blocklistPanel.style.display = blocklistToggle.checked ? '' : 'none';
   blocklistList.innerHTML = '';
   for (var i = 0; i < blocklistWords.length; i++) {
     var item = document.createElement("div");
@@ -1616,7 +1651,7 @@ function renderBlocklist() {
 // 点击 + 行: 该行变为内联输入框;回车提交、Esc 取消、失焦提交(空内容忽略)
 function blocklistStartAdd() {
   var item = this;
-  if (item.classList.contains('editing')) return;
+  if (blocklistEdit || item.classList.contains('editing')) return;
   item.classList.add("editing");
   item.innerHTML = "";
   var inp = document.createElement("input");
@@ -1624,19 +1659,33 @@ function blocklistStartAdd() {
   inp.className = "danmaku-blocklist-input";
   inp.placeholder = t('blocklist_placeholder');
   item.appendChild(inp);
+  blocklistEdit = inp;
   var committing = false;
+  var composing = false;
+  var finishAfterComposition = false;
   var done = function () {
     if (committing) return;
+    if (composing) { finishAfterComposition = true; return; }
     committing = true;
+    blocklistEdit = null;
     var w = inp.value.trim();
     if (w) iina.postMessage("danmaku-blocklist-add", { word: w });
     renderBlocklist();
   };
+  inp.addEventListener('compositionstart', function () { composing = true; });
+  inp.addEventListener('compositionend', function () {
+    composing = false;
+    if (finishAfterComposition) done();
+  });
   inp.addEventListener("keydown", function (e) {
+    if (composing || e.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter") {
+      e.preventDefault();
       done();
     } else if (e.key === "Escape") {
+      e.preventDefault();
       committing = true; // 阻止 blur 触发提交
+      blocklistEdit = null;
       renderBlocklist();
     }
   });
@@ -1648,7 +1697,7 @@ function applyBlocklistState(state) {
   if (!state) return;
   if (typeof state.enabled === 'boolean') {
     if (blocklistToggle) blocklistToggle.checked = state.enabled;
-    if (blocklistPanel) blocklistPanel.style.display = state.enabled ? "" : "none";
+    if (blocklistPanel) blocklistPanel.style.display = state.enabled || blocklistEdit ? "" : "none";
   }
   if (Array.isArray(state.words)) {
     blocklistWords = state.words.slice();

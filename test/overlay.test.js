@@ -265,3 +265,55 @@ test('speed updates use the playing loop and draw once immediately when paused',
   h.send('set-scroll-speed', {speed: 0.25});
   assert.equal(renderer.draws.length, count + 1, 'unchanged speed does not draw');
 });
+
+test('hidden paused comments do not draw for offset, speed or seek updates', () => {
+  const h = harness();
+  load(h, [comment('test', [])]);
+  h.send('toggle-danmaku', {enabled: false, time: 2, paused: true, speed: 1});
+  const renderer = h.instances[0], draws = renderer.draws.length, clears = renderer.clears;
+  h.send('set-danmaku-offset', {offset: 3});
+  h.send('set-scroll-speed', {speed: 0.25});
+  h.send('time-update', {time: 5, seek: true});
+  h.flush();
+  assert.equal(h.instances.length, 1);
+  assert.equal(renderer.draws.length, draws);
+  assert.equal(renderer.clears, clears);
+  h.send('toggle-danmaku', {enabled: true, time: 5, paused: true, speed: 1});
+  assert.equal(h.instances.length, 1);
+  assert.equal(renderer.draws.length, draws + 1);
+  assert.equal(renderer.draws.at(-1), 800);
+  assert.equal(renderer.scrollSpeed, 0.25);
+});
+
+test('style rebuilds queued before or during disable collapse into one build on enable', () => {
+  const h = harness();
+  load(h, [comment('test', [])]);
+  h.send('set-fontscale', {scale: 0.5});
+  h.send('toggle-danmaku', {enabled: false, time: 2, paused: true, speed: 1});
+  h.send('set-danmaku-font', {fontFamily: 'Helvetica Neue', fontWeight: '500'});
+  h.send('set-stroke-width', {width: 4});
+  h.send('set-scroll-speed', {speed: 0.5});
+  h.flush();
+  assert.equal(h.instances.length, 1);
+  h.send('toggle-danmaku', {enabled: true, time: 7, paused: true, speed: 1});
+  h.flush();
+  assert.equal(h.instances.length, 2);
+  assert.equal(h.instances[1].options.scale, 0.5);
+  assert.equal(h.instances[1].options.config.fonts.html5.gothic.font, 'Helvetica Neue');
+  assert.equal(h.instances[1].options.config.scrollSpeed, 0.5);
+  assert.deepEqual(h.instances[1].draws, [700]);
+});
+
+test('a hidden load retains its data and reports success only when enabled and constructed', () => {
+  const h = harness();
+  h.send('load-danmaku', {loadId: 7, comments: formatted([comment('test', [])]),
+    playback: {enabled: false, time: 2, paused: true, speed: 1}});
+  assert.equal(h.instances.length, 0);
+  assert.equal(h.messages.filter(m => m.name === 'danmaku-load-result').length, 0);
+  h.send('toggle-danmaku', {enabled: true, time: 3, paused: true, speed: 1});
+  assert.equal(h.instances.length, 1);
+  assert.deepEqual(h.instances[0].draws, [300]);
+  assert.equal(h.messages.filter(m => m.name === 'danmaku-load-result').length, 1);
+  assert.equal(h.messages.at(-1).data.loadId, 7);
+  assert.equal(h.messages.at(-1).data.success, true);
+});

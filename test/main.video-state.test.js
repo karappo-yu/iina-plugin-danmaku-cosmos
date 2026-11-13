@@ -232,6 +232,11 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
       emit(overlayHandlers, 'overlay-ready', {});
     },
     emitOverlay(name, data = {}) { emit(overlayHandlers, name, data); },
+    ackLoad(success = true) {
+      const last = overlayMessages.findLast(message => message.name === 'load-danmaku');
+      assert.ok(last, 'a source was dispatched');
+      emit(overlayHandlers, 'danmaku-load-result', {loadId: last.data.loadId, success});
+    },
     setPaused(value) { iina.core.status.paused = value; },
     setFullscreen(value) { iina.core.window.fullscreen = value; },
     setMpv(name, value) { mpvValues[name] = value; },
@@ -704,6 +709,7 @@ test('failed or cancelled file choices preserve the active source and renderer',
   const harness = createHarness(true);
   harness.readyOverlay();
   harness.setVideo('file:///videos/A.mp4');
+  harness.ackLoad();
   const loadsBefore = loadedComments(harness.overlayMessages);
 
   await harness.addFromSidebar('/downloads/missing.xml');
@@ -754,6 +760,7 @@ test('manual loading catches file.read exceptions and preserves the active sourc
   const harness = createHarness(true);
   harness.readyOverlay();
   harness.setVideo('file:///videos/A.mp4');
+  harness.ackLoad();
   const brokenPath = '/downloads/broken.xml';
   harness.setFile(brokenPath, '<i><d p="2,1,25,16777215,0,0,0,0">broken</d></i>');
   harness.failRead(brokenPath);
@@ -797,6 +804,7 @@ test('manual exact match loads network danmaku with auto-network off', async () 
   assert.equal(loaded.length, 1);
   assert.match(loaded[0], /hello/);
   assert.deepEqual(Array.from(harness.context.pluginState.danmakuFileList.selectedPaths), ['dandanplay://7']);
+  harness.ackLoad();
   assert.ok(harness.osdMessages.some((message) => message.includes('Network danmaku loaded') && message.includes('EP1')));
 });
 
@@ -823,6 +831,7 @@ test('manual network load before overlay readiness re-enables and flushes the pe
 
   harness.readyOverlay();
   assert.equal(loadedComments(harness.overlayMessages).length, 1);
+  harness.ackLoad();
   assert.ok(harness.osdMessages.some((message) => message.includes('Network danmaku loaded') && message.includes('EP1')));
   harness.emitEvent('mpv.time-pos.changed', 12);
   assert.equal(harness.overlayMessages.at(-1).data.time, 12);
@@ -1161,6 +1170,8 @@ test('duration availability reaches a lazily opened sidebar independently of dur
     h.setFile('/videos/with-duration.json', JSON.stringify([{fork: 'main', duration: 100, comments: []}]));
     h.emitSidebar('select-danmaku-file', {path: '/videos/with-duration.json'});
     assert.equal(h.sidebarMessages.findLast(m => m.data?.nicoJsonHasDuration !== undefined).data.nicoJsonHasDuration, true);
+    h.readyOverlay();
+    h.ackLoad();
     h.emitSidebar('request-state');
     const state = h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data;
     assert.equal(state.danmakuLoaded, true);
@@ -1226,6 +1237,7 @@ test('renderer errors update load status while stale replies cannot alter the ne
   assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded,false);
   assert.ok(h.osdMessages.includes('Cannot render this danmaku file'));
   h.setVideo('file:///videos/B.mp4');
+  h.ackLoad();
   h.emitOverlay('danmaku-load-result',{loadId:id,success:false});
   assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded,true);
   h.toggleDanmaku();
@@ -1523,7 +1535,8 @@ test('unchanged projections skip renderer loads, but a failed renderer can retry
   assert.equal(h.overlayMessages.filter(m => m.name === 'load-danmaku').length, before);
   const id = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
   h.emitOverlay('danmaku-load-result', {loadId: id, success: false});
-  h.context.resendDanmakuToOverlay();
+  assert.equal(h.context.pluginState.danmakuFileList.selectedPaths.length, 0);
+  h.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
   assert.equal(h.overlayMessages.filter(m => m.name === 'load-danmaku').length, before + 1);
   h.emitSidebar('danmaku-blocklist-add', {word: 'A comment'});
   assert.equal(h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.comments.length, 0);
@@ -1552,8 +1565,91 @@ test('completed mpv seeks explicitly synchronize even sub-threshold forward move
 
 test('an unchanged renderer status does not echo a second UI update', () => {
   const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+  h.ackLoad();
   const id = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
   h.sidebarMessages.length = 0;
   h.emitOverlay('danmaku-load-result', {loadId: id, success: true});
   assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-state').length, 0);
+});
+
+test('disabled filter edits defer the renderer load and apply the latest projection once on enable', () => {
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  h.toggleDanmaku(); h.overlayMessages.length = 0;
+  h.emitSidebar('danmaku-blocklist-add', {word: 'A comment'});
+  h.emitSidebar('danmaku-blocklist-set-enabled', {enabled: true});
+  h.emitSidebar('danmaku-dedupe-set', {enabled: true, window: 3});
+  h.emitSidebar('set-danmaku-force-simplified', {value: true});
+  h.emitSidebar('set-danmaku-filter-density', {density: 10});
+  assert.equal(h.overlayMessages.filter(m => m.name === 'load-danmaku').length, 0);
+  h.toggleDanmaku();
+  const loads = h.overlayMessages.filter(m => m.name === 'load-danmaku');
+  assert.equal(loads.length, 1);
+  assert.deepEqual(loads[0].data.comments, []);
+  assert.equal(loads[0].data.playback.enabled, true);
+  assert.equal(h.overlayMessages.filter(m => m.name === 'toggle-danmaku').length, 0);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.ackLoad();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  h.toggleDanmaku(); h.overlayMessages.length = 0;
+  h.emitSidebar('danmaku-blocklist-add', {word: 'unmatched'});
+  h.toggleDanmaku();
+  assert.equal(h.overlayMessages.filter(m => m.name === 'load-danmaku').length, 0, 'equivalent projection reuses the renderer');
+  assert.equal(h.overlayMessages.filter(m => m.name === 'toggle-danmaku').length, 1);
+});
+
+test('disabling a pending source before readiness preserves the choice for the next enable', async () => {
+  const h = createHarness(false); h.setVideo('file:///videos/A.mp4');
+  await h.loadFromMenu('/videos/B.xml');
+  h.toggleDanmaku(); h.readyOverlay();
+  assert.equal(loadedComments(h.overlayMessages).length, 0);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.toggleDanmaku();
+  assert.equal(loadedComments(h.overlayMessages).length, 1);
+  assert.deepEqual(h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.comments.map(c => c.content), ['B comment']);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.ackLoad();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+});
+
+test('source success and its OSD wait for acknowledgment without repeating the file list', async () => {
+  const h = createHarness(true); h.readyOverlay();
+  h.sidebarMessages.length = 0;
+  await h.loadFromMenu('/videos/B.xml');
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-file-list').length, 1);
+  assert.equal(h.osdMessages.filter(m => m.startsWith('Danmaku loaded:')).length, 0);
+  h.ackLoad();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-file-list').length, 1);
+  assert.equal(h.osdMessages.filter(m => m.startsWith('Danmaku loaded:')).length, 1);
+  h.ackLoad();
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-file-list').length, 1);
+  assert.equal(h.osdMessages.filter(m => m.startsWith('Danmaku loaded:')).length, 1);
+});
+
+test('failed rendering clears selection and ignores late success while retaining a retryable file', async () => {
+  const h = createHarness(true); h.readyOverlay(); await h.loadFromMenu('/videos/B.xml');
+  const id = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+  h.ackLoad(false);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), []);
+  assert.ok(h.context.findDanmakuFileByPath('/videos/B.xml'));
+  assert.equal(h.overlayMessages.at(-1).name, 'clear-danmaku');
+  h.emitOverlay('danmaku-load-result', {loadId: id, success: true});
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  assert.equal(h.osdMessages.filter(m => m.startsWith('Danmaku loaded:')).length, 0);
+  h.emitSidebar('select-danmaku-file', {path: '/videos/B.xml'}); h.ackLoad();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+});
+
+test('WebView navigation invalidates old render acknowledgments before the next handshake', () => {
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  const oldId = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+  h.emitEvent('iina.window-loaded');
+  h.emitEvent('iina.plugin-overlay-loaded');
+  h.emitOverlay('danmaku-load-result', {loadId: oldId, success: true});
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.emitOverlay('overlay-ready');
+  h.ackLoad();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
 });

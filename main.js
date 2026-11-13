@@ -206,9 +206,10 @@ function syncPreferencesSoon() {
 }
 
 var pendingDanmaku = null;
+let pendingLoadNotice = null;
 var currentVideoUrl = null;
-// 当前 overlay renderer 实际对应的视频 URL。不要用弹幕文件状态推断,
-// 因为弹幕开关关闭期间视频仍可能切换。
+// 最后下发的 renderer 目标视频。渲染是否成功由 loadId 回执确认,
+// 不从弹幕文件读取成功或开关状态推断。
 var loadedDanmakuVideoUrl = null;
 // 同一 URL 也可能被重新加载;世代号用于丢弃旧异步 DDP 请求的回调。
 var danmakuLoadGeneration = 0;
@@ -524,9 +525,9 @@ function buildLoadDanmakuPayload(comments, danmakuType) {
   };
 }
 
-function resetNicoJsonFilterState() {
-  commitState({nicoJsonDateInfo: emptyNicoJsonDateInfo(), nicoJsonDurationDiff: null,
-    nicoJsonHasDuration: false, danmakuFilterStartDay: null, danmakuFilterEndDay: null});
+function resetNicoJsonFilterState(extra) {
+  commitState(Object.assign({nicoJsonDateInfo: emptyNicoJsonDateInfo(), nicoJsonDurationDiff: null,
+    nicoJsonHasDuration: false, danmakuFilterStartDay: null, danmakuFilterEndDay: null}, extra));
 }
 
 function applyDanmakuFilter(startDay, endDay) {
@@ -704,11 +705,12 @@ function sameFormattedComments(a, b) {
 function sendCurrentDanmaku(force) {
   let path = pluginState.danmakuFileList.selectedPaths[0];
   let doc = path && danmakuCache[path];
-  if (!overlayReady || !doc) return false;
+  if (!overlayReady || !pluginState.danmakuEnabled || !doc) return false;
   let comments = getEffectiveContent(path);
   if (!force && lastOverlayProjection && lastOverlayProjection.doc === doc &&
       sameFormattedComments(lastOverlayProjection.comments, comments)) return false;
   lastOverlayProjection = {doc: doc, comments: comments};
+  updateDanmakuStatus({fileType: pluginState.currentDanmakuStatus.fileType, isLoaded: false});
   overlayPostMessage('load-danmaku', buildLoadDanmakuPayload(comments, pluginState.currentDanmakuStatus.fileType));
   loadedDanmakuVideoUrl = currentVideoUrl;
   return true;
@@ -1291,6 +1293,7 @@ function loadDanmakuForVideo(url) {
   lastOverlayProjection = null;
   currentVideoUrl = url;
   pendingDanmaku = null;
+  pendingLoadNotice = null;
   loadedDanmakuVideoUrl = null;
   ddpResetState();
   danmakuNotFound();
@@ -1417,16 +1420,16 @@ function loadDanmakuFile(path, options) {
   resetNicoJsonFilterState();
   commitState({nicoJsonDateInfo: doc.dateInfo});
   if (fileType === 'nico-json') checkNicoJsonDuration(doc);
-  updateDanmakuStatus({ fileType: fileType, isLoaded: true });
+  updateDanmakuStatus({ fileType: fileType, isLoaded: false });
+  pendingLoadNotice = {path: path, fileName: fileName, loadedMessageKey: loadedMessageKey};
   sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
   sendDanmakuFilterInfo();
   notifyBrowserDataChanged();
 
   if (overlayReady) {
     sendCurrentDanmaku(true);
-    osdAfterDanmakuLoad(fileName, loadedMessageKey);
   } else {
-    pendingDanmaku = { loadedMessageKey: loadedMessageKey };
+    pendingDanmaku = {};
     core.osd(t('queued'));
   }
   if (overlayReady) setObserver(true);
@@ -1470,12 +1473,7 @@ function markOverlayReady() {
   overlay.show();
   postVideoAspect();
   if (pendingDanmaku) {
-    var pending = pendingDanmaku;
-    sendCurrentDanmaku(true);
-    var pendingPath = pluginState.danmakuFileList.selectedPaths.length > 0 ? pluginState.danmakuFileList.selectedPaths[0] : "";
-    var pendingInfo = pendingPath ? findDanmakuFileByPath(pendingPath) : null;
-    var loadedName = pendingInfo ? pendingInfo.filename : (pendingPath ? pendingPath.split("/").pop() : "");
-    osdAfterDanmakuLoad(loadedName, pending.loadedMessageKey);
+    if (!sendCurrentDanmaku(true)) overlayPostMessage("toggle-danmaku", playbackSnapshot());
     pendingDanmaku = null;
     setObserver(true);
   } else if (pluginState.danmakuEnabled && !core.status.idle && !currentVideoUrl && core.status.url) {
@@ -1511,7 +1509,11 @@ function toggleDanmaku() {
   commitState({danmakuEnabled: !pluginState.danmakuEnabled});
   if (pluginState.danmakuEnabled) {
     overlay.show();
-    if (currentVideoUrl && loadedDanmakuVideoUrl !== currentVideoUrl) {
+    let selectedPath = pluginState.danmakuFileList.selectedPaths[0];
+    if (selectedPath && danmakuCache[selectedPath]) {
+      if (!sendCurrentDanmaku(false) && overlayReady) overlayPostMessage('toggle-danmaku', playbackSnapshot());
+      setObserver(true);
+    } else if (currentVideoUrl && loadedDanmakuVideoUrl !== currentVideoUrl) {
       loadDanmakuForVideo(currentVideoUrl);
       if (overlayReady && loadedDanmakuVideoUrl !== currentVideoUrl) overlayPostMessage('toggle-danmaku', playbackSnapshot());
       setObserver(true);
@@ -1797,6 +1799,8 @@ function registerSidebarHandlers() {
 
 event.on("iina.window-loaded", function () {
   overlayReady = false;
+  overlayLoadId += 1;
+  updateDanmakuStatus({fileType: pluginState.currentDanmakuStatus.fileType, isLoaded: false});
   lastOverlayProjection = null;
   if (pluginState.danmakuFileList.selectedPaths.length) pendingDanmaku = {};
   overlay.loadFile("overlay/index.html");
@@ -1849,14 +1853,32 @@ function registerOverlayHandlers() {
 
   overlayOnMessage("danmaku-load-result", function (data) {
     if (!data || data.loadId !== overlayLoadId) return;
-    updateDanmakuStatus({ fileType: pluginState.currentDanmakuStatus.fileType, isLoaded: !!data.success });
     if (!data.success) {
-      lastOverlayProjection = null;
       let path = pluginState.danmakuFileList.selectedPaths[0];
+      // A failed candidate remains in the list for an explicit retry, but is
+      // no longer an active selection. Invalidate later replies from this load.
+      overlayLoadId += 1;
+      lastOverlayProjection = null;
+      projectionCache = null;
+      loadedDanmakuVideoUrl = null;
+      pendingLoadNotice = null;
+      pendingDanmaku = null;
+      resetNicoJsonFilterState({
+        currentDanmakuStatus: {fileType: null, isLoaded: false},
+        danmakuFileList: Object.assign({}, pluginState.danmakuFileList, {selectedPaths: []})
+      });
+      overlayPostMessage('clear-danmaku', {});
+      sidebarPostMessage('danmaku-file-list', pluginState.danmakuFileList);
       sidebarPostMessage("danmaku-file-error", { path: path, message: t('render_failed') });
+      sendDanmakuFilterInfo();
+      notifyBrowserDataChanged();
       core.osd(t('render_failed'));
     } else {
-      sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
+      updateDanmakuStatus({ fileType: pluginState.currentDanmakuStatus.fileType, isLoaded: true });
+      if (pendingLoadNotice && pendingLoadNotice.path === pluginState.danmakuFileList.selectedPaths[0]) {
+        osdAfterDanmakuLoad(pendingLoadNotice.fileName, pendingLoadNotice.loadedMessageKey);
+        pendingLoadNotice = null;
+      }
     }
   });
 

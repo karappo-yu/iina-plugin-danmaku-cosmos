@@ -19,10 +19,13 @@ function createSidebar() {
   function element(tagName = 'DIV', attributes = {}) {
     const events = new Map();
     const classes = new Set((attributes.class || '').split(' '));
-    return {
+    const node = {
+      children: [], parentNode: null,
       tagName, attributes, style: {}, dataset: {}, value: attributes.value || '', textContent: '',
       classList: { contains: name => classes.has(name), add: name => classes.add(name), remove: name => classes.delete(name), toggle() {} },
-      closest() { return this; }, querySelectorAll() { return []; }, querySelector() { return element(); }, appendChild() {},
+      closest() { return this; }, querySelectorAll() { return []; }, querySelector(selector) { return this.children.find(child => child.tagName.toLowerCase() === selector) || null; },
+      appendChild(child) { this.children.push(child); child.parentNode = this; return child; },
+      remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this); this.parentNode = null; },
       getAttribute(name) { return attributes[name]; },
       setAttribute(name, value) { attributes[name] = String(value); },
       getBoundingClientRect() { return { left: 0, width: 400 }; },
@@ -32,10 +35,14 @@ function createSidebar() {
       },
       fire(name, data = {}) {
         const event = { target: this, clientX: 0, preventDefault() {}, stopPropagation() {}, ...data };
-        for (const callback of events.get(name) || []) callback(event);
+        for (const callback of events.get(name) || []) callback.call(this, event);
       },
       focus() { document.activeElement = this; },
     };
+    Object.defineProperty(node, 'innerHTML', {get() {return '';}, set() {
+      this.children.forEach(child => {child.parentNode = null;}); this.children = [];
+    }});
+    return node;
   }
   for (const match of html.matchAll(/<([a-z]+)\b([^>]*\bid="[^"]+"[^>]*)>/gi)) {
     const attrs = Object.fromEntries(Array.from(match[2].matchAll(/([\w-]+)="([^"]*)"/g), m => [m[1], m[2]]));
@@ -226,4 +233,92 @@ test('speed dragging previews locally and commits one intent on change', () => {
   const messages = h.messages.filter(m => m.name === 'set-scroll-speed');
   assert.equal(messages.length, 1);
   assert.equal(messages[0].data.speed, 0.25);
+});
+
+test('compositionend commits a final composing-only input once and preserves it through delayed echoes and blur', () => {
+  const h = createSidebar();
+  const input = h.elements.get('danmaku-font-custom');
+  const select = h.elements.get('danmaku-font-select');
+  select.value = 'custom'; select.fire('change');
+  input.fire('compositionstart');
+  input.value = '游ゴシック体';
+  input.fire('input', {isComposing: true});
+  assert.equal(h.messages.filter(m => m.name === 'set-danmaku-font').length, 0);
+  h.document.activeElement = null;
+  input.fire('blur');
+  input.fire('compositionend');
+  let sends = h.messages.filter(m => m.name === 'set-danmaku-font');
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].data.fontFamily, '游ゴシック体');
+  h.emit('danmaku-state', {danmakuFontFamily: ''});
+  assert.equal(input.value, '游ゴシック体', 'an older echo cannot roll back a submitted draft');
+  input.fire('input', {isComposing: false});
+  input.fire('blur');
+  assert.equal(h.messages.filter(m => m.name === 'set-danmaku-font').length, 1, 'optional trailing input/blur is deduplicated');
+  h.emit('danmaku-state', {danmakuFontFamily: '游ゴシック体'});
+  assert.equal(input.value, '游ゴシック体');
+});
+
+test('empty Custom mode survives blur and a font-weight echo until a different family is selected', () => {
+  const h = createSidebar();
+  h.emit('danmaku-state', {danmakuFontFamily: '', danmakuFontWeight: '400'});
+  const input = h.elements.get('danmaku-font-custom');
+  const select = h.elements.get('danmaku-font-select');
+  const slider = h.elements.get('danmaku-font-weight-slider');
+  select.value = 'custom'; select.fire('change');
+  slider.focus(); input.fire('blur');
+  slider.value = '600'; slider.fire('input');
+  h.emit('danmaku-state', {danmakuFontFamily: '', danmakuFontWeight: '600'});
+  assert.equal(select.value, 'custom');
+  assert.equal(input.value, '');
+  assert.equal(h.elements.get('danmaku-font-custom-row').style.display, '');
+  select.value = ''; select.fire('change');
+  h.emit('danmaku-state', {danmakuFontFamily: ''});
+  assert.equal(h.elements.get('danmaku-font-custom-row').style.display, 'none');
+});
+
+for (const finish of ['Enter', 'Escape']) test('external blocklist updates preserve the editor until ' + finish, () => {
+  const h = createSidebar();
+  h.emit('danmaku-state', {blocklist: {enabled: true, words: ['original']}});
+  const list = h.elements.get('danmaku-blocklist-list');
+  const add = list.children.at(-1);
+  add.fire('click');
+  const input = add.children[0];
+  input.value = 'draft word'; input.selectionStart = 3;
+  h.emit('danmaku-state', {blocklist: {enabled: false, words: ['external']}});
+  assert.equal(list.children.at(-1), add);
+  assert.equal(input.parentNode, add);
+  assert.equal(h.document.activeElement, input);
+  assert.equal(input.selectionStart, 3);
+  assert.equal(h.elements.get('danmaku-blocklist-panel').style.display, '');
+  assert.equal(h.messages.filter(m => m.name === 'danmaku-blocklist-add').length, 0);
+  input.fire('keydown', {key: finish});
+  const sent = h.messages.filter(m => m.name === 'danmaku-blocklist-add');
+  assert.equal(sent.length, finish === 'Enter' ? 1 : 0);
+  if (sent.length) assert.equal(sent[0].data.word, 'draft word');
+  assert.equal(list.children[0].children[0].textContent, 'external', 'queued list state appears after editing ends');
+  assert.equal(h.elements.get('danmaku-blocklist-panel').style.display, 'none');
+});
+
+test('blocklist IME Enter does not submit; an intentional blur waits for compositionend', () => {
+  const h = createSidebar();
+  h.emit('danmaku-state', {blocklist: {enabled: true, words: []}});
+  const add = h.elements.get('danmaku-blocklist-list').children.at(-1);
+  add.fire('click');
+  const input = add.children[0];
+  input.fire('compositionstart'); input.value = '途中';
+  input.fire('keydown', {key: 'Enter', isComposing: true});
+  input.fire('blur');
+  assert.equal(h.messages.filter(m => m.name === 'danmaku-blocklist-add').length, 0);
+  input.value = '完成'; input.fire('compositionend'); input.fire('blur');
+  assert.deepEqual(h.messages.filter(m => m.name === 'danmaku-blocklist-add').map(m => m.data.word), ['完成']);
+});
+
+test('pending rendering does not hide date controls for a selected parsed source', () => {
+  const h = createSidebar();
+  h.emit('danmaku-file-list', {xmlFiles: [], jsonFiles: [{path: '/source.json', filename: 'source.json'}], selectedPaths: ['/source.json']});
+  h.emit('danmaku-state', {danmakuLoaded: false});
+  assert.equal(h.elements.get('danmaku-filter-section').style.display, '');
+  h.emit('danmaku-file-list', {xmlFiles: [], jsonFiles: [], selectedPaths: []});
+  assert.equal(h.elements.get('danmaku-filter-section').style.display, 'none');
 });

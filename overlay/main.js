@@ -30,6 +30,7 @@ let domEmojiRenderer = null;
 let formattedComments = null;
 let canvasRafId = null;
 let canvasRebuildTimer = null;
+let canvasRebuildPending = false;
 let canvasVideoAnchorTime = 0;
 let canvasSystemAnchorTime = 0;
 let canvasIsPlaying = false;
@@ -235,10 +236,12 @@ function reportCanvasError(error) {
 }
 
 function scheduleCanvasRebuild() {
+  canvasRebuildPending = true;
   if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
+  if (!danmakuVisible) { canvasRebuildTimer = null; return; }
   canvasRebuildTimer = setTimeout(function () {
     canvasRebuildTimer = null;
-    if (formattedComments) {
+    if (formattedComments && danmakuVisible) {
       try {
         initCanvasRenderer(formattedComments);
         startCanvasLoop();
@@ -293,6 +296,9 @@ if (typeof window.addEventListener === 'function') {
 function initCanvasRenderer(data) {
   if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
   canvasRebuildTimer = null;
+  formattedComments = data;
+  if (!danmakuVisible) { canvasRebuildPending = true; return; }
+  canvasRebuildPending = false;
   const canvas = document.getElementById('niconicomments-canvas');
   if (!canvas || typeof NiconiComments === 'undefined') return;
   const useCssMode = canvasNicoMode === 'css';
@@ -322,7 +328,7 @@ function initCanvasRenderer(data) {
     domEmojiRenderer = createDomEmojiRenderer(document.querySelector('[data-dm-css-container]'));
   }
   // 初始化时同步当前播放速度(CSS 模式滚动动画时长按倍率缩放)
-  if (niconiComments && niconiComments.setPlaybackSpeed) {
+  if (danmakuVisible && niconiComments && niconiComments.setPlaybackSpeed) {
     niconiComments.setPlaybackSpeed(playbackSpeed);
   }
   bindCanvasEvents(niconiComments);
@@ -334,16 +340,6 @@ function initCanvasRenderer(data) {
     const cssContainer = document.querySelector('[data-dm-css-container]');
     if (cssContainer) cssContainer.style.opacity = canvasOpacity;
   }
-  // 弹幕关闭状态下重建渲染器(改字体/描边等)时,renderer 会新建容器,
-  // 需恢复隐藏状态,否则弹幕会重新出现。
-  if (!danmakuVisible) {
-    const canvasEl = document.getElementById('niconicomments-canvas');
-    if (canvasEl) canvasEl.style.display = 'none';
-    const cssContainer = document.querySelector('[data-dm-css-container]');
-    if (cssContainer) cssContainer.style.display = 'none';
-    stopCanvasLoop();
-    if (niconiComments) niconiComments.clear();
-  }
   iina.postMessage("danmaku-load-result", { loadId: currentLoadId, success: true });
 }
 
@@ -352,7 +348,7 @@ function shouldRunCanvasLoop() {
 }
 
 function drawCanvasAtVpos(vpos, forceRendering) {
-  if (!niconiComments) return;
+  if (!danmakuVisible || !niconiComments) return;
   const renderVpos = canvasNicoMode === 'css' ? Math.floor(vpos) : vpos;
   niconiComments.drawCanvas(renderVpos, !!forceRendering);
 }
@@ -416,7 +412,7 @@ onPluginMessage("time-update", (data) => {
   if (isSeek) stopCanvasLoop();
   syncVideoAnchor(data.time);
   lastTime = t;
-  if ((isSeek || isPaused) && niconiComments) {
+  if (danmakuVisible && (isSeek || isPaused) && niconiComments) {
     niconiComments.clear();
     // 必须用偏移后时间: 裸视频时间会在负偏移时把本该延后的弹幕提前生成,
     // CSS 模式弹幕是 DOM 动画,生成后会完整飘完一遍再出现第二次(重复)
@@ -475,7 +471,7 @@ onPluginMessage("playback-speed", (data) => {
   playbackSpeed = data && data.speed ? data.speed : 1.0;
   syncVideoAnchor(anchoredTime);
   // 通知 CSS 渲染器:速度变化时重设滚动动画时长(1x 无操作)
-  if (niconiComments && niconiComments.setPlaybackSpeed) {
+  if (danmakuVisible && niconiComments && niconiComments.setPlaybackSpeed) {
     niconiComments.setPlaybackSpeed(playbackSpeed);
   }
 });
@@ -488,7 +484,7 @@ function syncPlaybackState(data) {
   canvasIsPlaying = !isPaused;
   syncVideoAnchor(time);
   if (data.enabled !== undefined) danmakuVisible = !!data.enabled;
-  if (niconiComments) {
+  if (danmakuVisible && niconiComments) {
     niconiComments.setPlaybackSpeed(playbackSpeed);
     if (isPaused) niconiComments.pauseCSS(); else niconiComments.resumeCSS();
   }
@@ -502,8 +498,13 @@ onPluginMessage("toggle-danmaku", (data) => {
   const cssContainer = document.querySelector('[data-dm-css-container]');
   if (cssContainer) cssContainer.style.display = data.enabled ? '' : 'none';
   if (!data.enabled) {
+    if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
+    canvasRebuildTimer = null;
     stopCanvasLoop();
     if (niconiComments) niconiComments.clear();
+  } else if (canvasRebuildPending && formattedComments) {
+    try { initCanvasRenderer(formattedComments); startCanvasLoop(); }
+    catch (error) { reportCanvasError(error); }
   } else {
     startCanvasLoop();
     // 暂停中重开: rAF loop 不会启动(shouldRunCanvasLoop 要求正在播放),
@@ -558,7 +559,7 @@ onPluginMessage("set-scroll-speed", (data) => {
     if (niconiComments.setScrollSpeed(scrollSpeed)) {
       // Playback consumes the pending layout on its next frame. Paused video
       // has no loop, so apply the one required draw immediately.
-      if (isPaused) drawCanvasAtVpos((getVideoTimeSec() + danmakuTimeOffsetSec) * 100, false);
+      if (danmakuVisible && isPaused) drawCanvasAtVpos((getVideoTimeSec() + danmakuTimeOffsetSec) * 100, false);
       else startCanvasLoop();
     }
   }
@@ -568,7 +569,7 @@ onPluginMessage("set-danmaku-offset", (data) => {
   if (data.offset !== undefined) {
     danmakuTimeOffsetSec = Number(data.offset) || 0;
   }
-  if (formattedComments && niconiComments) {
+  if (danmakuVisible && formattedComments && niconiComments) {
     // 偏移变化等同于时间轴跳转。CSSRenderer 使用增量 DOM，
     // 必须先清空，否则旧时间点的弹幕会与新时间点的弹幕叠加。
     niconiComments.clear();
@@ -584,6 +585,7 @@ onPluginMessage("set-danmaku-font", (data) => {
 
 onPluginMessage("clear-danmaku", () => {
   currentLoadId = 0;
+  canvasRebuildPending = false;
   if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
   canvasRebuildTimer = null;
   stopCanvasLoop();
