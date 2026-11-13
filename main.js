@@ -47,6 +47,7 @@ pluginState.canvasFontScale = preferences.get("niconicommentsFontScale") || 1.0;
 pluginState.currentCanvasMode = preferences.get("canvasMode") || 'css';
 pluginState.strokeOpacity = preferences.get("strokeOpacity") !== undefined ? preferences.get("strokeOpacity") : 0.4;
 pluginState.strokeWidth = preferences.get("strokeWidth") !== undefined ? preferences.get("strokeWidth") : 2.8;
+pluginState.cssTextShadowBlur = isValidCssTextShadowBlur(preferences.get("cssTextShadowBlur")) ? preferences.get("cssTextShadowBlur") : 0;
 pluginState.strokeColor = preferences.get("strokeColor") || '#000000';
 pluginState.strokeInversionColor = preferences.get("strokeInversionColor") || '#ffffff';
 pluginState.commentLimit = preferences.get("commentLimit") !== undefined ? preferences.get("commentLimit") : 0;
@@ -255,7 +256,7 @@ const statePreferenceKeys = {
 const persistentStateKeys = [
   'danmakuForceSimplified', 'danmakuAutoOffset', 'danmakuBlocklist', 'danmakuBlocklistEnabled',
   'danmakuBlockTopEnabled', 'danmakuBlockBottomEnabled', 'danmakuDedupeEnabled', 'danmakuDedupeWindow',
-  'strokeOpacity', 'strokeWidth', 'strokeColor', 'strokeInversionColor', 'commentLimit', 'scrollSpeed',
+  'strokeOpacity', 'strokeWidth', 'cssTextShadowBlur', 'strokeColor', 'strokeInversionColor', 'commentLimit', 'scrollSpeed',
   'danmakuFontFamily', 'danmakuFontWeight', 'stylePreset', 'dandanplayAutoNetwork',
   'danmakuFilterDensity', 'danmakuBrowserVisible'
 ];
@@ -283,6 +284,7 @@ const overlayStateBindings = {
   canvasOpacity: ['set-opacity', 'opacity'], canvasFontScale: ['set-fontscale', 'scale'],
   currentCanvasMode: ['set-canvas-mode', 'mode'], strokeOpacity: ['set-stroke-opacity', 'opacity'],
   strokeWidth: ['set-stroke-width', 'width'], strokeColor: ['set-stroke-color', 'color'],
+  cssTextShadowBlur: ['set-css-text-shadow-blur', 'blur'],
   strokeInversionColor: ['set-stroke-inversion-color', 'color'], commentLimit: ['set-comment-limit', 'limit'],
   scrollSpeed: ['set-scroll-speed', 'speed'], danmakuTimeOffsetSec: ['set-danmaku-offset', 'offset'],
 };
@@ -534,6 +536,7 @@ function buildLoadDanmakuPayload(comments, danmakuType) {
     strokeInversionColor: pluginState.strokeInversionColor,
     strokeOpacity: pluginState.strokeOpacity,
     strokeWidth: pluginState.strokeWidth,
+    cssTextShadowBlur: pluginState.cssTextShadowBlur,
     commentLimit: pluginState.commentLimit,
     scrollSpeed: pluginState.scrollSpeed,
     danmakuTimeOffsetSec: pluginState.danmakuTimeOffsetSec,
@@ -1577,6 +1580,10 @@ function chooseDanmakuFile() {
   });
 }
 
+function isValidCssTextShadowBlur(value) {
+  return typeof value === 'number' && isFinite(value) && value >= 0 && value <= 10;
+}
+
 function registerSidebarHandlers() {
   sidebarOnMessage("toggle-danmaku", function () { toggleDanmaku(); });
 
@@ -1593,6 +1600,10 @@ function registerSidebarHandlers() {
       patch[entry[1]] = data[entry[2]];
       commitState(patch);
     });
+  });
+
+  sidebarOnMessage("set-css-text-shadow-blur", function (data) {
+    if (data && isValidCssTextShadowBlur(data.blur)) commitState({cssTextShadowBlur: data.blur});
   });
 
   sidebarOnMessage("set-danmaku-force-simplified", function (data) {

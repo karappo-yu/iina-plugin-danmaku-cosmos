@@ -29,6 +29,7 @@
     "strokeInversionColor": "#ffffff",
     "strokeOpacity": 0.4,
     "strokeWidth": 2.8,
+    "cssTextShadowBlur": 0,
     "commentLimit": 0,
     "danmakuFilterDensity": 0,
     "scrollSpeed": 1.0,

@@ -381,6 +381,30 @@ for (const fixture of positionFixtures) {
   });
 }
 
+test('CSS shadow blur persists, restores to lazy views, and rejects invalid values', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  h.emitSidebar('request-state');
+  assert.equal(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.cssTextShadowBlur, 0);
+  h.emitSidebar('set-css-text-shadow-blur', {blur: 3.5});
+  assert.equal(h.preferences.get('cssTextShadowBlur'), 3.5);
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'set-css-text-shadow-blur').data.blur, 3.5);
+  assert.equal(h.context.buildLoadDanmakuPayload([], 'nico-json').cssTextShadowBlur, 3.5);
+  for (const blur of [-1, 10.5, NaN, Infinity, '2', null]) h.emitSidebar('set-css-text-shadow-blur', {blur});
+  assert.equal(h.preferences.get('cssTextShadowBlur'), 3.5);
+  h.emitSidebar('set-style-preset', {preset: 'bilibili'});
+  h.emitSidebar('set-canvas-mode', {mode: 'default'});
+  assert.equal(h.preferences.get('cssTextShadowBlur'), 3.5, 'presets and Canvas keep the CSS-only preference');
+  const restored = createHarness(true, false, Object.fromEntries(h.preferences));
+  restored.emitSidebar('request-state');
+  assert.equal(restored.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.cssTextShadowBlur, 3.5);
+  assert.equal(restored.context.buildLoadDanmakuPayload([], 'nico-json').cssTextShadowBlur, 3.5);
+  restored.emitSidebar('set-css-text-shadow-blur', {blur: 0});
+  assert.equal(restored.preferences.get('cssTextShadowBlur'), 0);
+  const invalid = createHarness(true, false, {cssTextShadowBlur: -1});
+  assert.equal(invalid.context.buildLoadDanmakuPayload([], 'nico-json').cssTextShadowBlur, 0);
+});
+
 test('position settings default off, persist independently and restore through lazy sidebar snapshots', () => {
   const harness = createHarness(true);
   harness.emitSidebar('request-state');

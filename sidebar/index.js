@@ -22,6 +22,9 @@ var strokeOpacitySlider = document.getElementById("stroke-opacity-slider");
 var strokeOpacityValue = document.getElementById("stroke-opacity-value");
 var strokeWidthSlider = document.getElementById("stroke-width-slider");
 var strokeWidthValue = document.getElementById("stroke-width-value");
+let cssTextShadowControl = document.getElementById("css-text-shadow-control");
+let cssTextShadowBlurSlider = document.getElementById("css-text-shadow-blur-slider");
+let cssTextShadowBlurValue = document.getElementById("css-text-shadow-blur-value");
 var strokeColorInput = document.getElementById("stroke-color");
 var strokeInversionInput = document.getElementById("stroke-inversion-color");
 var commentLimitSlider = document.getElementById("comment-limit-slider");
@@ -211,6 +214,7 @@ var i18n = {
     stroke_inversion: "Invert Color",
     stroke_opacity: "Opacity",
     stroke_width: "Width",
+    css_text_shadow_blur: "Shadow blur",
     scroll_speed: "Scroll Speed",
     file_add: "Add Local",
     off: "Off",
@@ -276,6 +280,7 @@ var i18n = {
     stroke_inversion: "\u9006\u7e01\u53d6\u308a\u8272",
     stroke_opacity: "\u7e01\u53d6\u308a\u900f\u660e\u5ea6",
     stroke_width: "\u7e01\u53d6\u308a\u306e\u592a\u3055",
+    css_text_shadow_blur: "\u5f71\u306e\u307c\u304b\u3057",
     scroll_speed: "\u30b9\u30af\u30ed\u30fc\u30eb\u901f\u5ea6",
     file_add: "\u30ed\u30fc\u30ab\u30eb\u8ffd\u52a0",
     off: "\u30aa\u30d5",
@@ -341,6 +346,7 @@ var i18n = {
     stroke_inversion: "\u53cd\u8272\u63cf\u8fb9",
     stroke_opacity: "\u63cf\u8fb9\u900f\u660e\u5ea6",
     stroke_width: "\u63cf\u8fb9\u7c97\u7ec6",
+    css_text_shadow_blur: "\u9634\u5f71\u6a21\u7cca",
     scroll_speed: "\u6eda\u52a8\u901f\u5ea6",
     file_add: "\u672c\u5730\u6dfb\u52a0",
     off: "\u5173\u95ed",
@@ -478,6 +484,7 @@ function trackSliderDrag(slider) {
 
 const speedSliderDrag = trackSliderDrag(speedSlider);
 const fontWeightSliderDrag = trackSliderDrag(fontWeightSlider);
+const cssTextShadowBlurSliderDrag = trackSliderDrag(cssTextShadowBlurSlider);
 
 // View-only edit state: an empty Custom choice is not a preference change.
 let fontCustomEmptyChoice = false;
@@ -528,6 +535,11 @@ function updateUI() {
   strokeOpacityValue.textContent = Math.round(state.strokeOpacity * 100) + "%";
   strokeWidthSlider.value = state.strokeWidth;
   strokeWidthValue.textContent = String(state.strokeWidth) + 'px';
+  if (!cssTextShadowBlurSliderDrag.active && state.cssTextShadowBlur !== undefined) {
+    cssTextShadowBlurSlider.value = state.cssTextShadowBlur;
+    cssTextShadowBlurValue.textContent = String(state.cssTextShadowBlur) + 'px';
+  }
+  updateCssTextShadowMode(state.useCanvasRenderer);
   strokeColorInput.value = state.strokeColor;
   strokeInversionInput.value = state.strokeInversionColor;
   commentLimitSlider.value = state.commentLimit > 0 ? state.commentLimit : COMMENT_LIMIT_SLIDER_UNLIMITED;
@@ -548,6 +560,11 @@ function updateUI() {
   updateFontUI();
   syncStylePresetUI();
   updateFilterUI();
+}
+
+function updateCssTextShadowMode(useCanvas) {
+  cssTextShadowBlurSlider.disabled = !!useCanvas;
+  cssTextShadowControl.style.display = useCanvas ? 'none' : '';
 }
 
 function syncStylePresetUI() {
@@ -703,6 +720,7 @@ if (fileAddBtn) {
 if (canvasRendererToggle) {
   canvasRendererToggle.addEventListener("change", function () {
     var useCanvas = canvasRendererToggle.checked;
+    updateCssTextShadowMode(useCanvas);
     iina.postMessage("set-canvas-mode", { mode: useCanvas ? 'default' : 'css' });
   });
 }
@@ -745,6 +763,16 @@ strokeWidthSlider.addEventListener("input", function () {
   strokeWidthValue.textContent = String(val) + 'px';
   iina.postMessage("set-stroke-width", { width: val });
 });
+
+function submitCssTextShadowBlur() {
+  if (cssTextShadowBlurSlider.disabled) return;
+  let blur = parseFloat(cssTextShadowBlurSlider.value);
+  cssTextShadowBlurValue.textContent = String(blur) + 'px';
+  iina.postMessage('set-css-text-shadow-blur', {blur: blur});
+}
+
+cssTextShadowBlurSlider.addEventListener('input', submitCssTextShadowBlur);
+cssTextShadowBlurSlider.addEventListener('change', submitCssTextShadowBlur);
 
 strokeColorInput.addEventListener("input", function () {
   iina.postMessage("set-stroke-color", { color: strokeColorInput.value });
@@ -989,6 +1017,7 @@ onPluginMessage("danmaku-state", function (data) {
   if (data.canvasFontScale !== undefined) state.canvasFontScale = data.canvasFontScale;
   if (data.strokeOpacity !== undefined) state.strokeOpacity = data.strokeOpacity;
   if (data.strokeWidth !== undefined) state.strokeWidth = data.strokeWidth;
+  if (data.cssTextShadowBlur !== undefined) state.cssTextShadowBlur = data.cssTextShadowBlur;
   if (data.strokeColor !== undefined) state.strokeColor = data.strokeColor;
   if (data.strokeInversionColor !== undefined) state.strokeInversionColor = data.strokeInversionColor;
   if (data.commentLimit !== undefined) state.commentLimit = data.commentLimit;

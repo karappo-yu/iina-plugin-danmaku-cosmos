@@ -33,6 +33,7 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **弹幕过滤面板**：「过滤」tab 提供弹幕时间轴浏览、屏蔽词、顶部／底部固定弹幕屏蔽、去重合并和点击跳转
 - **快捷键**：`Shift + D` 显示/隐藏弹幕
 - **弹幕字体设置**：在高级设置中可选择字体预设（日文/中文字体）或自定义字体，并可调节粗细，用于调整弹幕的显示效果
+- **CSS 阴影模糊**：高级设置中可调节描边阴影的模糊半径（0–10 px，步长 0.5；默认 0 关闭）。阴影使用描边颜色和透明度，随字体及显示比例缩放；Canvas 模式下隐藏该项并保留数值。
 - **滚动速度控制**：在高级设置中可调节滚动弹幕的速度（25%~100%，仅调慢），固定弹幕不受影响
 
 ### 风格调节
@@ -170,6 +171,7 @@ Nico JSON（V1／旧版）还可以在「基础」tab 按**投稿日期**切片�
 - **コメントフィルタパネル**：「フィルター」タブでコメントタイムライン表示、NGワード、上部／下部固定コメントのブロック、重複マージ、クリックでジャンプ
 - **ショートカット**：`Shift + D` でコメントの表示/非表示を切り替え
 - **コメントフォント設定**：詳細設定でフォント（日本語・中国語フォントのプリセットやカスタム）と太さを選択でき、コメントの表示効果を調整できます
+- **CSS の影のぼかし**：詳細設定で縁取りと同じ色・透明度の影を調整できます（0〜10 px、0.5 刻み、既定の 0 は無効）。文字と表示の倍率に応じて拡縮します。Canvas 描画ではこの項目を非表示にし、設定値は保持します。
 - **スクロール速度調整**：詳細設定でスクロールコメントの速度を調整できます（25%〜100%、減速のみ）。固定コメントには影響しません
 
 ### スタイル調整
@@ -264,6 +266,7 @@ Nico JSON（V1／旧版）还可以在「基础」tab 按**投稿日期**切片�
 - **Danmaku filter panel**: The **Filter** tab provides a danmaku timeline browser, blocklist, top/bottom fixed-comment blocking, dedupe merging, and click-to-seek
 - **Shortcut**: Press `Shift + D` to show/hide danmaku
 - **Danmaku font settings**: Choose a font (Japanese/Chinese presets or custom) and weight in Advanced settings to adjust the danmaku appearance
+- **CSS shadow blur**: Adjust the stroke shadow in Advanced settings (0–10 px in 0.5 steps; the default 0 disables it). It follows the stroke color/opacity and font/display scaling. Canvas mode hides the control while retaining its value.
 - **Scroll speed control**: Adjust the scrolling danmaku speed in Advanced settings (25%–100%, slow-down only); fixed comments are unaffected
 
 ### Style Adjustment

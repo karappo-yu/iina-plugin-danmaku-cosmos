@@ -110,6 +110,12 @@ The sidebar sends one `set-style-preset` intent containing only the preset name.
 
 Slider 25%–100% (step 5) → `set-fontscale` → `canvasFontScale`. CSS mode keeps small fonts crisp (system text rendering) — this is the main reason CSS mode is the default.
 
+### CSS Text Shadow Blur
+
+Advanced settings exposes `cssTextShadowBlur` (0–10 px, step 0.5, default 0/off). `set-css-text-shadow-blur` sends `{blur}` through main's validated, persisted `commitState()` path; load payloads and lazy sidebar snapshots include the value. Hide the entire control in Canvas mode without resetting its value. The label is simply "Shadow blur" (localized), without a CSS suffix or explanatory hint. It is independent of style presets.
+
+The engine config `cssTextShadowBlur` uses the same pre-scale units as stroke width, follows the resolved stroke color/opacity, and only applies when stroke width is positive. HTML5 applies comment/display scaling on the outer element; Flash applies the unscaled blur on its transformed glyph layer. Canvas ignores this option. Overlay coalesces CSS edits through the existing 80 ms rebuild, also refreshing repeated-emoji tiles, and defers hidden rendering work until enable. Canvas-only sessions store the value without rebuilding for this setting.
+
 ### Scroll Speed (native engine motion)
 
 `scrollSpeed` is an independent engine config field (plugin UI: 0.25–1; engine API: 0.25–4). `setScrollSpeed()` updates the existing instance, deriving horizontal speed, visibility windows and collision occupancy from one formula. Native `long` and `@N` commands remain unchanged, including on custom-duration comments. Owner motion and fixed comment lifetimes remain unchanged.

@@ -125,6 +125,36 @@ test('rapid style updates rebuild once and clear cancels a pending rebuild', () 
   assert.equal(h.instances.length,2);
 });
 
+test('CSS shadow edits coalesce, preserve disabled state, and are deferred in Canvas mode', () => {
+  const h = harness();
+  h.send('load-danmaku', {comments: formatted([comment('shadow', [])]), canvasMode: 'css', cssTextShadowBlur: 2});
+  assert.equal(h.instances[0].options.config.cssTextShadowBlur, 2);
+  h.send('set-css-text-shadow-blur', {blur: 3});
+  h.send('set-css-text-shadow-blur', {blur: 4});
+  assert.equal(h.instances[0].options.config.cssTextShadowBlur, 2, 'old renderer stays unchanged until rebuild');
+  h.flush();
+  assert.equal(h.instances.length, 2);
+  assert.equal(h.instances[1].options.config.cssTextShadowBlur, 4);
+  h.send('set-css-text-shadow-blur', {blur: 4});
+  h.send('set-css-text-shadow-blur', {blur: NaN});
+  h.flush();
+  assert.equal(h.instances.length, 2);
+  h.send('toggle-danmaku', {enabled: false});
+  h.send('set-css-text-shadow-blur', {blur: 6});
+  h.flush();
+  assert.equal(h.instances.length, 2, 'hidden comments do not rebuild');
+  h.send('toggle-danmaku', {enabled: true, paused: true, time: 1});
+  assert.equal(h.instances.length, 3);
+  assert.equal(h.instances[2].options.config.cssTextShadowBlur, 6);
+  h.send('set-canvas-mode', {mode: 'default'}); h.flush();
+  h.send('set-css-text-shadow-blur', {blur: 1}); h.flush();
+  assert.equal(h.instances.length, 4, 'Canvas does not rebuild for a CSS-only edit');
+  h.send('set-canvas-mode', {mode: 'css'}); h.flush();
+  assert.equal(h.instances[4].options.config.cssTextShadowBlur, 1);
+  h.send('set-css-text-shadow-blur', {blur: 0}); h.flush();
+  assert.equal(h.instances[5].options.config.cssTextShadowBlur, 0);
+});
+
 test('invalid formatted input reports a correlated load error instead of escaping the message handler', () => {
   const h = harness();
   assert.doesNotThrow(() => h.send('load-danmaku', {loadId:7,danmakuType:'nico-json',comments: 'invalid'}));

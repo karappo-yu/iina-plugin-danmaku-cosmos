@@ -19,6 +19,7 @@ let strokeColor = '#000000';
 let strokeInversionColor = '#ffffff';
 let strokeOpacity = 0.4;
 let strokeWidth = 2.8;
+let cssTextShadowBlur = 0;
 let commentLimit = 0;
 let scrollSpeed = 1.0;
 let danmakuTimeOffsetSec = 0;
@@ -317,6 +318,7 @@ function initCanvasRenderer(data) {
       contextStrokeInversionColor: strokeInversionColor,
       contextStrokeOpacity: strokeOpacity,
       contextLineWidth: { html5: strokeWidth, flash: strokeWidth },
+      cssTextShadowBlur: cssTextShadowBlur,
       commentLimit: commentLimit > 0 ? commentLimit : undefined,
       fonts: buildDanmakuFontConfig(),
       scrollSpeed: scrollSpeed,
@@ -394,6 +396,7 @@ function applyOverlaySettings(data) {
   if (data.strokeInversionColor !== undefined) strokeInversionColor = data.strokeInversionColor;
   if (data.strokeOpacity !== undefined) strokeOpacity = data.strokeOpacity;
   if (data.strokeWidth !== undefined) strokeWidth = data.strokeWidth;
+  if (data.cssTextShadowBlur !== undefined) cssTextShadowBlur = data.cssTextShadowBlur;
   if (data.commentLimit !== undefined) commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) scrollSpeed = data.scrollSpeed;
   if (data.danmakuTimeOffsetSec !== undefined) danmakuTimeOffsetSec = Number(data.danmakuTimeOffsetSec) || 0;
@@ -549,6 +552,15 @@ onPluginMessage("set-stroke-width", (data) => {
 onPluginMessage("set-stroke-color", (data) => {
   strokeColor = data.color;
   if (formattedComments) scheduleCanvasRebuild();
+});
+
+onPluginMessage("set-css-text-shadow-blur", (data) => {
+  if (!data || typeof data.blur !== 'number' || !isFinite(data.blur) || data.blur < 0 || data.blur > 10) return;
+  if (cssTextShadowBlur === data.blur) return;
+  cssTextShadowBlur = data.blur;
+  // Canvas retains the setting for a later mode switch. A CSS rebuild also
+  // regenerates repeated-emoji tiles with the new shadow, including while paused.
+  if (canvasNicoMode === 'css' && formattedComments) scheduleCanvasRebuild();
 });
 
 onPluginMessage("set-stroke-inversion-color", (data) => {

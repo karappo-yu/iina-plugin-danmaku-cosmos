@@ -332,6 +332,38 @@ test('a preset click sends one named intent, without separate appearance message
   assert.deepEqual(h.messages.filter(m => m.name.startsWith('set-')).map(m => [m.name, m.data.preset]), [['set-style-preset', 'nico']]);
 });
 
+test('CSS shadow slider follows mode and state without overwriting an active drag', () => {
+  const h = createSidebar();
+  const slider = h.elements.get('css-text-shadow-blur-slider');
+  const label = h.elements.get('css-text-shadow-blur-value');
+  h.emit('danmaku-state', {canvasMode: 'css', cssTextShadowBlur: 2});
+  assert.equal(slider.disabled, false);
+  assert.equal(h.elements.get('css-text-shadow-control').style.display, '');
+  assert.equal(label.textContent, '2px');
+  slider.fire('pointerdown', {button: 0});
+  slider.value = '3.5'; slider.fire('input');
+  assert.equal(h.messages.findLast(m => m.name === 'set-css-text-shadow-blur').data.blur, 3.5);
+  h.emit('danmaku-state', {cssTextShadowBlur: 2});
+  assert.equal(slider.value, '3.5');
+  assert.equal(label.textContent, '3.5px');
+  h.document.fire('pointerup'); slider.fire('change');
+  h.emit('danmaku-state', {cssTextShadowBlur: 3.5});
+  assert.equal(String(slider.value), '3.5');
+  h.emit('danmaku-state', {canvasMode: 'default'});
+  assert.equal(slider.disabled, true);
+  assert.equal(h.elements.get('css-text-shadow-control').style.display, 'none');
+  const before = h.messages.length;
+  slider.fire('input');
+  assert.equal(h.messages.length, before);
+  h.emit('danmaku-state', {canvasMode: 'css'});
+  assert.equal(slider.disabled, false);
+  assert.equal(h.elements.get('css-text-shadow-control').style.display, '');
+  assert.equal(label.textContent, '3.5px');
+  slider.focus();
+  h.emit('danmaku-state', {cssTextShadowBlur: 0});
+  assert.equal(label.textContent, '0px', 'keyboard focus alone does not block echoes');
+});
+
 const gestureSliders = [
   {id: 'speed-slider', label: 'speed-value', draft: '75', next: '40', text: '40%', message: 'set-scroll-speed'},
   {id: 'danmaku-font-weight-slider', label: 'danmaku-font-weight-value', draft: '800', next: '200', text: '200', message: 'set-danmaku-font'},
