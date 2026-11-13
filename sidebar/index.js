@@ -1,7 +1,7 @@
 function onPluginMessage(name, callback) {
   iina.onMessage(name, function (data) {
-    if (data && typeof data.encodedPayload === 'string') {
-      data = JSON.parse(decodeURIComponent(data.encodedPayload));
+    if (data && typeof data.__encoded === 'string') {
+      data = JSON.parse(decodeURIComponent(data.__encoded));
     }
     callback(data);
   });
@@ -86,33 +86,8 @@ var ddpState = {
 var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closest('.section'), strokeOpacitySlider.closest('.section')];
 
 var state = {
-  enabled: true,
-  useCanvasRenderer: false,
-  danmakuForceSimplified: false, // 与 Info.json preferenceDefaults 一致
-  danmakuAutoOffset: false, // 与 main.js 的默认值一致: 需用户手动开启
-  danmakuType: 'none',
-  danmakuLoaded: false,
-  canvasOpacity: 0.8,
-  canvasFontScale: 1.0,
-  strokeOpacity: 0.4,
-  strokeWidth: 2.8,
-  strokeColor: '#000000',
-  strokeInversionColor: '#ffffff',
-  commentLimit: 0,
-  scrollSpeed: 1.0,
-  danmakuOffsetSeconds: 0,
-  nicoJsonDurationDiff: null,
-  nicoJsonHasDuration: false,
-  danmakuFontFamily: "",
-  danmakuFontWeight: "400",
-  stylePreset: "nico",
-  nicoJsonTotalCount: 0,
-  danmakuFilterStartDay: null,
-  danmakuFilterEndDay: null,
-  dateInfo: { firstDay: null, lastDay: null, dayCounts: [], undatedCount: 0 },
-  danmakuFilterDensity: 0,
-  sourceTotalCount: 0,
-  filteredCount: 0,
+  dateInfo: {firstDay: null, lastDay: null, dayCounts: [], undatedCount: 0},
+  danmakuFilterStartDay: null, danmakuFilterEndDay: null,
 };
 
 var fileListState = {
@@ -191,6 +166,7 @@ function updateDanmakuInfoUI() {
 }
 
 function updateEnabledUI() {
+  if (state.enabled === undefined) return;
   var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0;
   var show = state.enabled && (state.danmakuLoaded || hasFiles);
   settingsSections.forEach(function(sec) {
@@ -475,17 +451,62 @@ function fontFamilyToPresetKey(family) {
   return "custom";
 }
 
+// macOS WebKit may keep a range focused after a button click. Only an
+// active pointer drag owns the preview; focus alone must not block state echoes.
+function trackSliderDrag(slider) {
+  let drag = {active: false};
+  if (!slider) return drag;
+  function begin(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    drag.active = true;
+  }
+  function end() { drag.active = false; }
+  slider.addEventListener('pointerdown', begin);
+  slider.addEventListener('mousedown', begin);
+  // Register change before the submit handler so even a synchronous echo is
+  // accepted. Do not reset the value here: pointerup may precede change.
+  slider.addEventListener('change', end);
+  // WebKit can blur the input as a native range drag starts. Window blur,
+  // pointer cancellation and release end the gesture; element blur does not.
+  slider.addEventListener('lostpointercapture', end);
+  document.addEventListener('pointerup', end, true);
+  document.addEventListener('pointercancel', end, true);
+  document.addEventListener('mouseup', end, true);
+  if (typeof window.addEventListener === 'function') window.addEventListener('blur', end);
+  return drag;
+}
+
+const speedSliderDrag = trackSliderDrag(speedSlider);
+const fontWeightSliderDrag = trackSliderDrag(fontWeightSlider);
+
+// View-only edit state: an empty Custom choice is not a preference change.
+let fontCustomEmptyChoice = false;
+let fontCustomComposing = false;
+let pendingFontFamily = null;
+
+function submitCustomFont() {
+  let family = fontCustomInput.value.trim();
+  if (fontCustomEmptyChoice && !family) return;
+  fontCustomEmptyChoice = false;
+  if (family === pendingFontFamily || (pendingFontFamily === null && family === state.danmakuFontFamily)) return;
+  pendingFontFamily = family;
+  iina.postMessage('set-danmaku-font', {fontFamily: family});
+}
+
 function updateFontUI() {
   if (!fontSelect || !fontCustomInput || !fontCustomRow) return;
-  var key = state.danmakuFontFamily ? fontFamilyToPresetKey(state.danmakuFontFamily) : "";
-  fontSelect.value = key;
-  if (key === "custom") {
-    fontCustomRow.style.display = "";
-    fontCustomInput.value = state.danmakuFontFamily;
-  } else {
-    fontCustomRow.style.display = "none";
+  let family = pendingFontFamily !== null ? pendingFontFamily : state.danmakuFontFamily;
+  var key = fontCustomEmptyChoice ? 'custom' : family ? fontFamilyToPresetKey(family) : "";
+  // State echoes may arrive for every keystroke. The focused field owns its
+  // draft (including spaces, composition and selection) until editing ends.
+  if (document.activeElement !== fontCustomInput && !fontCustomComposing) {
+    fontSelect.value = key;
+    fontCustomRow.style.display = key === "custom" ? "" : "none";
+    if (key === "custom" && !fontCustomEmptyChoice && fontCustomInput.value !== family) {
+      fontCustomInput.value = family;
+    }
   }
-  if (fontWeightSlider) {
+  if (fontWeightSlider && !fontWeightSliderDrag.active) {
     fontWeightSlider.value = state.danmakuFontWeight || "400";
   }
   if (fontWeightValue) {
@@ -493,31 +514,8 @@ function updateFontUI() {
   }
 }
 
-var STYLE_PRESETS = {
-  nico: { fontScale: 1.0, fontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },
-  balanced: { fontScale: 0.5, fontWeight: "400", strokeWidth: 3, scrollSpeed: 0.5 },
-  bilibili: { fontScale: 0.35, fontWeight: "200", strokeWidth: 2.5, scrollSpeed: 0.4 }
-};
-
-function applyStylePreset(p) {
-  state.canvasFontScale = p.fontScale;
-  fontsizeSlider.value = Math.round(p.fontScale * 100);
-  fontsizeValue.textContent = Math.round(p.fontScale * 100) + "%";
-  iina.postMessage("set-fontscale", { scale: p.fontScale });
-  state.danmakuFontWeight = p.fontWeight;
-  iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: p.fontWeight });
-  state.strokeWidth = p.strokeWidth;
-  strokeWidthSlider.value = p.strokeWidth;
-  strokeWidthValue.textContent = String(p.strokeWidth) + 'px';
-  iina.postMessage("set-stroke-width", { width: p.strokeWidth });
-  state.scrollSpeed = p.scrollSpeed;
-  speedSlider.value = Math.round(p.scrollSpeed * 100);
-  speedValue.textContent = Math.round(p.scrollSpeed * 100) + '%';
-  iina.postMessage("set-scroll-speed", { speed: p.scrollSpeed });
-  updateFontUI();
-}
-
 function updateUI() {
+  if (state.enabled === undefined) return;
   var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0;
   var hasDanmaku = state.danmakuLoaded || hasFiles;
   toggleDanmaku.checked = state.enabled && hasDanmaku;
@@ -534,13 +532,15 @@ function updateUI() {
   strokeInversionInput.value = state.strokeInversionColor;
   commentLimitSlider.value = state.commentLimit > 0 ? state.commentLimit : COMMENT_LIMIT_SLIDER_UNLIMITED;
   commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : t('unlimited');
-  speedSlider.value = Math.round(state.scrollSpeed * 100);
-  speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
+  if (!speedSliderDrag.active) {
+    speedSlider.value = Math.round(state.scrollSpeed * 100);
+    speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
+  }
   if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
   if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified; 
   if (danmakuAutoOffsetToggle) danmakuAutoOffsetToggle.checked = state.danmakuAutoOffset; 
   if (danmakuAutoOffsetRow) {
-    let showAutoOffset = state.danmakuLoaded && state.danmakuType === 'nico-json' && state.nicoJsonHasDuration;
+    let showAutoOffset = (state.danmakuLoaded || fileListState.selectedPaths.length > 0) && state.danmakuType === 'nico-json' && state.nicoJsonHasDuration;
     danmakuAutoOffsetRow.style.display = showAutoOffset ? '' : 'none';
   }
   updateOffsetUI();
@@ -559,7 +559,7 @@ function syncStylePresetUI() {
 }
 
 function updateFilterUI() {
-  let showRange = state.enabled && state.danmakuLoaded && state.danmakuType === 'nico-json' && state.dateInfo.firstDay !== null;
+  let showRange = state.enabled && (state.danmakuLoaded || fileListState.selectedPaths.length > 0) && state.dateInfo.firstDay !== null;
   if (filterSection) filterSection.style.display = showRange ? '' : 'none';
   if (showRange) {
     updateRangeSelector();
@@ -667,8 +667,6 @@ function updateRangeSelector() {
 
 toggleDanmaku.addEventListener("change", function () {
   if (toggleDanmaku.disabled) { toggleDanmaku.checked = false; return; }
-  state.enabled = toggleDanmaku.checked;
-  updateEnabledUI();
   iina.postMessage("toggle-danmaku");
 });
 
@@ -686,12 +684,8 @@ if (tabButtons.length) {
         tabFilter.style.display = showFilter ? "" : "none";
         if (showFilter) {
           // sidebar 懒加载: 主动拉取弹幕列表 + 开启播放时间推送
-          // 带上插件根目录(file:// 定位),供 main 读取 overlay/lib/opencc.min.js(简繁转换)
-          iina.postMessage("danmaku-browser-request", { pluginRoot: browserPluginRoot() });
+          iina.postMessage("danmaku-browser-request", {});
           iina.postMessage("danmaku-browser-watch", { watch: true });
-          iina.postMessage("danmaku-blocklist-request");
-          iina.postMessage("danmaku-position-filter-request");
-          iina.postMessage("danmaku-dedupe-request");
         } else {
           iina.postMessage("danmaku-browser-watch", { watch: false });
         }
@@ -709,7 +703,6 @@ if (fileAddBtn) {
 if (canvasRendererToggle) {
   canvasRendererToggle.addEventListener("change", function () {
     var useCanvas = canvasRendererToggle.checked;
-    state.useCanvasRenderer = useCanvas;
     iina.postMessage("set-canvas-mode", { mode: useCanvas ? 'default' : 'css' });
   });
 }
@@ -717,7 +710,6 @@ if (canvasRendererToggle) {
 if (danmakuForceSimplifiedToggle) {
   danmakuForceSimplifiedToggle.addEventListener("change", function () {
     var forceSimp = danmakuForceSimplifiedToggle.checked;
-    state.danmakuForceSimplified = forceSimp;
     
     iina.postMessage("set-danmaku-force-simplified", { value: forceSimp });
   });
@@ -726,47 +718,40 @@ if (danmakuForceSimplifiedToggle) {
 if (danmakuAutoOffsetToggle) {
   danmakuAutoOffsetToggle.addEventListener("change", function () {
     var on = danmakuAutoOffsetToggle.checked;
-    state.danmakuAutoOffset = on;
     iina.postMessage("set-danmaku-auto-offset", { value: on });
   });
 }
 
 opacitySlider.addEventListener("input", function () {
   var val = parseFloat(opacitySlider.value);
-  state.canvasOpacity = val;
   opacityValue.textContent = Math.round(val * 100) + "%";
   iina.postMessage("set-opacity", { opacity: val });
 });
 
 fontsizeSlider.addEventListener("input", function () {
   var val = parseFloat(fontsizeSlider.value) / 100;
-  state.canvasFontScale = val;
   fontsizeValue.textContent = Math.round(val * 100) + "%";
   iina.postMessage("set-fontscale", { scale: val });
 });
 
 strokeOpacitySlider.addEventListener("input", function () {
   var val = parseFloat(strokeOpacitySlider.value) / 100;
-  state.strokeOpacity = val;
   strokeOpacityValue.textContent = Math.round(val * 100) + "%";
   iina.postMessage("set-stroke-opacity", { opacity: val });
 });
 
 strokeWidthSlider.addEventListener("input", function () {
   var val = parseFloat(strokeWidthSlider.value);
-  state.strokeWidth = val;
   strokeWidthValue.textContent = String(val) + 'px';
   iina.postMessage("set-stroke-width", { width: val });
 });
 
 strokeColorInput.addEventListener("input", function () {
-  state.strokeColor = strokeColorInput.value;
-  iina.postMessage("set-stroke-color", { color: state.strokeColor });
+  iina.postMessage("set-stroke-color", { color: strokeColorInput.value });
 });
 
 strokeInversionInput.addEventListener("input", function () {
-  state.strokeInversionColor = strokeInversionInput.value;
-  iina.postMessage("set-stroke-inversion-color", { color: state.strokeInversionColor });
+  iina.postMessage("set-stroke-inversion-color", { color: strokeInversionInput.value });
 });
 
 commentLimitSlider.addEventListener("input", function () {
@@ -777,7 +762,6 @@ commentLimitSlider.addEventListener("input", function () {
 commentLimitSlider.addEventListener("change", function () {
   let val = parseInt(commentLimitSlider.value, 10);
   let limit = val >= COMMENT_LIMIT_SLIDER_UNLIMITED ? 0 : val;
-  state.commentLimit = limit;
   iina.postMessage("set-comment-limit", { limit: limit });
 });
 
@@ -785,9 +769,7 @@ if (offsetInput) {
   offsetInput.addEventListener("change", function () {
     var val = parseFloat(offsetInput.value);
     if (isNaN(val)) val = 0;
-    state.danmakuOffsetSeconds = val;
-    iina.postMessage("set-danmaku-offset", { offset: state.danmakuOffsetSeconds });
-    updateOffsetUI();
+    iina.postMessage("set-danmaku-offset", { offset: val });
   });
 }
 
@@ -795,42 +777,59 @@ if (fontSelect) {
   fontSelect.addEventListener("change", function () {
     var key = fontSelect.value;
     if (key === "custom") {
+      fontCustomEmptyChoice = !fontCustomInput.value.trim();
       fontCustomRow.style.display = "";
       fontCustomInput.focus();
       var customFamily = fontCustomInput.value.trim();
       if (customFamily) {
-        state.danmakuFontFamily = customFamily;
-        iina.postMessage("set-danmaku-font", { fontFamily: customFamily, fontWeight: state.danmakuFontWeight });
+        submitCustomFont();
       }
     } else {
+      fontCustomEmptyChoice = false;
       fontCustomRow.style.display = "none";
       var preset = FONT_PRESETS[key] !== undefined ? FONT_PRESETS[key] : "";
-      state.danmakuFontFamily = preset;
-      iina.postMessage("set-danmaku-font", { fontFamily: preset, fontWeight: state.danmakuFontWeight });
+      pendingFontFamily = preset !== state.danmakuFontFamily || pendingFontFamily !== null ? preset : null;
+      iina.postMessage("set-danmaku-font", { fontFamily: preset });
     }
   });
 }
 
 if (fontCustomInput) {
-  fontCustomInput.addEventListener("input", function () {
-    state.danmakuFontFamily = fontCustomInput.value.trim();
-    iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: state.danmakuFontWeight });
+  fontCustomInput.addEventListener('compositionstart', function () {
+    fontCustomComposing = true;
+  });
+  fontCustomInput.addEventListener('compositionend', function () {
+    fontCustomComposing = false;
+    submitCustomFont();
+    updateFontUI();
+  });
+  fontCustomInput.addEventListener("blur", function () {
+    if (fontCustomComposing) return;
+    if (!fontCustomEmptyChoice) submitCustomFont();
+    updateFontUI();
+  });
+  fontCustomInput.addEventListener("input", function (event) {
+    if (event.isComposing || fontCustomComposing) return;
+    submitCustomFont();
   });
 }
 
 if (fontWeightSlider) {
   fontWeightSlider.addEventListener("input", function () {
-    state.danmakuFontWeight = fontWeightSlider.value;
     if (fontWeightValue) fontWeightValue.textContent = fontWeightSlider.value;
-    iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: state.danmakuFontWeight });
-    });
+  });
+  fontWeightSlider.addEventListener("change", function () {
+    iina.postMessage("set-danmaku-font", { fontWeight: fontWeightSlider.value });
+  });
 }
 
 speedSlider.addEventListener("input", function () {
   var val = parseFloat(speedSlider.value) / 100;
-  state.scrollSpeed = val;
   speedValue.textContent = Math.round(val * 100) + '%';
-  iina.postMessage("set-scroll-speed", { speed: val });
+});
+
+speedSlider.addEventListener("change", function () {
+  iina.postMessage("set-scroll-speed", { speed: parseFloat(speedSlider.value) / 100 });
 });
 
 if (stylePresetSegmented) {
@@ -838,12 +837,8 @@ if (stylePresetSegmented) {
     var item = e.target && e.target.closest ? e.target.closest(".seg-item") : null;
     if (!item) return;
     var presetName = item.dataset.preset;
-    var preset = STYLE_PRESETS[presetName];
-    if (!preset) return;
-    applyStylePreset(preset);
-    state.stylePreset = presetName;
+    if (!presetName) return;
     iina.postMessage("set-style-preset", { preset: presetName });
-    syncStylePresetUI();
   });
 }
 
@@ -936,15 +931,11 @@ document.addEventListener("keydown", function (e) {
   // must not also adjust the time offset.
   if ((key === 'a' || key === 'd') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
     e.preventDefault();
-    var delta = Math.abs(state.danmakuOffsetSeconds || 0);
-    if (delta <= 0) delta = 1;
-    if (key === 'a') {
-      state.danmakuOffsetSeconds = (state.danmakuOffsetSeconds || 0) - delta;
-    } else {
-      state.danmakuOffsetSeconds = (state.danmakuOffsetSeconds || 0) + delta;
-    }
-    iina.postMessage("set-danmaku-offset", { offset: state.danmakuOffsetSeconds });
-    updateOffsetUI();
+    var current = parseFloat(offsetInput.value) || 0;
+    var delta = Math.abs(current) || 1;
+    var offset = current + (key === 'a' ? -delta : delta);
+    offsetInput.value = offset;
+    iina.postMessage("set-danmaku-offset", { offset: offset });
   }
 });
 
@@ -972,7 +963,6 @@ if (densitySlider) {
   densitySlider.addEventListener("change", function () {
     var val = parseInt(densitySlider.value, 10);
     var density = val >= DENSITY_SLIDER_OFF ? 0 : val;
-    state.danmakuFilterDensity = density;
     iina.postMessage("set-danmaku-filter-density", { density: density });
   });
 }
@@ -1006,12 +996,18 @@ onPluginMessage("danmaku-state", function (data) {
   if (data.danmakuTimeOffsetSec !== undefined) state.danmakuOffsetSeconds = data.danmakuTimeOffsetSec;
   if (data.nicoJsonDurationDiff !== undefined) state.nicoJsonDurationDiff = data.nicoJsonDurationDiff;
   if (data.nicoJsonHasDuration !== undefined) state.nicoJsonHasDuration = !!data.nicoJsonHasDuration;
-  if (data.danmakuFontFamily !== undefined) state.danmakuFontFamily = data.danmakuFontFamily;
+  if (data.danmakuFontFamily !== undefined) {
+    state.danmakuFontFamily = data.danmakuFontFamily;
+    if (pendingFontFamily === data.danmakuFontFamily) pendingFontFamily = null;
+  }
   if (data.danmakuFontWeight !== undefined) state.danmakuFontWeight = data.danmakuFontWeight;
   if (data.stylePreset !== undefined) state.stylePreset = data.stylePreset;
   if (data.danmakuForceSimplified !== undefined) state.danmakuForceSimplified = !!data.danmakuForceSimplified;
   if (data.danmakuAutoOffset !== undefined) state.danmakuAutoOffset = !!data.danmakuAutoOffset;
   applyPositionFilterState(data);
+  if (data.blocklist) applyBlocklistState(data.blocklist);
+  if (data.dedupe) applyDedupeState(data.dedupe);
+  if (data.danmakuBrowserVisible !== undefined) applyBrowserVis(data.danmakuBrowserVisible);
   if (data.danmakuFileType !== undefined) state.danmakuType = data.danmakuFileType;
   if (data.danmakuLoaded !== undefined) state.danmakuLoaded = data.danmakuLoaded;
   if (data.danmakuFilterDensity !== undefined) state.danmakuFilterDensity = data.danmakuFilterDensity;
@@ -1019,12 +1015,7 @@ onPluginMessage("danmaku-state", function (data) {
   updateEnabledUI();
 });
 
-onPluginMessage("danmaku-type", function (data) {
-  if (data.fileType !== undefined) state.danmakuType = data.fileType;
-  if (data.isLoaded !== undefined) state.danmakuLoaded = data.isLoaded;
-  updateUI();
-  updateEnabledUI();
-});
+
 
 onPluginMessage("danmaku-file-list", function (data) {
   var count = (data.jsonFiles ? data.jsonFiles.length : 0);
@@ -1054,7 +1045,7 @@ onPluginMessage("danmaku-file-error", function (data) {
 });
 
 applyI18n();
-iina.postMessage("request-state");
+
 
 var ddpMatchesExpanded = false;
 
@@ -1361,16 +1352,6 @@ browserList.spacerEl = browserList.el.querySelector(".danmaku-browser-spacer");
 browserList.emptyEl = browserList.el.querySelector(".danmaku-browser-empty");
 
 // sidebar 自身的 file:// 根目录,上报给 main 用于读 overlay/lib/opencc.min.js
-function browserPluginRoot() {
-  try {
-    var u = new URL('../', window.location.href);
-    var p = decodeURIComponent(u.pathname);
-    if (p.length > 1 && p.charAt(p.length - 1) === '/') p = p.slice(0, -1);
-    return p;
-  } catch (e) {
-    return '';
-  }
-}
 
 function browserFmtTime(vpos) {
   var sec = Math.floor((vpos || 0) / 100);
@@ -1509,59 +1490,16 @@ function requestBrowserDataRefresh() {
   if (now - browserLastRefreshRequest < 1500) return;
   browserLastRefreshRequest = now;
   debugLog('danmaku-browser: data missing, re-requesting');
-  iina.postMessage("danmaku-browser-request", { pluginRoot: browserPluginRoot() });
+  iina.postMessage("danmaku-browser-request", {});
   iina.postMessage("danmaku-browser-watch", { watch: true });
 }
 
-// main.js 以 base64 编码投递(绕开 IINA 桥的模板字符串注入);解码失败返回 null
-function browserDecodePayload(payload) {
-  try {
-    var bin = atob(payload);
-    var bytes = [];
-    for (var i = 0; i < bin.length; i++) bytes.push(bin.charCodeAt(i));
-    return JSON.parse(browserUtf8Decode(bytes));
-  } catch (e) {
-    return null;
-  }
-}
-
-function browserUtf8Decode(bytes) {
-  var out = '';
-  for (var i = 0; i < bytes.length;) {
-    var b = bytes[i];
-    if (b < 0x80) {
-      out += String.fromCharCode(b);
-      i++;
-    } else if (b < 0xE0) {
-      out += String.fromCharCode(((b & 0x1F) << 6) | (bytes[i + 1] & 0x3F));
-      i += 2;
-    } else if (b < 0xF0) {
-      out += String.fromCharCode(((b & 0x0F) << 12) | ((bytes[i + 1] & 0x3F) << 6) | (bytes[i + 2] & 0x3F));
-      i += 3;
-    } else {
-      var cp = ((b & 0x07) << 18) | ((bytes[i + 1] & 0x3F) << 12) | ((bytes[i + 2] & 0x3F) << 6) | (bytes[i + 3] & 0x3F);
-      out += String.fromCharCode(((cp - 0x10000) >> 10) + 0xD800, ((cp - 0x10000) & 0x3FF) + 0xDC00);
-      i += 4;
-    }
-  }
-  return out;
-}
+// Chunk payloads arrive decoded by the shared IPC envelope boundary.
 
 onPluginMessage("danmaku-browser-data", function (data) {
   if (!data) return;
-  var items = null;
-  if (typeof data.payload === 'string') {
-    items = browserDecodePayload(data.payload);
-    if (items === null) {
-      requestBrowserDataRefresh(); // 解码失败: 请求重发
-      return;
-    }
-  } else if (Array.isArray(data.items)) {
-    items = data.items;
-  }
-  if (items === null) {
-    return;
-  }
+  var items = data.items;
+  if (!Array.isArray(items)) return;
   // 缺 chunkIndex/done 字段时视为单块完整消息
   var chunkIndex = data.chunkIndex === undefined ? 0 : data.chunkIndex;
   var isDone = data.done !== false;
@@ -1675,21 +1613,20 @@ if (browserVisToggle) {
     iina.postMessage("danmaku-browser-vis-set", { visible: v });
   });
 }
-onPluginMessage("danmaku-browser-vis-state", function (data) {
-  if (data && data.visible !== undefined) applyBrowserVis(data.visible);
-});
 
-// 加载即上报插件根目录(main 的简繁转换器初始化不依赖过滤 tab 打开)
-iina.postMessage("danmaku-sidebar-ready", { pluginRoot: browserPluginRoot() });
+
+
 
 /* ========== 屏蔽词(tag 列表 + 开关 + 添加/删除) ========== */
 var blocklistToggle = document.getElementById("danmaku-blocklist-toggle");
 var blocklistPanel = document.getElementById("danmaku-blocklist-panel");
 var blocklistList = document.getElementById("danmaku-blocklist-list");
 var blocklistWords = [];
+let blocklistEdit = null;
 
 function renderBlocklist() {
-  if (!blocklistList) return;
+  if (!blocklistList || blocklistEdit) return;
+  if (blocklistPanel && blocklistToggle) blocklistPanel.style.display = blocklistToggle.checked ? '' : 'none';
   blocklistList.innerHTML = '';
   for (var i = 0; i < blocklistWords.length; i++) {
     var item = document.createElement("div");
@@ -1723,7 +1660,7 @@ function renderBlocklist() {
 // 点击 + 行: 该行变为内联输入框;回车提交、Esc 取消、失焦提交(空内容忽略)
 function blocklistStartAdd() {
   var item = this;
-  if (item.classList.contains('editing')) return;
+  if (blocklistEdit || item.classList.contains('editing')) return;
   item.classList.add("editing");
   item.innerHTML = "";
   var inp = document.createElement("input");
@@ -1731,19 +1668,33 @@ function blocklistStartAdd() {
   inp.className = "danmaku-blocklist-input";
   inp.placeholder = t('blocklist_placeholder');
   item.appendChild(inp);
+  blocklistEdit = inp;
   var committing = false;
+  var composing = false;
+  var finishAfterComposition = false;
   var done = function () {
     if (committing) return;
+    if (composing) { finishAfterComposition = true; return; }
     committing = true;
+    blocklistEdit = null;
     var w = inp.value.trim();
     if (w) iina.postMessage("danmaku-blocklist-add", { word: w });
     renderBlocklist();
   };
+  inp.addEventListener('compositionstart', function () { composing = true; });
+  inp.addEventListener('compositionend', function () {
+    composing = false;
+    if (finishAfterComposition) done();
+  });
   inp.addEventListener("keydown", function (e) {
+    if (composing || e.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter") {
+      e.preventDefault();
       done();
     } else if (e.key === "Escape") {
+      e.preventDefault();
       committing = true; // 阻止 blur 触发提交
+      blocklistEdit = null;
       renderBlocklist();
     }
   });
@@ -1755,7 +1706,7 @@ function applyBlocklistState(state) {
   if (!state) return;
   if (typeof state.enabled === 'boolean') {
     if (blocklistToggle) blocklistToggle.checked = state.enabled;
-    if (blocklistPanel) blocklistPanel.style.display = state.enabled ? "" : "none";
+    if (blocklistPanel) blocklistPanel.style.display = state.enabled || blocklistEdit ? "" : "none";
   }
   if (Array.isArray(state.words)) {
     blocklistWords = state.words.slice();
@@ -1763,9 +1714,7 @@ function applyBlocklistState(state) {
   }
 }
 
-onPluginMessage("danmaku-blocklist-state", function (data) {
-  applyBlocklistState(data);
-});
+
 
 if (blocklistToggle) {
   blocklistToggle.addEventListener("change", function () {
@@ -1786,7 +1735,7 @@ function applyPositionFilterState(data) {
   }
 }
 
-onPluginMessage("danmaku-position-filter-state", applyPositionFilterState);
+
 
 if (blockTopToggle) {
   blockTopToggle.addEventListener("change", function () {
@@ -1819,9 +1768,7 @@ function applyDedupeState(state) {
   }
 }
 
-onPluginMessage("danmaku-dedupe-state", function (data) {
-  applyDedupeState(data);
-});
+
 
 if (dedupeToggle && dedupeSegmented) {
   dedupeToggle.addEventListener("change", function () {
@@ -1855,3 +1802,5 @@ if (typeof ResizeObserver !== 'undefined') {
     else browserRenderList(browserList);
   }).observe(browserList.el);
 }
+
+iina.postMessage("request-state");

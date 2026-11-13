@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
+const {parseDanmakuSource, projectDanmaku} = require('../danmaku-document.js');
 const MAIN_JS = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 
 test('video display aspect follows output filters, rotation, and metadata fallback', () => {
@@ -70,6 +71,7 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
   let execHandler = () => Promise.resolve(null);
   const fileWrites = [];
   const preferences = new Map([
+    ...Object.entries(require('../Info.json').preferenceDefaults),
     ['danmakuEnabled', initialEnabled],
     ['dandanplayAutoNetwork', autoNetwork],
     ...Object.entries(savedPreferences),
@@ -94,12 +96,12 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
       loadFile() { overlayHandlers.clear(); },
       show() {},
       hide() {},
-      postMessage(name, data) { overlayMessages.push({ name, data }); },
+      postMessage(name, data) { overlayMessages.push({ name, wire: data, data: JSON.parse(data.__encoded ? decodeURIComponent(data.__encoded) : JSON.stringify(data)) }); },
       onMessage(name, handler) { registerMessage(overlayHandlers, name, handler); },
     },
     sidebar: {
       loadFile() { sidebarHandlers.clear(); },
-      postMessage(name, data) { sidebarMessages.push({ name, data }); },
+      postMessage(name, data) { sidebarMessages.push({ name, wire: data, data: JSON.parse(data.__encoded ? decodeURIComponent(data.__encoded) : JSON.stringify(data)) }); },
       onMessage(name, handler) { registerMessage(sidebarHandlers, name, handler); },
     },
     event: {
@@ -164,6 +166,7 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
 
   const context = vm.createContext({
     iina,
+    require: name => require(path.join(__dirname, '..', name)),
     Promise,
     Date,
     JSON,
@@ -229,6 +232,11 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
       emit(overlayHandlers, 'overlay-ready', {});
     },
     emitOverlay(name, data = {}) { emit(overlayHandlers, name, data); },
+    ackLoad(success = true) {
+      const last = overlayMessages.findLast(message => message.name === 'load-danmaku');
+      assert.ok(last, 'a source was dispatched');
+      emit(overlayHandlers, 'danmaku-load-result', {loadId: last.data.loadId, success});
+    },
     setPaused(value) { iina.core.status.paused = value; },
     setFullscreen(value) { iina.core.window.fullscreen = value; },
     setMpv(name, value) { mpvValues[name] = value; },
@@ -295,7 +303,7 @@ test('WebView callbacks survive garbage collection and reloads', async () => {
 function loadedComments(messages) {
   return messages
     .filter((message) => message.name === 'load-danmaku')
-    .map((message) => decodeURIComponent(message.data.xmlContent));
+    .map((message) => JSON.stringify(message.data.comments));
 }
 
 async function flushMicrotasks() {
@@ -304,9 +312,9 @@ async function flushMicrotasks() {
 
 function setPositionSource(harness, fileType, source) {
   const sourcePath = '/videos/positions';
-  harness.context.danmakuCache[sourcePath] = encodeURIComponent(source);
-  harness.context.danmakuFileList.selectedPaths = [sourcePath];
-  harness.context.currentDanmakuStatus.fileType = fileType;
+  harness.context.danmakuCache[sourcePath] = parseDanmakuSource(source, sourcePath, fileType);
+  harness.context.pluginState.danmakuFileList.selectedPaths = [sourcePath];
+  harness.context.pluginState.currentDanmakuStatus.fileType = fileType;
   return sourcePath;
 }
 
@@ -351,10 +359,10 @@ for (const fixture of positionFixtures) {
     harness.readyOverlay();
     const sourcePath = setPositionSource(harness, fixture.fileType, fixture.source);
     harness.emitSidebar('danmaku-browser-watch', { watch: true });
-    assert.equal(decodeURIComponent(harness.context.getEffectiveContent(sourcePath)), fixture.source, '默认关闭');
+    assert.equal(harness.context.getEffectiveContent(sourcePath).length, 3, '默认关闭');
     for (const [top, bottom] of [[true, false], [false, true], [true, true], [false, false]]) {
       harness.emitSidebar('danmaku-position-filter-set', { danmakuBlockTopEnabled: top, danmakuBlockBottomEnabled: bottom });
-      const effective = decodeURIComponent(harness.context.getEffectiveContent(sourcePath));
+      const effective = JSON.stringify(harness.context.getEffectiveContent(sourcePath));
       assert.equal(effective.includes('top-only'), !top);
       assert.equal(effective.includes('bottom-only'), !bottom);
       assert.equal(effective.includes('scroll-only'), true);
@@ -366,10 +374,10 @@ for (const fixture of positionFixtures) {
         { text: 'scroll-only', blocked: false },
       ]);
       const message = harness.sidebarMessages.filter((item) => item.name === 'danmaku-browser-data').at(-1);
-      const sentItems = JSON.parse(Buffer.from(message.data.payload, 'base64').toString('utf8'));
+      const sentItems = message.data.items;
       assert.deepEqual(sentItems.map((item) => ({ text: item.text, blocked: item.blocked })), items, '列表收到划线标记');
     }
-    assert.equal(harness.context.danmakuCache[sourcePath], encodeURIComponent(fixture.source), '缓存保留原始内容供关闭后恢复');
+    assert.equal(harness.context.danmakuCache[sourcePath].comments.length, 3, '过滤不修改 IR');
   });
 }
 
@@ -384,8 +392,7 @@ test('position settings default off, persist independently and restore through l
   assert.equal(harness.preferences.get('danmakuBlockBottomEnabled'), false);
   const restarted = createHarness(true, false, Object.fromEntries(harness.preferences));
   restarted.emitSidebar('request-state');
-  restarted.emitSidebar('danmaku-position-filter-request');
-  for (const name of ['danmaku-state', 'danmaku-position-filter-state']) {
+  for (const name of ['danmaku-state']) {
     state = restarted.sidebarMessages.find((item) => item.name === name).data;
     assert.equal(state.danmakuBlockTopEnabled, true);
     assert.equal(state.danmakuBlockBottomEnabled, false);
@@ -401,7 +408,7 @@ test('density defaults to unlimited and leaves the first video unfiltered before
   harness.setFile('/videos/A.xml', densityXmlFixture);
   harness.readyOverlay();
   harness.setVideo('file:///videos/A.mp4');
-  assert.equal(loadedComments(harness.overlayMessages).at(-1).match(/<d\b/g).length, 400);
+  assert.equal(JSON.parse(loadedComments(harness.overlayMessages).at(-1)).length, 400);
   harness.emitSidebar('request-state');
   assert.equal(harness.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.danmakuFilterDensity, 0);
   const info = harness.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
@@ -418,7 +425,7 @@ for (const density of [300, 0]) {
     assert.equal(harness.preferences.get('danmakuFilterDensity'), density);
     assert.equal(syncCount, 0);
     harness.runTimers(250);
-    assert.equal(syncCount, 1);
+    assert.equal(syncCount, density === 0 ? 0 : 1);
 
     const restarted = createHarness(true, false, Object.fromEntries(harness.preferences));
     restarted.setFile('/videos/A.xml', densityXmlFixture);
@@ -427,16 +434,16 @@ for (const density of [300, 0]) {
     restarted.setVideo('file:///videos/A.mp4');
     restarted.emitSidebar('request-state');
     assert.equal(restarted.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.danmakuFilterDensity, density);
-    assert.equal(loadedComments(restarted.overlayMessages).at(-1).match(/<d\b/g).length, density || 400);
+    assert.equal(JSON.parse(loadedComments(restarted.overlayMessages).at(-1)).length, density || 400);
 
-    restarted.emitSidebar('select-danmaku-file', { path: encodeURIComponent('/videos/B.xml') });
-    assert.equal(loadedComments(restarted.overlayMessages).at(-1).match(/<d\b/g).length, density || 400);
+    restarted.emitSidebar('select-danmaku-file', { path: '/videos/B.xml' });
+    assert.equal(JSON.parse(loadedComments(restarted.overlayMessages).at(-1)).length, density || 400);
     restarted.setVideo('file:///videos/B.mp4');
     const info = restarted.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
     assert.equal(info.filterDensity, density);
     assert.equal(info.filteredCount, density || 400);
     assert.equal(info.sourceTotalCount, 400);
-    assert.equal(loadedComments(restarted.overlayMessages).at(-1).match(/<d\b/g).length, density || 400);
+    assert.equal(JSON.parse(loadedComments(restarted.overlayMessages).at(-1)).length, density || 400);
   });
 }
 
@@ -450,7 +457,7 @@ test('V1 density counts use the date-sliced input total and include protected th
     { fork: 'owner', comments: [{ vposMs: 1000, body: 'owner', commands: [] }] },
     { fork: 'easy', comments: [{ vposMs: 1000, body: 'easy', commands: [] }] },
   ]));
-  harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent('/videos/counts.json') });
+  harness.emitSidebar('select-danmaku-file', { path: '/videos/counts.json' });
   function assertCounts(kept, inputCount = 22) {
     harness.emitSidebar('request-state');
     const info = harness.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
@@ -479,7 +486,7 @@ test('legacy density counts include owner comments and exclude metadata records'
     ...Array.from({ length: 20 }, (_, index) =>
       ({ chat: { no: index + 1, vpos: 100, content: `comment ${index}`, user_id: 'viewer' } })),
   ]));
-  harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent('/videos/legacy-counts.json') });
+  harness.emitSidebar('select-danmaku-file', { path: '/videos/legacy-counts.json' });
   let info = harness.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
   assert.equal(info.sourceTotalCount, 21);
   assert.equal(info.filteredCount, 6);
@@ -489,7 +496,7 @@ test('legacy density counts include owner comments and exclude metadata records'
   assert.equal(info.filteredCount, 21);
 });
 
-test('position blocking combines with word blocking and keeps blocked fixed comments out of list deduplication', () => {
+test('position blocking and shared static deduplication produce identical screen and list groups', () => {
   const harness = createHarness(true);
   setPositionSource(harness, 'dandanplay', JSON.stringify([
     { t: 100, text: 'same', _commands: ['ue'] },
@@ -505,16 +512,15 @@ test('position blocking combines with word blocking and keeps blocked fixed comm
   harness.emitSidebar('danmaku-position-filter-set', { danmakuBlockTopEnabled: true });
   const items = Array.from(harness.context.buildDanmakuBrowserList(), (item) => ({ text: item.text, blocked: item.blocked }));
   assert.deepEqual(items, [
-    { text: 'same', blocked: true },
-    { text: 'same', blocked: true },
+    { text: 'samex2', blocked: true },
     { text: 'same', blocked: false },
     { text: 'blocked-word', blocked: true },
     { text: 'visiblex2', blocked: false },
   ]);
   harness.emitSidebar('danmaku-position-filter-set', { danmakuBlockTopEnabled: false });
-  const source = JSON.parse(decodeURIComponent(harness.context.getEffectiveContent('/videos/positions')));
-  assert.equal(source.filter((item) => item.text === 'same').length, 3);
-  assert.equal(source.some((item) => item.text === 'blocked-word'), false, '关闭位置过滤仍保留屏蔽词过滤');
+  const source = harness.context.getEffectiveContent('/videos/positions');
+  assert.deepEqual(Array.from(source, item => item.content), ['samex2', 'same', 'visiblex2']);
+  assert.equal(source.some((item) => item.content === 'blocked-word'), false, '关闭位置过滤仍保留屏蔽词过滤');
 });
 
 test('position classification follows case insensitive first-command semantics and preserves Niconico owners', () => {
@@ -529,8 +535,8 @@ test('position classification follows case insensitive first-command semantics a
     { fork: 'owner', comments: [{ vposMs: 5000, body: 'owner-top', commands: ['ue'] }] },
   ]));
   harness.emitSidebar('danmaku-position-filter-set', { danmakuBlockTopEnabled: true });
-  const filtered = JSON.parse(decodeURIComponent(harness.context.getEffectiveContent(sourcePath)));
-  assert.deepEqual(filtered.flatMap((thread) => thread.comments.map((item) => item.body)), ['scroll-first', 'bottom-first', 'owner-top']);
+  const filtered = JSON.parse(JSON.stringify(harness.context.getEffectiveContent(sourcePath)));
+  assert.deepEqual(filtered.map(item => item.content), ['scroll-first', 'bottom-first', 'owner-top']);
   const blocked = Array.from(harness.context.buildDanmakuBrowserList()).filter((item) => item.blocked).map((item) => item.text);
   assert.deepEqual(blocked, ['upper-top', 'top-first']);
 });
@@ -539,7 +545,7 @@ test('switching videos while disabled clears A and loads B when re-enabled', () 
   const harness = createHarness(true);
   harness.readyOverlay();
   harness.setVideo('file:///videos/A.mp4');
-  assert.deepEqual(loadedComments(harness.overlayMessages), ['<i><d p="1,1,25,16777215,0,0,0,0">A comment</d></i>']);
+  assert.deepEqual(loadedComments(harness.overlayMessages).map(s => JSON.parse(s).map(c => c.content).join()), ['A comment']);
 
   harness.toggleDanmaku();
   const switchStart = harness.overlayMessages.length;
@@ -552,14 +558,11 @@ test('switching videos while disabled clears A and loads B when re-enabled', () 
     'file-loaded must clear the previous video renderer once even while danmaku is disabled',
   );
   assert.deepEqual(loadedComments(duringDisabledSwitch), []);
-  assert.equal(harness.context.currentDanmakuStatus.isLoaded, false);
-  assert.equal(harness.context.danmakuFileList.selectedPaths.length, 0);
+  assert.equal(harness.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  assert.equal(harness.context.pluginState.danmakuFileList.selectedPaths.length, 0);
 
   harness.toggleDanmaku();
-  assert.deepEqual(loadedComments(harness.overlayMessages), [
-    '<i><d p="1,1,25,16777215,0,0,0,0">A comment</d></i>',
-    '<i><d p="1,1,25,16777215,0,0,0,0">B comment</d></i>',
-  ]);
+  assert.deepEqual(loadedComments(harness.overlayMessages).map(s => JSON.parse(s).map(c => c.content).join()), ['A comment', 'B comment']);
 });
 
 test('enabling after startup-disabled file load initializes that video', () => {
@@ -569,7 +572,7 @@ test('enabling after startup-disabled file load initializes that video', () => {
   assert.deepEqual(loadedComments(harness.overlayMessages), []);
 
   harness.toggleDanmaku();
-  assert.deepEqual(loadedComments(harness.overlayMessages), ['<i><d p="1,1,25,16777215,0,0,0,0">B comment</d></i>']);
+  assert.deepEqual(loadedComments(harness.overlayMessages).map(s => JSON.parse(s).map(c => c.content).join()), ['B comment']);
 });
 
 test('startup-disabled network video stays cleared without starting a match', () => {
@@ -597,8 +600,8 @@ test('disabling while a comment download is pending does not re-enable danmaku',
     data: { comments: [{ p: '1,1,16777215,1', m: 'comment' }] },
   });
   await Promise.resolve();
-  assert.equal(harness.context.danmakuEnabled, false);
-  assert.equal(harness.context.currentDanmakuStatus.isLoaded, false);
+  assert.equal(harness.context.pluginState.danmakuEnabled, false);
+  assert.equal(harness.context.pluginState.currentDanmakuStatus.isLoaded, false);
 });
 
 test('reloading the same video invalidates the previous auto-match request', async () => {
@@ -616,7 +619,7 @@ test('reloading the same video invalidates the previous auto-match request', asy
   });
   await Promise.resolve();
   assert.equal(harness.httpRequests.length, 2);
-  assert.equal(harness.context.currentDanmakuStatus.isLoaded, false);
+  assert.equal(harness.context.pluginState.currentDanmakuStatus.isLoaded, false);
 });
 
 
@@ -629,12 +632,12 @@ test('menu loading selects and lists the source used by later filters', async ()
 
   await harness.loadFromMenu(manualPath);
 
-  assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), [manualPath]);
+  assert.deepEqual(Array.from(harness.context.pluginState.danmakuFileList.selectedPaths), [manualPath]);
   assert.ok(harness.context.findDanmakuFileByPath(manualPath));
   assert.deepEqual(Array.from(harness.context.buildDanmakuBrowserList(), (item) => item.text), ['manual comment']);
   harness.emitSidebar('danmaku-blocklist-add', { word: 'manual' });
   harness.emitSidebar('danmaku-blocklist-set-enabled', { enabled: true });
-  assert.equal(loadedComments(harness.overlayMessages).at(-1), '<i></i>');
+  assert.equal(loadedComments(harness.overlayMessages).at(-1), '[]');
 });
 
 for (const entry of ['automatic', 'menu', 'sidebar']) {
@@ -651,13 +654,13 @@ for (const entry of ['automatic', 'menu', 'sidebar']) {
     function assertDdpLoaded() {
       const load = harness.overlayMessages.filter((message) => message.name === 'load-danmaku').at(-1);
       assert.equal(load.data.danmakuType, 'dandanplay');
-      assert.deepEqual(JSON.parse(decodeURIComponent(load.data.xmlContent)), comments);
-      assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), [filePath]);
+      assert.deepEqual(load.data.comments.map(c => c.content), ['DDP comment']);
+      assert.deepEqual(Array.from(harness.context.pluginState.danmakuFileList.selectedPaths), [filePath]);
       assert.deepEqual(Array.from(harness.context.buildDanmakuBrowserList(), (item) => item.text), ['DDP comment']);
     }
     assertDdpLoaded();
     await harness.loadFromMenu('/videos/A.xml');
-    harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent(filePath) });
+    harness.emitSidebar('select-danmaku-file', { path: filePath });
     assertDdpLoaded();
   });
 }
@@ -671,7 +674,7 @@ test('request-state only reports current sources without rescanning or replacing
   await harness.addFromSidebar(manualPath);
   harness.context.ddpAddToFileListAndLoad(7, 'Anime', '1', [{ t: 100, text: 'first' }], false, true);
   harness.context.ddpAddToFileListAndLoad(8, 'Anime', '2', [{ t: 200, text: 'second' }], false, true);
-  const before = JSON.stringify(harness.context.danmakuFileList);
+  const before = JSON.stringify(harness.context.pluginState.danmakuFileList);
   const cacheBefore = JSON.stringify(harness.context.danmakuCache);
   const readsBefore = harness.fileReads.length;
   const scansBefore = harness.directoryReads.length;
@@ -679,14 +682,14 @@ test('request-state only reports current sources without rescanning or replacing
   harness.emitSidebar('request-state');
   harness.emitSidebar('request-state');
 
-  assert.equal(JSON.stringify(harness.context.danmakuFileList), before);
+  assert.equal(JSON.stringify(harness.context.pluginState.danmakuFileList), before);
   assert.equal(JSON.stringify(harness.context.danmakuCache), cacheBefore);
   assert.equal(harness.fileReads.length, readsBefore);
   assert.equal(harness.directoryReads.length, scansBefore);
   const reported = harness.sidebarMessages.filter((message) => message.name === 'danmaku-file-list').at(-1).data;
-  assert.deepEqual(Array.from(reported.selectedPaths), [encodeURIComponent(manualPath)]);
+  assert.deepEqual(Array.from(reported.selectedPaths), [manualPath]);
   assert.equal(reported.jsonFiles.length, 2);
-  assert.ok(reported.xmlFiles.some((item) => item.path === encodeURIComponent(manualPath)));
+  assert.ok(reported.xmlFiles.some((item) => item.path === manualPath));
 });
 
 test('manual selection before overlay readiness queues the latest source and enables time updates', async () => {
@@ -695,9 +698,9 @@ test('manual selection before overlay readiness queues the latest source and ena
   await harness.addFromSidebar('/videos/B.xml');
 
   assert.deepEqual(loadedComments(harness.overlayMessages), [], 'do not send data to an unready overlay');
-  assert.equal(harness.context.danmakuEnabled, true);
+  assert.equal(harness.context.pluginState.danmakuEnabled, true);
   harness.readyOverlay();
-  assert.deepEqual(loadedComments(harness.overlayMessages), ['<i><d p="1,1,25,16777215,0,0,0,0">B comment</d></i>']);
+  assert.deepEqual(loadedComments(harness.overlayMessages).map(s => JSON.parse(s).map(c => c.content).join()), ['B comment']);
   harness.emitEvent('mpv.time-pos.changed', 12);
   assert.equal(harness.overlayMessages.at(-1).data.time, 12);
 });
@@ -706,6 +709,7 @@ test('failed or cancelled file choices preserve the active source and renderer',
   const harness = createHarness(true);
   harness.readyOverlay();
   harness.setVideo('file:///videos/A.mp4');
+  harness.ackLoad();
   const loadsBefore = loadedComments(harness.overlayMessages);
 
   await harness.addFromSidebar('/downloads/missing.xml');
@@ -713,22 +717,26 @@ test('failed or cancelled file choices preserve the active source and renderer',
   await harness.addFromSidebar(null);
   await harness.loadFromMenu(null);
 
-  assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), ['/videos/A.xml']);
-  assert.equal(harness.context.currentDanmakuStatus.isLoaded, true);
+  assert.deepEqual(Array.from(harness.context.pluginState.danmakuFileList.selectedPaths), ['/videos/A.xml']);
+  assert.equal(harness.context.pluginState.currentDanmakuStatus.isLoaded, true);
   assert.deepEqual(loadedComments(harness.overlayMessages), loadsBefore);
 });
 
-test('reselecting a local file reads current content without duplicating its list entry', async () => {
+test('reselecting a local file reuses its IR without rereading disk or duplicating its list entry', async () => {
   const harness = createHarness(true);
   harness.readyOverlay();
   harness.setVideo('file:///videos/A.mp4');
   const updated = '<i><d p="1,1,25,16777215,0,0,0,0">updated comment</d></i>';
   harness.setFile('/videos/A.xml', updated);
 
-  await harness.addFromSidebar('/videos/A.xml');
+  harness.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
 
-  assert.equal(loadedComments(harness.overlayMessages).at(-1), updated);
-  assert.equal(harness.context.danmakuFileList.xmlFiles.filter((item) => item.path === '/videos/A.xml').length, 1);
+  assert.equal(JSON.parse(loadedComments(harness.overlayMessages).at(-1))[0].content, 'A comment');
+  assert.equal(harness.fileReads.filter(p => p === '/videos/A.xml').length, 1);
+  await harness.loadFromMenu('/videos/A.xml');
+  assert.equal(JSON.parse(loadedComments(harness.overlayMessages).at(-1))[0].content, 'updated comment');
+  assert.equal(harness.fileReads.filter(p => p === '/videos/A.xml').length, 2);
+  assert.equal(harness.context.pluginState.danmakuFileList.xmlFiles.filter((item) => item.path === '/videos/A.xml').length, 1);
 });
 
 test('automatic loading handles file.read exceptions as a load failure', () => {
@@ -740,18 +748,19 @@ test('automatic loading handles file.read exceptions as a load failure', () => {
 
   harness.setVideo('file:///videos/C.mp4');
 
-  assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), []);
-  assert.equal(harness.context.currentDanmakuStatus.isLoaded, false);
+  assert.deepEqual(Array.from(harness.context.pluginState.danmakuFileList.selectedPaths), []);
+  assert.equal(harness.context.pluginState.currentDanmakuStatus.isLoaded, false);
   assert.equal(harness.context.pendingDanmaku, null);
   assert.ok(harness.osdMessages.includes('Cannot read danmaku file: C.xml'));
   const errors = harness.sidebarMessages.filter((message) => message.name === 'danmaku-file-error');
-  assert.equal(errors.at(-1).data.path, encodeURIComponent(filePath));
+  assert.equal(errors.at(-1).data.path, filePath);
 });
 
 test('manual loading catches file.read exceptions and preserves the active source', async () => {
   const harness = createHarness(true);
   harness.readyOverlay();
   harness.setVideo('file:///videos/A.mp4');
+  harness.ackLoad();
   const brokenPath = '/downloads/broken.xml';
   harness.setFile(brokenPath, '<i><d p="2,1,25,16777215,0,0,0,0">broken</d></i>');
   harness.failRead(brokenPath);
@@ -760,13 +769,13 @@ test('manual loading catches file.read exceptions and preserves the active sourc
   await harness.addFromSidebar(brokenPath);
   await harness.loadFromMenu(brokenPath);
 
-  assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), ['/videos/A.xml']);
-  assert.equal(harness.context.currentDanmakuStatus.isLoaded, true);
+  assert.deepEqual(Array.from(harness.context.pluginState.danmakuFileList.selectedPaths), ['/videos/A.xml']);
+  assert.equal(harness.context.pluginState.currentDanmakuStatus.isLoaded, true);
   assert.deepEqual(loadedComments(harness.overlayMessages), loadsBefore);
   assert.equal(harness.osdMessages.filter((message) => message === 'Cannot read danmaku file: broken.xml').length, 2);
   const errors = harness.sidebarMessages.filter((message) => message.name === 'danmaku-file-error');
   assert.equal(errors.length, 2);
-  assert.deepEqual(errors.map((message) => message.data.path), [encodeURIComponent(brokenPath), encodeURIComponent(brokenPath)]);
+  assert.deepEqual(errors.map((message) => message.data.path), [brokenPath, brokenPath]);
 });
 
 test('manual exact match loads network danmaku with auto-network off', async () => {
@@ -794,7 +803,8 @@ test('manual exact match loads network danmaku with auto-network off', async () 
   const loaded = loadedComments(harness.overlayMessages);
   assert.equal(loaded.length, 1);
   assert.match(loaded[0], /hello/);
-  assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), ['dandanplay://7']);
+  assert.deepEqual(Array.from(harness.context.pluginState.danmakuFileList.selectedPaths), ['dandanplay://7']);
+  harness.ackLoad();
   assert.ok(harness.osdMessages.some((message) => message.includes('Network danmaku loaded') && message.includes('EP1')));
 });
 
@@ -816,11 +826,12 @@ test('manual network load before overlay readiness re-enables and flushes the pe
   await flushMicrotasks();
 
   assert.notEqual(harness.context.pendingDanmaku, null);
-  assert.equal(harness.context.danmakuEnabled, true);
+  assert.equal(harness.context.pluginState.danmakuEnabled, true);
   assert.deepEqual(loadedComments(harness.overlayMessages), []);
 
   harness.readyOverlay();
   assert.equal(loadedComments(harness.overlayMessages).length, 1);
+  harness.ackLoad();
   assert.ok(harness.osdMessages.some((message) => message.includes('Network danmaku loaded') && message.includes('EP1')));
   harness.emitEvent('mpv.time-pos.changed', 12);
   assert.equal(harness.overlayMessages.at(-1).data.time, 12);
@@ -835,7 +846,7 @@ test('manual match still loads when the toggle is disabled before the match resp
   harness.emitSidebar('dandanplay-trigger-match');
   await flushMicrotasks();
   harness.toggleDanmaku();
-  assert.equal(harness.context.danmakuEnabled, false);
+  assert.equal(harness.context.pluginState.danmakuEnabled, false);
 
   harness.resolveNextHttp({
     statusCode: 200,
@@ -851,7 +862,7 @@ test('manual match still loads when the toggle is disabled before the match resp
   await flushMicrotasks();
 
   assert.equal(loadedComments(harness.overlayMessages).length, 1);
-  assert.equal(harness.context.danmakuEnabled, true);
+  assert.equal(harness.context.pluginState.danmakuEnabled, true);
 });
 
 test('manual match still loads when the toggle is disabled while comments download', async () => {
@@ -869,7 +880,7 @@ test('manual match still loads when the toggle is disabled while comments downlo
   await flushMicrotasks();
   assert.ok(harness.httpRequests.some((request) => request.url.includes('/api/v2/comment/7')));
   harness.toggleDanmaku();
-  assert.equal(harness.context.danmakuEnabled, false);
+  assert.equal(harness.context.pluginState.danmakuEnabled, false);
 
   harness.resolveNextHttp({
     statusCode: 200,
@@ -878,7 +889,7 @@ test('manual match still loads when the toggle is disabled while comments downlo
   await flushMicrotasks();
 
   assert.equal(loadedComments(harness.overlayMessages).length, 1);
-  assert.equal(harness.context.danmakuEnabled, true);
+  assert.equal(harness.context.pluginState.danmakuEnabled, true);
 });
 
 test('manual filename-match selection loads with auto-network off', async () => {
@@ -898,7 +909,7 @@ test('manual filename-match selection loads with auto-network off', async () => 
   await flushMicrotasks();
 
   assert.equal(loadedComments(harness.overlayMessages).length, 1);
-  assert.deepEqual(Array.from(harness.context.danmakuFileList.selectedPaths), ['dandanplay://7']);
+  assert.deepEqual(Array.from(harness.context.pluginState.danmakuFileList.selectedPaths), ['dandanplay://7']);
 });
 
 test('background match still stops when the toggle is disabled before the match response', async () => {
@@ -916,7 +927,7 @@ test('background match still stops when the toggle is disabled before the match 
   });
   await flushMicrotasks();
 
-  assert.equal(harness.context.danmakuEnabled, false);
+  assert.equal(harness.context.pluginState.danmakuEnabled, false);
   assert.equal(harness.httpRequests.some((request) => request.url.includes('/api/v2/comment/7')), false);
   assert.deepEqual(loadedComments(harness.overlayMessages), []);
 });
@@ -938,7 +949,7 @@ test('overlay readiness preserves an in-flight match and sends paused/visibility
   h.readyOverlay();
   await flushMicrotasks();
   assert.equal(h.httpRequests.length, 1, 'ready must not restart matching or hashing');
-  assert.ok(h.overlayMessages.some(x => x.name === 'pause-state' && x.data.paused));
+  assert.ok(h.overlayMessages.some(x => x.name === 'toggle-danmaku' && x.data.paused));
   const disabled = createHarness(false);
   disabled.readyOverlay();
   assert.ok(disabled.overlayMessages.some(x => x.name === 'toggle-danmaku' && !x.data.enabled));
@@ -953,7 +964,7 @@ test('queued sources use the latest filters and settings when the overlay become
   h.readyOverlay();
   const load = h.overlayMessages.findLast(x => x.name === 'load-danmaku');
   assert.equal(load.data.canvasFontScale, 0.5);
-  assert.equal(decodeURIComponent(load.data.xmlContent), '<i></i>');
+  assert.equal(JSON.stringify(load.data.comments), '[]');
 });
 
 for (const response of [
@@ -981,7 +992,7 @@ test('a network failure after disabling cannot activate local or stale danmaku',
   h.toggleDanmaku();
   h.rejectNextHttp(new Error('offline'));
   await flushMicrotasks();
-  assert.equal(h.context.danmakuEnabled, false);
+  assert.equal(h.context.pluginState.danmakuEnabled, false);
   assert.deepEqual(loadedComments(h.overlayMessages), []);
 });
 
@@ -994,7 +1005,7 @@ test('latest network episode selection wins even when responses arrive in revers
   await flushMicrotasks();
   h.resolveNextHttp({statusCode: 200, data: {comments: [{p: '1,1,16777215,user', m: 'old'}]}});
   await flushMicrotasks();
-  assert.deepEqual(Array.from(h.context.danmakuFileList.selectedPaths), ['dandanplay://8']);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['dandanplay://8']);
   assert.equal(loadedComments(h.overlayMessages).length, 1);
   assert.match(loadedComments(h.overlayMessages)[0], /new/);
 });
@@ -1008,7 +1019,7 @@ test('manual local selection supersedes a pending automatic match', async () => 
   h.resolveNextHttp({statusCode: 200, data: {isMatched: true, matches: [{episodeId: 7}]}});
   await flushMicrotasks();
   assert.equal(h.httpRequests.length, 1);
-  assert.deepEqual(Array.from(h.context.danmakuFileList.selectedPaths), ['/videos/A.xml']);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['/videos/A.xml']);
 });
 
 test('search replies carry identity and discard an obsolete keyword response', async () => {
@@ -1034,6 +1045,7 @@ test('the first cache write waits for mkdir and stores the video identity', asyn
   });
   const saved = h.context.ddpSaveVideoCache('file:///videos/C.mp4', 7, 'Anime', '1', [{t: 1, text: 'hi'}]);
   assert.equal(h.fileWrites.length, 0);
+  await flushMicrotasks();
   finishMkdir({status: 0});
   assert.equal(await saved, true);
   assert.equal(h.fileWrites.length, 1);
@@ -1061,18 +1073,19 @@ test('XML attributes, CDATA and numeric entities have the same text in filters a
   assert.equal(items[0].text, '&lt; 草 &lt; ');
   h.emitSidebar('danmaku-blocklist-add', {word: '^&lt; 草'});
   h.emitSidebar('danmaku-blocklist-set-enabled', {enabled: true});
-  assert.equal(decodeURIComponent(h.context.getEffectiveContent(p)), '<i><d p="2,7,25,16777215,2">unsupported</d></i>');
+  assert.equal(h.context.getEffectiveContent(p).length, 0);
 });
 
 test('simplification operates on decoded text and preserves metadata and literal entity text', () => {
   const h = createHarness(true);
-  h.context.danmakuForceSimplified = true;
+  h.context.pluginState.danmakuForceSimplified = true;
   h.context.openccSimplifier = text => text.replace(/體/g, '体');
   const source = '<packet><chat user_id="體" mail="font:體" vpos="-10">&#x9ad4; &amp;lt;</chat></packet>';
   const p = setPositionSource(h, 'nico-xml', source);
-  const effective = decodeURIComponent(h.context.getEffectiveContent(p));
-  assert.match(effective, /user_id="體" mail="font:體"/);
-  assert.match(effective, />体 &amp;lt;<\/chat>/);
+  const effective = h.context.getEffectiveContent(p);
+  assert.equal(h.context.danmakuCache[p].comments[0].userId, '體');
+  assert.deepEqual(Array.from(effective[0].mail), ['font:體']);
+  assert.equal(effective[0].content, '体 &lt;');
   assert.equal(h.context.buildDanmakuBrowserList()[0].text, '体 &lt;');
   assert.equal(h.context.buildDanmakuBrowserList()[0].t, -10);
 });
@@ -1081,29 +1094,45 @@ test('real legacy JSON density and blocking preserve owners and match the bundle
   const h = createHarness(true);
   const source = [{thread: {resultcode: 0}}, ...Array.from({length: 5}, (_, i) => ({chat: {vpos: i * 100, no: i + 1, content: 'c' + i, user_id: 'u', mail: ''}})), {chat: {vpos: 0, content: 'owner'}}];
   const p = setPositionSource(h, 'nico-json', JSON.stringify(source));
-  h.context.danmakuFilterDensity = 1;
-  const filtered = JSON.parse(decodeURIComponent(h.context.getEffectiveContent(p)));
+  h.context.pluginState.danmakuFilterDensity = 1;
+  const filtered = h.context.getEffectiveContent(p);
   const N = require('../overlay/lib/niconicomments.min.js');
-  const parsed = N.internal.inputParser.default(filtered, 'legacy');
+  const parsed = N.internal.inputParser.default(filtered, 'formatted');
   assert.deepEqual(parsed.map(c => c.content).sort(), ['c4', 'owner']);
   assert.deepEqual(Array.from(h.context.buildDanmakuBrowserList(), c => c.text).sort(), ['c4', 'owner']);
   h.emitSidebar('danmaku-blocklist-add', {word: 'owner|c4'});
   h.emitSidebar('danmaku-blocklist-set-enabled', {enabled: true});
-  const final = JSON.parse(decodeURIComponent(h.context.getEffectiveContent(p)));
-  assert.deepEqual(N.internal.inputParser.default(final, 'legacy').map(c => c.content), ['owner']);
+  const final = h.context.getEffectiveContent(p);
+  assert.deepEqual(N.internal.inputParser.default(final, 'formatted').map(c => c.content), ['owner']);
 });
 
 test('IPC envelopes prevent template interpolation while preserving the string', () => {
   const h = createHarness(true);
   const text = '${globalThis.injected = true}';
   h.context.sidebarPostMessage('test', {text});
-  const data = h.sidebarMessages.at(-1).data;
+  const data = h.sidebarMessages.at(-1).wire;
   const simulatedBridge = vm.createContext({});
   const json = vm.runInContext('String.raw`' + JSON.stringify(data) + '`', simulatedBridge);
   assert.equal(simulatedBridge.injected, undefined);
-  assert.equal(JSON.parse(decodeURIComponent(JSON.parse(json).encodedPayload)).text, text);
+  assert.equal(JSON.parse(decodeURIComponent(JSON.parse(json).__encoded)).text, text);
   h.context.overlayPostMessage('test', {fontFamily: '`' + text});
-  assert.equal(JSON.parse(decodeURIComponent(h.overlayMessages.at(-1).data.encodedPayload)).fontFamily, '`' + text);
+  assert.equal(JSON.parse(decodeURIComponent(h.overlayMessages.at(-1).wire.__encoded)).fontFamily, '`' + text);
+});
+
+test('IPC preserves paths, regexes, quotes, backslashes and Unicode through the real template boundary', () => {
+  const h = createHarness(true);
+  const word = '`‘’“”\\w+${text} 😀';
+  const payload = {path: '/videos/' + word + '.xml', words: [word], selectedPaths: ['%20']};
+  for (const send of [h.context.sidebarPostMessage, h.context.overlayPostMessage]) {
+    send('test', payload);
+    const message = send === h.context.sidebarPostMessage ? h.sidebarMessages.at(-1) : h.overlayMessages.at(-1);
+    const bridge = vm.runInNewContext('String.raw`' + JSON.stringify(message.wire) + '`');
+    assert.deepEqual(JSON.parse(decodeURIComponent(JSON.parse(bridge).__encoded)), payload);
+  }
+  h.emitSidebar('danmaku-blocklist-add', {word});
+  assert.deepEqual(JSON.parse(h.preferences.get('danmakuBlocklist')), [word]);
+  h.emitSidebar('danmaku-blocklist-remove', {word});
+  assert.deepEqual(JSON.parse(h.preferences.get('danmakuBlocklist')), []);
 });
 
 test('automatic local loading prioritizes exact JSON and retries unreadable candidates', () => {
@@ -1111,10 +1140,10 @@ test('automatic local loading prioritizes exact JSON and retries unreadable cand
   h.setFile('/videos/A.json', '[{"fork":"main","comments":[]}]');
   h.readyOverlay();
   h.setVideo('file:///videos/A.mp4');
-  assert.deepEqual(Array.from(h.context.danmakuFileList.selectedPaths), ['/videos/A.json']);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['/videos/A.json']);
   h.failRead('/videos/A.json');
   h.setVideo('file:///videos/A.mp4');
-  assert.deepEqual(Array.from(h.context.danmakuFileList.selectedPaths), ['/videos/A.xml']);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['/videos/A.xml']);
 });
 
 test('episode 1 does not prefix-match episode 10', () => {
@@ -1125,13 +1154,13 @@ test('episode 1 does not prefix-match episode 10', () => {
 
 test('a delayed duration comparison cannot cross video generations', () => {
   const h = createHarness(true);
-  h.context.danmakuFileList.selectedPaths = ['/shared.json'];
-  h.context.checkNicoJsonDuration(encodeURIComponent(JSON.stringify([{fork: 'main', duration: 100}])));
+  h.context.pluginState.danmakuFileList.selectedPaths = ['/shared.json'];
+  h.context.checkNicoJsonDuration(parseDanmakuSource([{fork: 'main', duration: 100, comments: []}]));
   h.setVideo('file:///videos/B.mp4');
-  h.context.danmakuFileList.selectedPaths = ['/shared.json'];
+  h.context.pluginState.danmakuFileList.selectedPaths = ['/shared.json'];
   h.setMpv('duration', 120);
   h.runTimers(800);
-  assert.equal(h.context.danmakuTimeOffsetSec, 0);
+  assert.equal(h.context.pluginState.danmakuTimeOffsetSec, 0);
 });
 
 test('duration availability reaches a lazily opened sidebar independently of duration mismatch', () => {
@@ -1139,8 +1168,10 @@ test('duration availability reaches a lazily opened sidebar independently of dur
     const h = createHarness(true, false, {danmakuAutoOffset: false});
     h.setMpv('duration', videoDuration);
     h.setFile('/videos/with-duration.json', JSON.stringify([{fork: 'main', duration: 100, comments: []}]));
-    h.emitSidebar('select-danmaku-file', {path: encodeURIComponent('/videos/with-duration.json')});
+    h.emitSidebar('select-danmaku-file', {path: '/videos/with-duration.json'});
     assert.equal(h.sidebarMessages.findLast(m => m.data?.nicoJsonHasDuration !== undefined).data.nicoJsonHasDuration, true);
+    h.readyOverlay();
+    h.ackLoad();
     h.emitSidebar('request-state');
     const state = h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data;
     assert.equal(state.danmakuLoaded, true);
@@ -1155,15 +1186,15 @@ test('automatic intro offset stays off until the user enables it', () => {
   const h = createHarness(true);
   h.setMpv('duration', 120);
   h.setFile('/videos/with-duration.json', JSON.stringify([{fork: 'main', duration: 100, comments: []}]));
-  h.emitSidebar('select-danmaku-file', {path: encodeURIComponent('/videos/with-duration.json')});
-  assert.equal(h.context.danmakuTimeOffsetSec, 0);
-  assert.equal(h.context.nicoJsonDurationDiff, 20);
+  h.emitSidebar('select-danmaku-file', {path: '/videos/with-duration.json'});
+  assert.equal(h.context.pluginState.danmakuTimeOffsetSec, 0);
+  assert.equal(h.context.pluginState.nicoJsonDurationDiff, 20);
   h.emitSidebar('request-state');
   const state = h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data;
   assert.equal(state.danmakuAutoOffset, false);
   assert.equal(state.nicoJsonHasDuration, true);
   h.emitSidebar('set-danmaku-auto-offset', {value: true});
-  assert.equal(h.context.danmakuTimeOffsetSec, -20);
+  assert.equal(h.context.pluginState.danmakuTimeOffsetSec, -20);
 });
 
 test('switching sources clears duration availability for unsupported or missing metadata', () => {
@@ -1181,15 +1212,15 @@ test('switching sources clears duration availability for unsupported or missing 
   ];
   h.setFile('/videos/with-duration.json', JSON.stringify([{fork: 'main', duration: 100, comments: []}]));
   for (const [name, source] of sources) {
-    h.emitSidebar('select-danmaku-file', {path: encodeURIComponent('/videos/with-duration.json')});
+    h.emitSidebar('select-danmaku-file', {path: '/videos/with-duration.json'});
     const sourcePath = '/videos/' + name;
     h.setFile(sourcePath, typeof source === 'string' ? source : JSON.stringify(source));
-    h.emitSidebar('select-danmaku-file', {path: encodeURIComponent(sourcePath)});
+    h.emitSidebar('select-danmaku-file', {path: sourcePath});
     assert.equal(h.sidebarMessages.findLast(m => m.data?.nicoJsonHasDuration !== undefined).data.nicoJsonHasDuration, false, name);
     h.emitSidebar('request-state');
     assert.equal(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.nicoJsonHasDuration, false, name);
   }
-  h.emitSidebar('select-danmaku-file', {path: encodeURIComponent('/videos/with-duration.json')});
+  h.emitSidebar('select-danmaku-file', {path: '/videos/with-duration.json'});
   h.setVideo('file:///videos/B.mp4');
   h.emitSidebar('request-state');
   const state = h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data;
@@ -1203,15 +1234,16 @@ test('renderer errors update load status while stale replies cannot alter the ne
   h.setVideo('file:///videos/A.mp4');
   const id = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
   h.emitOverlay('danmaku-load-result',{loadId:id,success:false});
-  assert.equal(h.context.currentDanmakuStatus.isLoaded,false);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded,false);
   assert.ok(h.osdMessages.includes('Cannot render this danmaku file'));
   h.setVideo('file:///videos/B.mp4');
+  h.ackLoad();
   h.emitOverlay('danmaku-load-result',{loadId:id,success:false});
-  assert.equal(h.context.currentDanmakuStatus.isLoaded,true);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded,true);
   h.toggleDanmaku();
   h.setVideo('file:///videos/C.mp4');
   h.emitOverlay('danmaku-load-result',{loadId:id,success:true});
-  assert.equal(h.context.currentDanmakuStatus.isLoaded,false);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded,false);
 });
 
 test('fresh cache bypasses matching and malformed DDP rows do not discard valid comments', async () => {
@@ -1224,8 +1256,8 @@ test('fresh cache bypasses matching and malformed DDP rows do not discard valid 
   assert.equal(h.httpRequests.length,0);
   assert.match(loadedComments(h.overlayMessages).at(-1),/cached/);
   const list=h.context.ddpConvertComments([null,{p:4,m:'bad'}, {p:'Infinity,1,16777215,id',m:'bad'}, {p:'1,1,16777215,abc123',m:'ok'}]);
-  assert.equal(list.length,1);
-  assert.equal(list[0]._userId,'abc123');
+  assert.equal(list.comments.length,1);
+  assert.equal(list.comments[0].userId,'abc123');
 });
 
 test('XML scans skip comments and self-closing elements without consuming the next danmaku', () => {
@@ -1244,7 +1276,7 @@ function calendarDay(date) {
 
 function loadDateFixture(harness, data, filePath = '/videos/dates.json') {
   harness.setFile(filePath, JSON.stringify(data));
-  harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent(filePath) });
+  harness.emitSidebar('select-danmaku-file', { path: filePath });
 }
 
 function latestFilterInfo(harness) {
@@ -1282,25 +1314,19 @@ test('date slicing uses inclusive Japan calendar days across all V1 threads, ind
   ]);
   h.emitSidebar('set-danmaku-filter', { startDay: day, endDay: day });
   const filtered = JSON.parse(loadedComments(h.overlayMessages).at(-1));
-  assert.deepEqual(filtered[0].comments.map(c => c.body), ['start midnight', 'end midnight minus 1ms', 'undated', 'bad date']);
-  assert.equal(filtered[0].commentCount, 4);
-  assert.deepEqual(filtered[1].comments.map(c => c.body), ['second thread']);
-  assert.deepEqual(filtered[2], data[2]);
-  assert.deepEqual(filtered[3], data[3]);
-  assert.deepEqual(Array.from(h.context.buildDanmakuBrowserList(), item => item.text).sort(),
-    filtered.flatMap(thread => thread.comments.map(c => c.body)).sort());
+  assert.deepEqual(filtered.map(c => c.content), ['start midnight', 'end midnight minus 1ms', 'undated', 'bad date', 'second thread', 'owner', 'easy']);
+  assert.deepEqual(Array.from(h.context.buildDanmakuBrowserList(), item => item.text).sort(), filtered.map(c => c.content).sort());
   assert.equal(latestFilterInfo(h).sourceTotalCount, 7);
   assert.equal(latestFilterInfo(h).filteredCount, 7);
   assert.equal(latestFilterInfo(h).dateInfo.lastDay, day + 3, 'filtering does not shrink the slider domain');
 
   h.emitSidebar('set-danmaku-filter', { startDay: day + 2, endDay: day + 2 });
   const gap = JSON.parse(loadedComments(h.overlayMessages).at(-1));
-  assert.deepEqual(gap[0].comments.map(c => c.body), ['undated', 'bad date']);
-  assert.deepEqual(gap[1].comments.map(c => c.body), ['last source day'], 'an empty date snaps forward to the next populated date');
+  assert.deepEqual(gap.map(c => c.content), ['undated', 'bad date', 'last source day', 'owner', 'easy']);
   assert.equal(latestFilterInfo(h).filterStartDay, day + 3);
   assert.equal(latestFilterInfo(h).filterEndDay, day + 3);
   h.emitSidebar('set-danmaku-filter', { startDay: day - 1, endDay: day + 3 });
-  assert.equal(loadedComments(h.overlayMessages).at(-1), JSON.stringify(data), 'full range restores the pristine source order');
+  assert.deepEqual(JSON.parse(loadedComments(h.overlayMessages).at(-1)).map(c => c.content), data.flatMap(th => th.comments.map(c => c.body)), 'full range restores source order');
   assert.equal(latestFilterInfo(h).filterStartDay, null);
 });
 
@@ -1319,7 +1345,7 @@ test('date filters restore on sidebar pull and reset on source/video changes, in
   assert.equal(latestFilterInfo(h).filterEndDay, day);
   assert.equal(latestFilterInfo(h).filteredCount, 1);
   h.readyOverlay();
-  assert.deepEqual(JSON.parse(loadedComments(h.overlayMessages).at(-1))[0].comments.map(c => c.body), ['leap day']);
+  assert.deepEqual(JSON.parse(loadedComments(h.overlayMessages).at(-1)).map(c => c.content), ['leap day']);
   for (const range of [{ startDay: day + 1, endDay: day - 1 }, { startDay: day + 0.5, endDay: day + 1 }, {}]) {
     h.emitSidebar('set-danmaku-filter', range);
     h.emitSidebar('request-state');
@@ -1354,9 +1380,391 @@ test('legacy date slicing precedes density and preserves owners, undated comment
   h.emitSidebar('set-danmaku-filter', { startDay: day, endDay: day });
   h.emitSidebar('set-danmaku-filter-density', { density: 1 });
   const filtered = JSON.parse(loadedComments(h.overlayMessages).at(-1));
-  assert.deepEqual(filtered[0], data[0]);
-  assert.deepEqual(filtered.filter(e => e.chat).map(e => e.chat.content), ['last selected', 'undated', 'owner']);
+  assert.deepEqual(filtered.map(e => e.content), ['last selected', 'undated', 'owner']);
   assert.equal(latestFilterInfo(h).sourceTotalCount, 4);
   assert.equal(latestFilterInfo(h).filteredCount, 3);
   assert.deepEqual(Array.from(h.context.buildDanmakuBrowserList(), item => item.text).sort(), ['last selected', 'owner', 'undated']);
+});
+
+test('only the ready handshake can flush the latest pending IR source', async () => {
+  const h = createHarness(true);
+  h.emitEvent('iina.plugin-overlay-loaded');
+  await h.addFromSidebar('/videos/A.xml');
+  await h.addFromSidebar('/videos/B.xml');
+  h.runTimers(2000);
+  assert.equal(h.context.overlayReady, false);
+  assert.equal(loadedComments(h.overlayMessages).length, 0);
+  h.setMpv('time-pos', 47);
+  h.setMpv('speed', 3);
+  h.setPaused(true);
+  h.emitOverlay('overlay-ready');
+  const load = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data;
+  assert.deepEqual(load.playback, {enabled: true, time: 47, paused: true, speed: 3});
+  assert.deepEqual(load.comments.map(c => c.content), ['B comment']);
+});
+
+test('bangumi responses cannot replace a newer selection or search', async () => {
+  const h = createHarness(true);
+  h.emitSidebar('dandanplay-get-bangumi', {bangumiId: 1, searchId: 1});
+  h.emitSidebar('dandanplay-get-bangumi', {bangumiId: 2, searchId: 1});
+  h.resolveHttp(1, {statusCode: 200, data: {bangumi: {episodes: [{episodeId: 2}]}}});
+  await flushMicrotasks();
+  h.resolveHttp(0, {statusCode: 200, data: {bangumi: {episodes: [{episodeId: 1}]}}});
+  await flushMicrotasks();
+  assert.deepEqual(h.sidebarMessages.filter(m => m.name === 'dandanplay-bangumi-result').map(m => m.data.bangumiId), [2]);
+  h.emitSidebar('dandanplay-get-bangumi', {bangumiId: 3, searchId: 1});
+  h.emitSidebar('dandanplay-search', {keyword: 'new', searchId: 2});
+  h.rejectNextHttp(new Error('old bangumi failed'));
+  await flushMicrotasks();
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'dandanplay-bangumi-result').length, 1);
+});
+
+test('cache writes stay ordered and recover after a write failure', async () => {
+  const h = createHarness(true);
+  h.setExec(() => Promise.resolve({status: 0}));
+  let writes = 0;
+  h.context.iina.file.write = (filePath, content) => {
+    writes++;
+    if (writes === 1) throw new Error('disk full');
+    h.fileWrites.push({filePath, content});
+  };
+  const first = h.context.ddpSaveVideoCache('same-video', 1, 'old', '', []);
+  const second = h.context.ddpSaveVideoCache('same-video', 2, 'new', '', []);
+  assert.equal(await first, false);
+  assert.equal(await second, true);
+  assert.equal(JSON.parse(h.fileWrites[0].content).episodeId, 2);
+});
+
+test('all state settings restore from one sidebar request without document serialization', () => {
+  const h = createHarness(true, false, {danmakuBlocklist: '["`literal`"]', danmakuBlocklistEnabled: true, danmakuDedupeEnabled: true, danmakuBlockTopEnabled: true});
+  h.emitSidebar('request-state');
+  const state = h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data;
+  assert.deepEqual(state.blocklist, {enabled: true, words: ['`literal`']});
+  assert.deepEqual(state.dedupe, {enabled: true, window: 2});
+  assert.equal(state.danmakuBlockTopEnabled, true);
+  assert.equal('danmakuCache' in state, false);
+  assert.equal(h.sidebarHandlers.has('danmaku-position-filter-request'), false);
+  assert.equal(h.sidebarHandlers.has('danmaku-blocklist-request'), false);
+  assert.equal(h.sidebarHandlers.has('danmaku-dedupe-request'), false);
+});
+
+test('each settings action emits one state patch and no retired state messages', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  const cases = [
+    ['set-danmaku-offset', {offset: 2}], ['set-danmaku-font', {fontFamily: 'Helvetica Neue', fontWeight: '500'}],
+    ['danmaku-blocklist-add', {word: 'foo'}], ['danmaku-blocklist-set-enabled', {enabled: true}],
+    ['danmaku-blocklist-remove', {word: 'foo'}], ['danmaku-position-filter-set', {danmakuBlockTopEnabled: true, danmakuBlockBottomEnabled: true}],
+    ['danmaku-dedupe-set', {enabled: true, window: 4}], ['danmaku-browser-vis-set', {visible: false}],
+  ];
+  for (const [name, data] of cases) {
+    h.sidebarMessages.length = 0;
+    h.emitSidebar(name, data);
+    assert.deepEqual(h.sidebarMessages.map(m => m.name), ['danmaku-state'], name);
+  }
+  h.sidebarMessages.length = 0;
+  h.context.setNicoJsonDurationAvailability(true);
+  assert.equal(h.sidebarMessages.length, 1);
+  h.sidebarMessages.length = 0;
+  h.context.setNicoJsonDurationDiff(20);
+  assert.equal(h.sidebarMessages.length, 1);
+  h.context.commitState({danmakuFilterStartDay: 1, danmakuFilterEndDay: 2});
+  h.sidebarMessages.length = 0;
+  h.context.resetNicoJsonFilterState();
+  assert.equal(h.sidebarMessages.length, 1);
+  assert.equal(h.sidebarMessages[0].data.nicoJsonHasDuration, false);
+  assert.equal(h.sidebarMessages[0].data.nicoJsonDurationDiff, null);
+  assert.equal(h.sidebarMessages[0].data.danmakuFilterStartDay, null);
+  assert.equal(h.sidebarMessages[0].data.danmakuFilterEndDay, null);
+});
+
+test('enable toggles send one playback update; disabled manual loads start enabled without a toggle replay', async () => {
+  const h = createHarness(true);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+  h.overlayMessages.length = 0; h.sidebarMessages.length = 0;
+  h.toggleDanmaku();
+  assert.equal(h.overlayMessages.filter(m => m.name === 'toggle-danmaku').length, 1);
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-state').length, 1);
+  h.overlayMessages.length = 0; h.sidebarMessages.length = 0;
+  h.toggleDanmaku();
+  assert.equal(h.overlayMessages.filter(m => m.name === 'toggle-danmaku').length, 1);
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-state').length, 1);
+  h.toggleDanmaku(); h.overlayMessages.length = 0;
+  await h.loadFromMenu('/videos/B.xml');
+  const load = h.overlayMessages.find(m => m.name === 'load-danmaku');
+  assert.equal(load.data.playback.enabled, true);
+  assert.equal(h.overlayMessages.filter(m => m.name === 'load-danmaku').length, 1);
+  assert.equal(h.overlayMessages.filter(m => m.name === 'toggle-danmaku').length, 0);
+  h.emitEvent('mpv.time-pos.changed', 4);
+  assert.equal(h.overlayMessages.at(-1).data.time, 4, 'subscriptions are still installed');
+});
+
+test('ordinary quotes, newlines and backslashes do not encode a full comment payload', () => {
+  const h = createHarness(true);
+  const data = {comments: Array.from({length: 1000}, (_, i) => ({content: i + ' "quoted"\nC:\\font\\path'}))};
+  h.context.overlayPostMessage('test', data);
+  const wire = h.overlayMessages.at(-1).wire;
+  assert.equal(wire, data);
+  const bridge = vm.runInNewContext('String.raw`' + JSON.stringify(wire) + '`');
+  assert.deepEqual(JSON.parse(bridge), data);
+});
+
+test('IPC preserves isolated surrogate code units even with a legacy JSON stringifier', () => {
+  const h = createHarness(true);
+  const data = {text: '\uD800 a \uDC00 😀 `${literal}'};
+  const stringify = JSON.stringify;
+  h.context.JSON = {stringify(value) {return stringify(value).replace(/\\u(d[89ab][0-9a-f]{2}|d[cdef][0-9a-f]{2})/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));}};
+  assert.doesNotThrow(() => h.context.sidebarPostMessage('test', data));
+  const wire = h.sidebarMessages.at(-1).wire;
+  const bridge = vm.runInNewContext('String.raw`' + stringify(wire) + '`');
+  assert.deepEqual(JSON.parse(decodeURIComponent(JSON.parse(bridge).__encoded)), data);
+});
+
+test('a missing enabled preference defaults to enabled', () => {
+  const h = createHarness(undefined);
+  assert.equal(h.context.pluginState.danmakuEnabled, true);
+});
+
+test('unchanged projections skip renderer loads, but a failed renderer can retry', () => {
+  const h = createHarness(true);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+  const before = h.overlayMessages.filter(m => m.name === 'load-danmaku').length;
+  h.emitSidebar('danmaku-blocklist-add', {word: 'unmatched'});
+  h.emitSidebar('danmaku-blocklist-set-enabled', {enabled: true});
+  h.emitSidebar('set-danmaku-filter-density', {density: 100});
+  assert.equal(h.overlayMessages.filter(m => m.name === 'load-danmaku').length, before);
+  const id = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+  h.emitOverlay('danmaku-load-result', {loadId: id, success: false});
+  assert.equal(h.context.pluginState.danmakuFileList.selectedPaths.length, 0);
+  h.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
+  assert.equal(h.overlayMessages.filter(m => m.name === 'load-danmaku').length, before + 1);
+  h.emitSidebar('danmaku-blocklist-add', {word: 'A comment'});
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.comments.length, 0);
+});
+
+test('a failed explicit file refresh keeps the cached active document', async () => {
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+  const doc = h.context.danmakuCache['/videos/A.xml'];
+  const loads = loadedComments(h.overlayMessages).length;
+  h.failRead('/videos/A.xml');
+  await h.loadFromMenu('/videos/A.xml');
+  assert.equal(h.context.danmakuCache['/videos/A.xml'], doc);
+  assert.equal(loadedComments(h.overlayMessages).length, loads);
+});
+
+test('completed mpv seeks explicitly synchronize even sub-threshold forward movement', () => {
+  const h = createHarness(true); h.readyOverlay();
+  h.overlayMessages.length = 0;
+  h.emitEvent('mpv.seeking.changed', false);
+  assert.equal(h.overlayMessages.length, 0);
+  h.emitEvent('mpv.seeking.changed', true);
+  h.setMpv('time-pos', 10.05);
+  h.emitEvent('mpv.seeking.changed', false);
+  assert.deepEqual(h.overlayMessages.at(-1).data, {time: 10.05, seek: true});
+});
+
+test('an unchanged renderer status does not echo a second UI update', () => {
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+  h.ackLoad();
+  const id = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+  h.sidebarMessages.length = 0;
+  h.emitOverlay('danmaku-load-result', {loadId: id, success: true});
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-state').length, 0);
+});
+
+test('disabled filter edits defer the renderer load and apply the latest projection once on enable', () => {
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  h.toggleDanmaku(); h.overlayMessages.length = 0;
+  h.emitSidebar('danmaku-blocklist-add', {word: 'A comment'});
+  h.emitSidebar('danmaku-blocklist-set-enabled', {enabled: true});
+  h.emitSidebar('danmaku-dedupe-set', {enabled: true, window: 3});
+  h.emitSidebar('set-danmaku-force-simplified', {value: true});
+  h.emitSidebar('set-danmaku-filter-density', {density: 10});
+  assert.equal(h.overlayMessages.filter(m => m.name === 'load-danmaku').length, 0);
+  h.toggleDanmaku();
+  const loads = h.overlayMessages.filter(m => m.name === 'load-danmaku');
+  assert.equal(loads.length, 1);
+  assert.deepEqual(loads[0].data.comments, []);
+  assert.equal(loads[0].data.playback.enabled, true);
+  assert.equal(h.overlayMessages.filter(m => m.name === 'toggle-danmaku').length, 0);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.ackLoad();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  h.toggleDanmaku(); h.overlayMessages.length = 0;
+  h.emitSidebar('danmaku-blocklist-add', {word: 'unmatched'});
+  h.toggleDanmaku();
+  assert.equal(h.overlayMessages.filter(m => m.name === 'load-danmaku').length, 0, 'equivalent projection reuses the renderer');
+  assert.equal(h.overlayMessages.filter(m => m.name === 'toggle-danmaku').length, 1);
+});
+
+test('disabling a pending source before readiness preserves the choice for the next enable', async () => {
+  const h = createHarness(false); h.setVideo('file:///videos/A.mp4');
+  await h.loadFromMenu('/videos/B.xml');
+  h.toggleDanmaku(); h.readyOverlay();
+  assert.equal(loadedComments(h.overlayMessages).length, 0);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.toggleDanmaku();
+  assert.equal(loadedComments(h.overlayMessages).length, 1);
+  assert.deepEqual(h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.comments.map(c => c.content), ['B comment']);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.ackLoad();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+});
+
+test('source success and its OSD wait for acknowledgment without repeating the file list', async () => {
+  const h = createHarness(true); h.readyOverlay();
+  h.sidebarMessages.length = 0;
+  await h.loadFromMenu('/videos/B.xml');
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-file-list').length, 1);
+  assert.equal(h.osdMessages.filter(m => m.startsWith('Danmaku loaded:')).length, 0);
+  h.ackLoad();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-file-list').length, 1);
+  assert.equal(h.osdMessages.filter(m => m.startsWith('Danmaku loaded:')).length, 1);
+  h.ackLoad();
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-file-list').length, 1);
+  assert.equal(h.osdMessages.filter(m => m.startsWith('Danmaku loaded:')).length, 1);
+});
+
+test('failed rendering clears selection and ignores late success while retaining a retryable file', async () => {
+  const h = createHarness(true); h.readyOverlay(); await h.loadFromMenu('/videos/B.xml');
+  const id = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+  h.ackLoad(false);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), []);
+  assert.ok(h.context.findDanmakuFileByPath('/videos/B.xml'));
+  assert.equal(h.overlayMessages.at(-1).name, 'clear-danmaku');
+  h.emitOverlay('danmaku-load-result', {loadId: id, success: true});
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  assert.equal(h.osdMessages.filter(m => m.startsWith('Danmaku loaded:')).length, 0);
+  h.emitSidebar('select-danmaku-file', {path: '/videos/B.xml'}); h.ackLoad();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+});
+
+test('WebView navigation invalidates old render acknowledgments before the next handshake', () => {
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  const oldId = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+  h.emitEvent('iina.window-loaded');
+  h.emitEvent('iina.plugin-overlay-loaded');
+  h.emitOverlay('danmaku-load-result', {loadId: oldId, success: true});
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.emitOverlay('overlay-ready');
+  h.ackLoad();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+});
+
+test('presets commit and transmit complete appearance tuples atomically', () => {
+  const h = createHarness(true, false, {danmakuFontFamily: 'Helvetica Neue'});
+  h.readyOverlay();
+  for (const [preset, scale, weight, strokeWidth, speed] of [
+    ['balanced', 0.5, '400', 3, 0.5], ['nico', 1, '400', 2.8, 1], ['bilibili', 0.35, '200', 2.5, 0.4]
+  ]) {
+    h.overlayMessages.length = 0; h.sidebarMessages.length = 0;
+    h.emitSidebar('set-style-preset', {preset});
+    assert.deepEqual(h.overlayMessages.map(m => m.name), ['set-danmaku-style']);
+    assert.deepEqual(h.overlayMessages[0].data, {
+      canvasFontScale: scale, danmakuFontFamily: 'Helvetica Neue', danmakuFontWeight: weight, strokeWidth, scrollSpeed: speed
+    });
+    assert.deepEqual(h.sidebarMessages.map(m => m.name), ['danmaku-state']);
+    assert.equal(h.sidebarMessages[0].data.stylePreset, preset);
+    assert.equal(h.preferences.get('stylePreset'), preset);
+    assert.equal(h.preferences.get('niconicommentsFontScale'), scale);
+    assert.equal(h.preferences.get('danmakuFontWeight'), weight);
+    assert.equal(h.preferences.get('strokeWidth'), strokeWidth);
+    assert.equal(h.preferences.get('scrollSpeed'), speed);
+  }
+});
+
+test('reapplying a preset restores manual tweaks, and rejects unknown preset names', () => {
+  const h = createHarness(true); h.readyOverlay();
+  h.emitSidebar('set-fontscale', {scale: 0.35});
+  h.emitSidebar('set-scroll-speed', {speed: 0.25});
+  h.overlayMessages.length = 0;
+  h.emitSidebar('set-style-preset', {preset: 'nico'});
+  assert.equal(h.overlayMessages.length, 1);
+  assert.equal(h.overlayMessages[0].name, 'set-danmaku-style');
+  assert.equal(h.overlayMessages[0].data.canvasFontScale, 1);
+  assert.equal(h.overlayMessages[0].data.scrollSpeed, 1);
+  h.emitSidebar('set-style-preset', {preset: 'nico'});
+  for (const preset of ['missing', '__proto__', 'constructor']) h.emitSidebar('set-style-preset', {preset});
+  assert.equal(h.overlayMessages.length, 1, 'unchanged and invalid choices do not rebuild');
+});
+
+test('a preset chosen before readiness is included in the first source load', () => {
+  const h = createHarness(true); h.setVideo('file:///videos/A.mp4');
+  h.emitSidebar('set-style-preset', {preset: 'balanced'});
+  assert.equal(h.overlayMessages.length, 0);
+  h.readyOverlay();
+  const load = h.overlayMessages.find(m => m.name === 'load-danmaku').data;
+  assert.equal(load.canvasFontScale, 0.5);
+  assert.equal(load.scrollSpeed, 0.5);
+  assert.equal(load.strokeWidth, 3);
+});
+
+test('font family and weight patches preserve the other field without waiting for sidebar echoes', () => {
+  const h = createHarness(true, false, {danmakuFontFamily: 'old', danmakuFontWeight: '400'}); h.readyOverlay();
+  h.emitSidebar('set-danmaku-font', {fontWeight: '800'});
+  h.emitSidebar('set-danmaku-font', {fontFamily: 'new'});
+  assert.equal(h.preferences.get('danmakuFontWeight'), '800');
+  assert.equal(h.preferences.get('danmakuFontFamily'), 'new');
+  assert.deepEqual(h.overlayMessages.findLast(m => m.name === 'set-danmaku-font').data, {fontFamily: 'new', fontWeight: '800'});
+  h.emitSidebar('set-danmaku-font', {fontFamily: 'newer'});
+  h.emitSidebar('set-danmaku-font', {fontWeight: '600'});
+  assert.deepEqual(h.overlayMessages.findLast(m => m.name === 'set-danmaku-font').data, {fontFamily: 'newer', fontWeight: '600'});
+  h.emitSidebar('set-danmaku-font', {fontFamily: ''});
+  assert.equal(h.preferences.get('danmakuFontFamily'), '');
+  assert.equal(h.preferences.get('danmakuFontWeight'), '600');
+  const sent = h.overlayMessages.length;
+  h.emitSidebar('set-danmaku-font', {});
+  assert.equal(h.overlayMessages.length, sent);
+});
+
+test('reselecting the active source preserves filters, loaded state and pending notice without reloading', () => {
+  const h = createHarness(true); h.readyOverlay();
+  loadDateFixture(h, [{fork: 'main', comments: [
+    {body: 'first', vposMs: 1000, postedAt: '2026-01-01'}, {body: 'second', vposMs: 2000, postedAt: '2026-01-02'}
+  ]}]);
+  const day = calendarDay('2026-01-01');
+  h.emitSidebar('set-danmaku-filter', {startDay: day, endDay: day}); h.ackLoad();
+  const id = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+  const reads = h.fileReads.length, osds = h.osdMessages.length;
+  h.overlayMessages.length = 0; h.sidebarMessages.length = 0;
+  h.emitSidebar('select-danmaku-file', {path: '/videos/dates.json'});
+  assert.equal(h.overlayMessages.length, 0);
+  assert.equal(h.fileReads.length, reads);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  assert.equal(h.context.pluginState.danmakuFilterStartDay, day);
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-file-list').length, 0);
+  h.emitOverlay('danmaku-load-result', {loadId: id, success: true});
+  assert.equal(h.osdMessages.length, osds, 'no orphan success notice');
+});
+
+test('reselecting the disabled cached source enables it without resetting successful load state', () => {
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  h.toggleDanmaku(); h.overlayMessages.length = 0;
+  h.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
+  assert.equal(h.context.pluginState.danmakuEnabled, true);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  assert.deepEqual(h.overlayMessages.map(m => m.name), ['toggle-danmaku']);
+  h.emitEvent('mpv.time-pos.changed', 7);
+  assert.equal(h.overlayMessages.at(-1).data.time, 7);
+});
+
+test('reselection preserves a pending acknowledgment and reloads a changed hidden projection', () => {
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+  const loads = loadedComments(h.overlayMessages).length;
+  h.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
+  assert.equal(loadedComments(h.overlayMessages).length, loads);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.ackLoad();
+  h.toggleDanmaku();
+  h.emitSidebar('danmaku-blocklist-add', {word: 'A comment'});
+  h.emitSidebar('danmaku-blocklist-set-enabled', {enabled: true});
+  h.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
+  assert.equal(loadedComments(h.overlayMessages).length, loads + 1);
+  assert.deepEqual(h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.comments, []);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.ackLoad();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
 });

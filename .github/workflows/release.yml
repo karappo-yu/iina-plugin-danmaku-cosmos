@@ -22,7 +22,7 @@ jobs:
       - name: Validate Plugin
         run: |
           node --check main.js
-          node --check overlay/input.js
+          node --check danmaku-document.js
           node --check overlay/main.js
           node --check sidebar/index.js
           node --test test/*.test.js
@@ -36,6 +36,7 @@ jobs:
           zip -r dist/danmaku-cosmos.iinaplgz \
             Info.json \
             main.js \
+            danmaku-document.js \
             overlay \
             sidebar \
             -x "*.DS_Store" \

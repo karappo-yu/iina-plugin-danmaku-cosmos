@@ -24,19 +24,19 @@ The CSS renderer (a fork addition, `mode: "css"`) renders text via DOM/CSS inste
 ```
 Danmaku Cosmos/
 ├── Info.json                 # Plugin metadata & preference defaults
-├── main.js                   # Plugin entry: IINA API, file loading, message relay, DDP integration
+├── main.js                   # State, I/O boundaries, IPC, IINA/DDP integration
+├── danmaku-document.js       # Canonical parser and shared projection pipeline
 ├── overlay/                  # Danmaku render layer (WebView container)
 │   ├── index.html            # Entry point
 │   ├── index.css             # Render styles
-│   ├── input.js              # Danmaku data parser (Niconico XML, Bilibili XML)
 │   ├── main.js               # Engine entry: message handling, render mode, state mgmt
 │   └── lib/                  # Third-party libs (read-only, do not modify)
 │       ├── niconicomments.min.js  # Forked niconicomments with CSSRenderer
-│       └── opencc.min.js          # opencc-js v1.4.1 UMD bundle (繁→简; LAZY-loaded on first force-simplified enable, not in index.html). Conversion only applies to formatted-path types (nico-xml, bilibili-xml, dandanplay); nico-json is Japanese-only and never converted
+│       └── opencc.min.js          # opencc-js v1.4.1 UMD bundle; loaded once from main through package-local require, converter constructed lazily; conversion memoized on IR nodes for all source formats
 ├── sidebar/                  # IINA sidebar control panel
 │   ├── index.html            # Layout (general settings incl. Style Preset; advanced settings)
 │   ├── index.css
-│   └── index.js              # UI logic, STYLE_PRESETS, i18n dict (en/ja/zh, ja/zh as \uXXXX escapes); main.js has its own PLUGIN_I18N dict for OSD/menu strings
+│   └── index.js              # UI logic and preset intents, i18n dict (en/ja/zh, ja/zh as \uXXXX escapes); main.js has its own PLUGIN_I18N dict for OSD/menu strings
 ├── png/                      # README screenshots (excluded from release package by release.yml)
 └── .github/workflows/        # Release packaging
     └── release.yml
@@ -88,63 +88,51 @@ All controls live in the sidebar. General settings (top): Style Preset. Advanced
 
 ### Style Presets
 
-`STYLE_PRESETS` in `sidebar/index.js` — one-click apply of a parameter bundle (add new presets by extending this map):
+`STYLE_PRESETS` in `main.js` — one-click apply of a parameter bundle (add new presets by extending this map):
 
 ```js
 var STYLE_PRESETS = {
-  nico:     { fontScale: 1.0, fontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },  // defaults
-  balanced: { fontScale: 0.5, fontWeight: "400", strokeWidth: 3, scrollSpeed: 0.5 },
-  bilibili: { fontScale: 0.35, fontWeight: "200", strokeWidth: 2.5, scrollSpeed: 0.4 },
+  nico:     { canvasFontScale: 1.0, danmakuFontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },  // defaults
+  balanced: { canvasFontScale: 0.5, danmakuFontWeight: "400", strokeWidth: 3, scrollSpeed: 0.5 },
+  bilibili: { canvasFontScale: 0.35, danmakuFontWeight: "200", strokeWidth: 2.5, scrollSpeed: 0.4 },
 };
 ```
 
-`applyStylePreset()` sets state + slider UI and fires 4 messages: `set-fontscale`, `set-danmaku-font`, `set-stroke-width`, `set-scroll-speed`. Overlay rebuilds are debounced for 80 ms, so the four setting messages result in one renderer rebuild. The selected preset is persisted via `set-style-preset` → `preferences.set("stylePreset")` and restored on startup through `request-state`, so the segmented selection matches the saved preset after restart. Manual slider tweaks do NOT rewrite the preset selection (deliberate simplification).
+The sidebar sends one `set-style-preset` intent containing only the preset name. Main validates the name and commits its complete parameter bundle plus selection in one `commitState()` call. It forwards one `set-danmaku-style` message containing scale, family/weight, stroke and speed; the current font family is preserved. Overlay applies the full tuple to its next debounced rebuild (80 ms), keeping the old renderer entirely unchanged until then. Do not split preset parameters across separate IPC messages or mutate the old renderer's speed while a style rebuild is pending: that exposes an intermediate large-font/slow-speed frame with too many comments. Reapplying the selected preset restores manual tweaks; manual tweaks still leave the preset selection unchanged. Preferences and the lazy sidebar snapshot restore the complete state after restart.
 
 ### Font Settings
 
-- Font family: preset dropdown (Japanese/Chinese/Generic groups) or custom input → `set-danmaku-font` `{fontFamily, fontWeight}` → `applyDanmakuFont()` (main.js: persist + forward) → overlay rebuilds renderer via `initCanvasRenderer()` (instant apply, no reload)
-- Font weight: slider 100–900 (step 50)
-- Custom font selection is guarded: selecting "Custom" with an empty input does NOT send anything (prevents the dropdown jumping back to Default); typing applies; clearing the input reverts to default
+- Font family: preset dropdown (Japanese/Chinese/Generic groups) or custom input → `set-danmaku-font` `{fontFamily}` → `applyDanmakuFont()` (main.js: persist + forward) → overlay rebuilds renderer via `initCanvasRenderer()` (instant apply, no reload)
+- Font weight: slider 100–900 (step 50); input previews locally and change submits `{fontWeight}`. Font-family controls submit only `{fontFamily}`. `applyDanmakuFont()` preserves undefined fields, then main forwards a complete merged font snapshot. Never echo the other field from stale sidebar state.
+- Custom font selection is a view-only edit mode: choosing an empty Custom input does not send a preference or disappear when focus moves to weight. Submit on ordinary input and compositionend (deduplicating any trailing input), preserve pending drafts until the family echo arrives, and do not overwrite composition/caret on blur. Clearing an existing custom family still reverts to default.
 
 ### Font Scale
 
 Slider 25%–100% (step 5) → `set-fontscale` → `canvasFontScale`. CSS mode keeps small fonts crisp (system text rendering) — this is the main reason CSS mode is the default.
 
-### Scroll Speed (real speed control — NOT `nakaCommentSpeedOffset`)
+### Scroll Speed (native engine motion)
 
-The engine's `nakaCommentSpeedOffset` only scales the `width × offset` term in `speed = (commentDrawRange + width×offset) / (long + 100)` and is diluted by the fixed 1920px draw range (~10–26% effect over the UI range) — it does NOT provide perceivable speed control. Real control is implemented by injecting the nicoscript duration command into scrolling danmaku:
+`scrollSpeed` is an independent engine config field (plugin UI: 0.25–1; engine API: 0.25–4). `setScrollSpeed()` updates the existing instance, deriving horizontal speed, visibility windows and collision occupancy from one formula. Native `long` and `@N` commands remain unchanged, including on custom-duration comments. Owner motion and fixed comment lifetimes remain unchanged.
 
-- **Command format is `@<seconds>`** (e.g. `@3` = 3s), NOT `long:3` (`RE_LONG = /^[@＠]([0-9.]+)/` in engine parseCommand)
-- Target multiplier `k` (0.25–1.0 from the slider) → `longSecs = 4/k - 1` (exact for the `+100` offset in the denominator); `k >= 1` (100%) skips injection entirely
-- **Scroll danmaku detection**: explicit `naka` in commands OR (no `ue` AND no `shita`) — local nico XML default danmaku have an EMPTY mail attribute (naka is implicit); DDP conversion pushes explicit `naka`
-- Danmaku with their own `@N` duration command are skipped (respect the original)
-- Fixed danmaku (ue/shita) are never touched
-
-Three data paths in `overlay/main.js`:
-- **formatted** (local XML, DDP): `rawFormattedData` kept pristine; `applyScrollSpeed()` maps a fresh copy with `@N` appended to `mail`
-- **nico-json v1** (`thread.comments[].commands` array) and **legacy** (`entry.chat.mail` string (one comment object per record)): `rawNicoJsonData` keeps the pristine JSON **text** (no second resident parsed tree); `applyScrollSpeedToNicoJson()` mutates the working copy, writing string `mail` back joined
-- `set-scroll-speed` re-applies by re-parsing `rawNicoJsonData` + rebuilds the renderer (no double injection)
+The sidebar previews speed on input and commits on change. Speed/weight state echoes are blocked only during an active pointer drag, never merely because a range retains focus. End gesture protection on change, pointer release/cancel, capture loss or window blur; WebKit can blur the input itself while dragging continues. Runtime settings coalesce until the next draw, which recalculates lanes/timeline in place and reanimates each surviving CSS node once using alternating keyframe names (no forced layout read); they do not reparse sources, remeasure text, or reconstruct the renderer. Reflow still costs CPU and existing positions reflect the new motion model. Do not promise constant-time or entirely cost-free updates. No plugin-side command injection or duplicate raw source is permitted.
 
 ### Time Offset
 
-`set-danmaku-offset` → `applyDanmakuOffset()` (session-only; not persisted). The offset resets to zero on each video load, then forwards to overlay and sidebar. Overlay adds `danmakuTimeOffsetSec` inside `canvasGetCurrentTime()` (base time + offset), so both CSS and Canvas modes shift instantly. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; step = |current offset|, fallback 1 — quirky but works); both send `set-danmaku-offset`.
+`set-danmaku-offset` → `applyDanmakuOffset()` (session-only; not persisted). The offset resets to zero on each video load, then forwards to overlay and sidebar. Overlay keeps `getVideoTimeSec()` offset-free and adds `danmakuTimeOffsetSec` only when passing vpos to the renderer. `syncVideoAnchor()` always receives pure video time. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; step = |current offset|, fallback 1 — quirky but works); both send `set-danmaku-offset`.
 
 ### Nico JSON Date Slice
 
 - The sidebar axis uses cumulative dated-comment counts: each day's width is proportional to its comment count before density filtering. Empty days take no width; undated comments remain in the displayed count but do not affect the axis. Only dates with comments are selectable. Handles snap to whole-day boundaries; arrow keys jump to the previous/next populated date, skipping empty days. Only the two handles can be dragged; the range body does not move the selection. Incoming date ranges snap their boundaries to populated dates; an entirely empty range advances to the next populated date.
 - `set-danmaku-filter` sends `{startDay, endDay}` as integer calendar-day numbers; both `null` mean the full range. Days use Japan time (UTC+9) for V1 `postedAt` and legacy `chat.date`; day-number arithmetic uses UTC to avoid host timezone/DST changes.
-- Main caches only `nicoJsonDateInfo` (source bounds, per-day counts and undated count), not a second parsed comment tree. `danmaku-filter-info` restores the bounds and selected days to the lazy sidebar. The count on the range previews ordinary comments after the date slice and before density filtering. The density badge shows `filteredCount / sourceTotalCount`, where `sourceTotalCount` is the input after date slicing (including retained owner/easy and undated comments), not the original file total. It uses `filterNicoJsonData(data, 0)` to share the same date-filter rules while disabling density for that count.
-- `filterNicoJsonData()` applies the same inclusive date range to every eligible thread before density filtering; comment numbers and array order do not define date selection. Owner/easy comments, legacy metadata, and comments with missing/invalid dates are retained. Overlay and list use this shared filter.
+- The canonical document owns dateInfo (source bounds, per-day counts and undated count). `danmaku-filter-info` restores the bounds and selected days to the lazy sidebar. The count on the range previews ordinary comments after the date slice and before density filtering. The density badge shows `filteredCount / sourceTotalCount`, where `sourceTotalCount` is the input after date slicing (including retained owner/easy and undated comments), not the original file total. `projectDanmaku()` records counts at the date and density stages of the same projection.
+- `projectDanmaku()` slices normalized comments before density filtering. Owners, easy comments and undated comments are protected from date slicing; owners/easy and nicoru >= 3 are protected from density quotas. Legacy metadata is consumed at the parse boundary and never becomes a comment. Nico XML dates are also supported.
 - Date selection resets on source/video changes. Sources without valid dates hide the selector; small files and single-day sources remain supported.
 
-### Danmaku Deduplication (engine-side render merge, plugin-side list merge)
+### Danmaku Deduplication (shared static projection)
 
-Dedup is split across two sides with the SAME window semantics (greedy from earliest, first-in-group wins, text + `xN` suffix, other members hidden):
+`mergeProjectedComments()` in `danmaku-document.js` is the only plugin dedupe implementation. It greedily groups from the earliest item within an inclusive window, by displayed text + normalized position + blocked state. Owners never merge. Both fixed and scrolling comments use the same static policy; the first host's style is retained and its `xN` suffix is passed as formatted metadata with a stable accent color.
 
-- **Render side — engine**: `fixedCombo` (fixed ue/shita progressive combo) + `nakaDedupeWindow` (scroll naka static window merge, 1/100s units, 0 = off). The engine merges AFTER parsing and BEFORE `getCommentPos`, so the merged host width (with `xN`) participates in lane assignment. Naka host keeps its native body style; only the `xN` suffix gets a random color (`comboSuffix`/`comboSuffixColor`, rendered as colored span in CSS mode / dual-color draw in Canvas mode). Owner (fork owner), fixed comments, and empty text never participate. Naka groups are static — no per-frame updates (unlike fixedCombo).
-- **List side — plugin**: `mergeDuplicateItems()` in `main.js` runs only inside `buildDanmakuBrowserList()` (display merge; blocked items merged separately, owners/fixed excluded).
-- `getEffectiveContent()` does NOT dedupe anymore — it applies filters (slices/density/simplified/blocklist) only; the dedupe window reaches the overlay via `nakaDedupeWindow: danmakuDedupeWindow * 100` in every `load-danmaku` payload (next to `fixedCombo: danmakuDedupeEnabled`).
-- Removed render-side plugin pipeline: `dedupeContent`/`dedupeNicoJson`/`pickMergeColor`/`MERGE_COLORS`/`encodeXmlText` no longer exist. `isFixedCommentCommands` and `getCommentPosition` remain (used by the list).
+The sidebar and overlay consume the same merged projection. Engine `fixedCombo`, `nakaDedupeWindow` and CA duplicate removal are disabled for these already-projected arrays. Use `keepCA: true, dedupeCA: false` so `changeCALayer()` still assigns CA layers without deleting repeated viewers or owners. The engine option defaults to true for compatibility; the plugin must explicitly disable it. Do not reintroduce independent list merging or progressive fixed counts. The engine still supports those APIs for other consumers.
 
 ## Dandanplay Network Danmaku
 
@@ -158,7 +146,7 @@ Dedup is split across two sides with the SAME window semantics (greedy from earl
 
 - Cache writes await directory creation; reads do not create directories. New entries also store `videoPath` to detect hash collisions.
 - Single hash-keyed cache file per video: `@data/danmaku-cache/{pathHash}.json`
-- Contains `{videoPath, episodeId, animeTitle, episodeTitle, cachedAt, comments}` (converted nico format)
+- Contains `{schemaVersion: 2, videoPath, episodeId, animeTitle, episodeTitle, cachedAt, comments}` (canonical comments); the read boundary also accepts old converted caches. Writes are serialized through `cacheWriteQueue`.
 - 24h TTL; each new DDP load overwrites previous cache for same video path (same filename, so expired data is replaced on refresh, never deleted explicitly)
 - **Expired cache is NOT deleted on read** — `ddpReadVideoCache()` marks it `stale: true` and keeps the file as a download-failure fallback (`ddpFallbackToLocal()` loads stale cache when no local files exist). It appears in the file list with a `(旧)` suffix but is never auto-loaded, so refresh still happens after TTL expiry; a successful refresh overwrites the file and the suffix is removed (`ddpAddToFileListAndLoad(..., fresh=true)`)
 - **Fresh cache (within TTL) fully skips background auto-match** — no hash recompute, no API call (honors the README "replay within 24h skips re-download" promise). Refresh only happens after TTL expiry, or when the user manually triggers matching via the 网络弹幕 panel (`dandanplay-trigger-match`)
@@ -179,7 +167,7 @@ Concurrent match/download operations use a request generation in addition to the
 
 ### DDP Comment Conversion
 
-DDP `p` format: `time,mode,color,userId` → converted to nico-like internal format with `_dateSec: 1767196800` (2026-01-01) for correct Canvas Auto HTML5 detection. Note DDP conversion **explicitly pushes `naka`** to commands — this is why scroll-speed injection matches DDP danmaku.
+DDP `p` format: `time,mode,color,userId` → canonical comments at the network boundary, with `dateSec: 1767196800` (2026-01-01) for Canvas Auto HTML5 detection. Synthetic dates never become density ordering signals. API `chConvert` is fixed to 0 and `withRelated` to true; the dead preference keys were removed. Search and bangumi requests each have generations to reject stale responses.
 
 ### API Credentials
 
@@ -189,10 +177,10 @@ Hardcoded in `main.js (`DDP_APP_ID` / `DDP_APP_SECRET`)` as fallback defaults. N
 
 ### Message Communication (Core Pattern)
 
-- Register overlay message handlers after `iina.plugin-overlay-loaded`: IINA ignores registrations before the view exists and `overlay.loadFile()` clears listeners. Main then sends `request-overlay-state`, and overlay answers `overlay-ready` with its plugin root.
+- Register overlay message handlers after `iina.plugin-overlay-loaded`: IINA ignores registrations before the view exists and `overlay.loadFile()` clears listeners. Main then sends `request-overlay-state`, and overlay answers `overlay-ready`. Only this handshake unlocks the latest pending source; there is no timeout that pretends readiness. Enabling and loading transmit an atomic `{enabled,time,paused,speed}` snapshot.
 - Register WebView callbacks through `sidebarOnMessage()` / `overlayOnMessage()` in main. These helpers keep the current function for each message name in a global JS table so IINA's `JSManagedValue` cannot lose an otherwise unreferenced callback during garbage collection. Re-registration replaces the saved function; do not clear the tables on video changes or WebView navigation before new callbacks are installed.
-- Main owns the selected file type; overlay no longer echoes `danmaku-type`. Render success/failure uses `danmaku-load-result` with a `loadId`; replies from an older source/video are ignored.
-- Use `sidebarPostMessage()` / `overlayPostMessage()` from main. Messages containing `${` or a backtick use a URI-encoded JSON `encodedPayload` envelope; `onPluginMessage()` in each WebView unwraps it. This keeps payloads plain objects and prevents IINA's template-literal bridge from evaluating text. The `xmlContent` URI encoding protocol is unchanged.
+- Main owns the selected file type; overlay no longer echoes `danmaku-type`. Render success/failure uses `danmaku-load-result` with a `loadId`; replies from an older source/video/WebView are ignored. Mark isLoaded true and show success OSD only after the current success reply; do not resend the file list on success. Rendering failure clears selection/overlay but retains the file/error row for retry.
+- Use `sidebarPostMessage()` / `overlayPostMessage()` from main. All sends pass through `postSafeMessage()`. Payloads containing actual template syntax, curly quotes or lone surrogates are wrapped in `{__encoded: encodeURIComponent(json)}`; `onPluginMessage()` unwraps it in each WebView. Ordinary JSON quotes, newlines and backslashes do not require an envelope. Lone surrogates are escaped in serialized JSON before URI encoding, preserving code units. Business strings and paths remain lossless. Comment arrays and list chunks use this same envelope; no `xmlContent`, special path codec or Base64 list protocol remains.
 
 
 All communication uses `postMessage` / `onMessage` across three channels:
@@ -204,7 +192,7 @@ All communication uses `postMessage` / `onMessage` across three channels:
 | `overlay → main.js` | One-way | Jump commands, seek state |
 | `sidebar → main.js` | One-way | Toggle, param changes, file operations |
 
-Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-stroke-width`, `set-stroke-opacity`, `set-stroke-color`, `set-stroke-inversion-color`, `set-comment-limit`, `set-scroll-speed` (multiplier 0.25–1.0), `set-danmaku-offset`, `set-danmaku-font`, `set-style-preset` (persisted in main.js only, not forwarded).
+Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-stroke-width`, `set-stroke-opacity`, `set-stroke-color`, `set-stroke-inversion-color`, `set-comment-limit`, `set-scroll-speed` (multiplier 0.25–1.0), `set-danmaku-offset`, `set-danmaku-font`, `set-style-preset` (a named intent expanded atomically by main into `set-danmaku-style`).
 
 **Important**: overlay and sidebar do **NOT** communicate directly — all traffic goes through `main.js`.
 
@@ -214,43 +202,23 @@ Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-
 3. Subsequent state changes use event-driven incremental `sidebar.postMessage` updates
 4. Never assume `main.js` can push messages to sidebar at initialization time
 
-**Backtick sanitization**: U+0060 backtick in any string causes IINA IPC to silently drop `sidebar.postMessage` messages. Always sanitize with `.replace(/[`\u2018\u2019]/g, "'")` before sending.
+**Lossless IPC**: never replace punctuation in business strings. Escape exclusively in `postSafeMessage()` and decode exclusively in `onPluginMessage()`.
 
 **sidebar.postMessage must receive plain objects**, not pre-serialized JSON strings. IINA may silently drop messages wrapped in `JSON.stringify()`.
 
-### Overlay Script Load Order (Immutable)
+### Source and IPC boundaries
 
-```
-niconicomments.min.js → input.js → main.js
-```
-
-Plugin-entry `main.js` uses `ensureBrowserSimplifier()` to read and evaluate the local OpenCC bundle only when conversion is needed; the converted content is applied before sending `load-danmaku`.
-
-Later scripts depend on functions mounted on `window` by earlier scripts (e.g., `window.parseDanmaku` from `input.js`). Do not reorder the `<script>` tags.
-
-### Data Format
-
-XML filtering, density sampling, and list building share `densityScanXml()`. It accepts either attribute quote style, decodes numeric entities once, preserves literal CDATA text, and skips unsupported Bilibili modes. Forced simplification changes decoded comment text only; IDs and commands stay intact.
-
-
-- **Danmaku data object** field conventions (created in `input.js` and `main.js:ddpConvertComments`):
-  - `t` — vpos time (1/100 sec)
-  - `text` — display text
-  - `_isOwner` — whether posted by the video owner
-  - `_commands` — array of mail commands (e.g., `['naka', '#ffffff', 'big']`)
-  - `_userId` — user ID (number or string)
-  - `_dateSec` — Unix timestamp in seconds
-
-- **Overlay data paths** (`prepareCanvasSource` in `overlay/main.js`):
-  - `nico-json` type → `JSON.parse` directly, format detected by `detectNicoFormat` (`v1` when `data[0].comments`, else `legacy`) — pristine JSON text kept in `rawNicoJsonData` (re-parsed on re-apply)
-  - everything else → `buildFormattedCanvasData(parsedList, type)` → pristine copy kept in `rawFormattedData`
-  - Both paths then apply scroll-speed injection (see Scroll Speed section)
-
-- **Communication encoding**: Danmaku XML/JSON content is encoded with `encodeURIComponent()` (via the `encodeContent` function) in `main.js` before sending to overlay, then decoded with `decodeURIComponent()` on the overlay side. Do not change this encoding protocol unless replacing it entirely (both ends must stay in sync).
+- `danmaku-document.js` is loaded by main with package-local `require`. `parseDanmakuSource()` is the only XML/JSON/DDP normalization entry; invalid/empty comments are dropped there. XML format detection skips the prolog and reads only the root tag; body/CDATA text never selects the format. Only `premium="1"` marks Nico XML as premium; Bilibili/DDP still allow their supplied RGB colors. IR includes sourceType, duration, dates, decoded text and native rendering metadata. Source fields are immutable; only `simplifiedText` is a lazy memo.
+- `danmakuCache[path]` contains a document, never encoded text. List selections reuse the cached IR; an explicit file-dialog selection rereads disk, preserving the old source if the refresh fails. A new video clears the session cache. Reselecting an unchanged active/in-flight document uses a lightweight branch: preserve date selection, acknowledgment and success-notice state, resume if disabled, and send data only when the projection changed.
+- `projectDanmaku(doc, settings)` performs date slicing → density → optional simplification → blocking → shared dedupe, and returns formatted comments, list rows and counts. Main caches the current projection for all consumers. Skip overlay reload when the formatted projection is unchanged. Preserve owner control text (`/`, `@`, `＠` prefixes) during simplification. Do not parse or serialize source content in filters or UI code.
+- Disabled rendering: keep settings and pending style changes, but do not send filtered-source reloads or construct/draw hidden renderers. On enable compare the latest projection and apply it once; do not lose a pre-handshake source selection.
+- Overlay script order is `niconicomments.min.js → main.js`. Overlay consumes only `load-danmaku.comments` (formatted arrays); `input.js` has been removed.
+- OpenCC's package module is loaded while the main entry is executing. IINA's require resolver uses the current script stack, so do not call it from later native callbacks. Converter creation remains lazy. No WebView-supplied paths, persisted plugin roots or eval.
+- `pluginState` owns settings and session metadata; `commitState()` applies patches, writes preferences with `syncPreferencesSoon()`, and sends incremental settings notifications. Runtime resource handles and document/projection caches live separately. Sidebar sends one `request-state` after initializing its handlers and renders the snapshot; it has no independent preference defaults or old blocklist/dedupe/position state events. Batch related state changes and do not manually repeat commitState notifications. Keep focused/composing/pending font drafts and empty Custom mode intact on state echoes. Defer blocklist DOM replacement while its inline editor is active, preserving external word updates for the next render.
 
 ### CSS Mode (niconicomments) Render Flow
 
-1. `time-update` fires → `canvasSyncAnchor()` → `startCanvasLoop()` (rAF)
+1. `time-update` fires → `syncVideoAnchor()` → `startCanvasLoop()` (rAF)
 2. `canvasRenderLoop` calls `niconiComments.drawCanvas(vpos)` where `vpos = canvasGetCurrentTime() * 100` (includes time offset)
 3. `drawCanvas` with `cssRenderer` calls `cssRenderer.updateComments(timeline, vpos, frameActiveState)`
 4. `updateComments` diffs visible comments vs `activeElements`, creates/recycles DOM elements
@@ -259,7 +227,7 @@ XML filtering, density sampling, and list building share `densityScanXml()`. It 
 
 ### Canvas Mode
 
-Based on the `niconicomments` third-party library. XML and DDP use `buildFormattedCanvasData()`; Niconico JSON is passed through the engine's V1/legacy parser. Not recommended to modify Canvas mode internals.
+Based on the `niconicomments` third-party library. All sources arrive as the same canonical formatted projection. Not recommended to modify Canvas mode internals.
 
 ### Video Aspect Ratio
 
@@ -287,7 +255,7 @@ Based on the `niconicomments` third-party library. XML and DDP use `buildFormatt
 - **Communication**: `iina.postMessage(key, value)` / `iina.onMessage(key, callback)` is the standard pattern. Keep naming consistent.
 - **Danmaku toggle**: Use the shared `toggleDanmaku()` or `ensureDanmakuEnabled()` functions. Do not manually repeat `preferences.set` + `overlay.postMessage` logic.
 - **Network requests**: Use `iina.http` module. DDP API uses `X-AppId`/`X-AppSecret` header auth.
-- **Backtick sanitization**: Always sanitize strings with U+0060 backtick before `sidebar.postMessage`.
+- **IPC**: never sanitize business text or encode paths; use the shared lossless envelope.
 - **Preferences sync**: Use `syncPreferencesSoon()` (debounced) instead of calling `preferences.sync()` directly.
 - **i18n**: Two dictionaries, both with three languages (`en` plain, `ja`/`zh` as `\uXXXX` escapes). Sidebar UI strings live in `sidebar/index.js` `i18n` dict (language from `navigator.language`, applied via `data-i18n` / `data-i18n-placeholder` attributes and `t(key)`). OSD, menu items, and file-dialog titles live in `main.js` `PLUGIN_I18N` dict (language from `iina.utils.preferredLocalizations()`, accessed via `t(key, vars)` — supports `{name}` interpolation). New strings must be added to all three languages of the relevant dict. Never hardcode UI strings in either language. Japanese terminology follows niconico official usage: use コメント (not 弾幕) except when matching literal folder names.
 - **Style presets**: New presets = one entry in `STYLE_PRESETS` + a segmented button (`data-preset`) in `sidebar/index.html`. Parameters must fit existing slider ranges (fontScale 25–100%, weight 100–900 step 50, strokeWidth 1–8, scrollSpeed 0.25–1.0).
@@ -307,16 +275,14 @@ Based on the `niconicomments` third-party library. XML and DDP use `buildFormatt
 - Canvas mode receives the same filtered source content as CSS mode, but does not support CSS-specific animation/layout behavior.
 - CSS mode (niconicomments) Comment Art vertical positioning may differ slightly from Canvas mode
 - DDP cache only stores the last loaded episode per video (hash overwrite)
-- Backtick U+0060 in any sidebar message field causes IINA IPC to silently drop the entire message
-- Scroll speed: danmaku carrying their own `@N` duration command are excluded from injection (rare, respected by design)
 - Style preset dropdown is not rewritten when sliders are manually tweaked (deliberate simplification; preset value persists independently)
 
 ## Avoid
 
 - Do not introduce any build tools or npm packaging
-- Do not modify files under `overlay/lib/` (third-party libraries)
+- Do not hand-edit files under `overlay/lib/`. Engine changes belong in the niconicomments fork; sync only its tested build artifact.
 - Do not create a direct communication channel between overlay and sidebar
-- Do not change the `<script>` loading order in the overlay HTML
+- Keep the engine script before overlay main; do not add source parsing back to the WebView
 - Do not use `console.log` for high-frequency output in production code (especially in `time-update` callbacks)
 - Do not send `JSON.stringify` payloads to `sidebar.postMessage` — always send plain objects
 - Do not pass a partial `fonts` config (missing `flash`) to the engine — validation throws and danmaku vanish
