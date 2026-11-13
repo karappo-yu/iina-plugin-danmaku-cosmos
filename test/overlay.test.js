@@ -5,16 +5,18 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 const Engine = require('../overlay/lib/niconicomments.min.js');
+const {parseDanmakuSource, projectDanmaku} = require('../danmaku-document.js');
+const formatted = data => projectDanmaku(parseDanmakuSource(data, '', 'dandanplay')).formatted;
 const source = fs.readFileSync(path.join(__dirname, '../overlay/main.js'), 'utf8');
 
 function harness() {
   const handlers = new Map(), timers = new Map(), instances = [], messages = [];
-  let id = 0;
+  let id = 0, now = 1000;
   const canvas = {style: {}}, viewport = {style: {}};
   class Renderer {
     constructor(canvas, data, options) { this.data = data; this.options = options; this.draws = []; instances.push(this); }
-    addEventListener() {} removeEventListener() {} clear() {} destroy() {}
-    pauseCSS() {} resumeCSS() {} setPlaybackSpeed() {}
+    addEventListener() {} removeEventListener() {} clear() {this.clears = (this.clears || 0) + 1;} destroy() {}
+    pauseCSS() {} resumeCSS() {} setPlaybackSpeed() {} setScrollSpeed(speed) {this.scrollSpeed = speed;}
     drawCanvas(vpos) { this.draws.push(vpos); }
     resize(width, height) { this.size = {width, height}; return true; }
   }
@@ -22,18 +24,18 @@ function harness() {
     iina: {onMessage(name, callback) { handlers.set(name, callback); }, postMessage(name, data) {messages.push({name, data});}},
     document: {getElementById(id) { return id === 'danmaku-viewport' ? viewport : canvas; }, querySelector() { return null; }},
     window: {location: {href: 'file:///plugin/overlay/index.html'}, innerWidth: 1280, innerHeight: 720}, URL, console,
-    performance: {now() {return 1000;}}, NiconiComments: Renderer,
+    performance: {now() {return now;}}, NiconiComments: Renderer,
     setTimeout(callback) {timers.set(++id, callback); return id;}, clearTimeout(id) {timers.delete(id);},
     requestAnimationFrame() {return ++id;}, cancelAnimationFrame() {},
   });
   vm.runInContext(source, context);
-  return {context, instances, messages, canvas, viewport, send(name, data) {handlers.get(name)(data);},
+  return {advance(ms) {now += ms;}, context, instances, messages, canvas, viewport, send(name, data) {handlers.get(name)(data);},
     read(expr) {return vm.runInContext(expr, context);},
     flush() {for (const [id, callback] of Array.from(timers)) {timers.delete(id); callback();}}};
 }
 
 const comment = (text, commands, owner = false, user = 'u') => ({t: 100, text, _commands: commands, _isOwner: owner, _dateSec: 1767196800, _userId: user});
-const load = (h, data) => h.send('load-danmaku', {danmakuType: 'dandanplay', xmlContent: encodeURIComponent(JSON.stringify(data)), canvasMode: 'css'});
+const load = (h, data) => h.send('load-danmaku', {danmakuType: 'dandanplay', comments: formatted(data), canvasMode: 'css'});
 
 test('repeated emoji tiles preserve whole graphemes and leave mixed text and text presentation alone', () => {
   const h = harness();
@@ -51,7 +53,7 @@ test('repeated emoji tiles preserve whole graphemes and leave mixed text and tex
 test('formatted IDs handle prototype names and do not collide with numeric user IDs', () => {
   const h = harness();
   const input = ['1', 'other', '__proto__', 'constructor', '_nextId', '1'].map(user => comment(user, [], false, user));
-  const data = h.context.buildFormattedCanvasData(input, 'nico-xml');
+  const data = formatted(input);
   assert.equal(new Set(data.slice(0, 5).map(c => c.user_id)).size, 5);
   assert.equal(data[0].user_id, data[5].user_id);
   assert.equal(Engine.internal.inputParser.default(data, 'formatted').length, 6);
@@ -71,7 +73,7 @@ test('bundled CSS engine follows Canvas Auto dates and overrides after overlay r
   h.send('set-scroll-speed', {speed: 0.5});
   h.send('set-fontscale', {scale: 0.35});
   h.flush();
-  const data = h.read('nicoRawData');
+  const data = h.read('formattedComments');
   assert.deepEqual(Array.from(data, c => c.date), input.map(c => c._dateSec));
   for (const mode of ['css', 'default']) {
     assert.deepEqual(Array.from(data, c => Engine.FlashComment.condition(c,
@@ -83,25 +85,17 @@ test('bundled CSS engine follows Canvas Auto dates and overrides after overlay r
   assert.equal(h.instances.at(-1).options.mode, 'default');
 });
 
-test('scroll speed follows first position, command limit, owner and explicit duration semantics', () => {
+test('scroll speed changes preserve commands and renderer instances', () => {
   const h = harness();
-  load(h, [comment('scroll', ['naka','ue']), comment('fixed', ['UE','naka']), comment('custom', ['@4']), comment('owner', [], true), comment('late command', [...Array(64).fill('184'), 'ue'])]);
+  load(h, [comment('scroll', ['naka']), comment('fixed', ['ue']), comment('custom', ['@4']), comment('owner', [], true)]);
+  const before = JSON.stringify(h.read('formattedComments'));
   h.send('set-scroll-speed', {speed: 0.5});
   h.flush();
-  const data = h.read('nicoRawData');
-  assert.deepEqual(Array.from(data, c => c.mail.includes('@7')), [true, false, false, false, true]);
+  assert.equal(h.instances.length, 1);
+  assert.equal(h.instances[0].scrollSpeed, 0.5);
+  assert.equal(JSON.stringify(h.read('formattedComments')), before);
   h.send('set-scroll-speed', {speed: 1});
-  assert.equal(h.read('nicoRawData').some(c => c.mail.includes('@7')), false, 'restoring speed keeps pristine source');
-});
-
-test('official legacy records with missing mail receive speed control and preserve owner records', () => {
-  const h = harness();
-  const data = [{thread:{}}, {chat:{vpos:100,content:'viewer',user_id:'u'}}, {chat:{vpos:100,content:'owner'}}];
-  h.send('load-danmaku', {danmakuType:'nico-json',xmlContent:encodeURIComponent(JSON.stringify(data)),scrollSpeed:0.5});
-  const working = h.read('nicoRawData');
-  assert.equal(working[1].chat.mail, '@7');
-  assert.equal(working[2].chat.mail, undefined);
-  assert.equal(Engine.internal.inputParser.default(working, 'legacy').length, 2);
+  assert.equal(h.instances.length, 1);
 });
 
 test('small seeks while paused repaint at the offset-adjusted position without accumulating offsets', () => {
@@ -114,7 +108,7 @@ test('small seeks while paused repaint at the offset-adjusted position without a
   h.send('time-update',{time:10.25});
   assert.equal(h.instances.at(-1).draws.at(-1), 825);
   h.send('time-update',{time:NaN});
-  assert.equal(h.context.canvasGetCurrentTime(), 8.25);
+  assert.equal(h.context.getVideoTimeSec(), 10.25);
 });
 
 test('rapid style updates rebuild once and clear cancels a pending rebuild', () => {
@@ -131,9 +125,9 @@ test('rapid style updates rebuild once and clear cancels a pending rebuild', () 
   assert.equal(h.instances.length,2);
 });
 
-test('invalid JSON reports a correlated load error instead of escaping the message handler', () => {
+test('invalid formatted input reports a correlated load error instead of escaping the message handler', () => {
   const h = harness();
-  assert.doesNotThrow(() => h.send('load-danmaku', {loadId:7,danmakuType:'nico-json',xmlContent:encodeURIComponent('[invalid')}));
+  assert.doesNotThrow(() => h.send('load-danmaku', {loadId:7,danmakuType:'nico-json',comments: 'invalid'}));
   const result = h.messages.findLast(m => m.name === 'danmaku-load-result').data;
   assert.equal(result.loadId,7);
   assert.equal(result.success,false);
@@ -141,7 +135,7 @@ test('invalid JSON reports a correlated load error instead of escaping the messa
 
 test('4:3 video uses full height and keeps its bounds in a wide window', () => {
   const h = harness();
-  h.send('load-danmaku', {loadId: 1, danmakuType: 'dandanplay', xmlContent: encodeURIComponent(JSON.stringify([comment('test', [])])), videoAspectRatio: 4 / 3});
+  h.send('load-danmaku', {loadId: 1, danmakuType: 'dandanplay', comments: formatted([comment('test', [])]), videoAspectRatio: 4 / 3});
   assert.equal(h.canvas.width, 1440);
   assert.equal(h.canvas.height, 1080);
   assert.deepEqual(h.viewport.style, {left: '160px', top: '0px', width: '960px', height: '720px'});
@@ -189,7 +183,7 @@ test('fullscreen expands 4:3 output across pillarboxes without changing video he
 
 test('fullscreen startup and resize use the full width, including ultrawide displays', () => {
   const h = harness();
-  h.send('load-danmaku', {danmakuType: 'dandanplay', xmlContent: encodeURIComponent(JSON.stringify([comment('test', [])])), videoAspectRatio: 4 / 3, fullscreen: true});
+  h.send('load-danmaku', {danmakuType: 'dandanplay', comments: formatted([comment('test', [])]), videoAspectRatio: 4 / 3, fullscreen: true});
   assert.equal(h.canvas.width, 1920);
   h.context.window.innerWidth = 1680;
   h.send('resize', {});
@@ -199,4 +193,34 @@ test('fullscreen startup and resize use the full width, including ultrawide disp
   h.send('set-video-aspect', {aspect: 21 / 9});
   assert.equal(h.viewport.style.width, '1680px');
   assert.equal(h.viewport.style.top, '0px');
+});
+
+test('high playback speed follows expected clock drift without clearing active comments', () => {
+  const h = harness();
+  load(h, [comment('test', [])]);
+  h.send('toggle-danmaku', {enabled: true, time: 10, paused: false, speed: 8});
+  const renderer = h.instances[0], clears = renderer.clears || 0;
+  h.advance(1000);
+  h.send('time-update', {time: 18});
+  assert.equal(renderer.clears || 0, clears);
+  h.send('time-update', {time: 17.8});
+  assert.equal(renderer.clears, clears + 1, 'backward seek below the old 1.5s threshold clears');
+});
+
+test('atomic enabling and repeated pause/speed changes keep offset out of the video anchor', () => {
+  const h = harness();
+  load(h, [comment('test', [])]);
+  h.send('set-danmaku-offset', {offset: -3});
+  h.send('toggle-danmaku', {enabled: false, time: 10, paused: false, speed: 1});
+  h.advance(20000);
+  h.send('toggle-danmaku', {enabled: true, time: 45, paused: true, speed: 4});
+  assert.equal(h.instances[0].draws.at(-1), 4200);
+  for (let i = 0; i < 3; i++) {
+    h.send('pause-state', {paused: true});
+    h.send('playback-speed', {speed: 2});
+  }
+  assert.equal(h.context.getVideoTimeSec(), 45);
+  assert.equal(h.read('canvasVideoAnchorTime'), 45);
+  h.send('time-update', {time: 44.75});
+  assert.equal(h.instances[0].draws.at(-1), 4175);
 });

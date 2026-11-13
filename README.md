@@ -102,7 +102,7 @@ CA 弹幕：
 - **时间轴列表**：虚拟滚动，数万条弹幕流畅浏览；跟随播放位置实时滚动；列表数量只统计未被屏蔽的条目
 - **屏蔽词**：标签式屏蔽词列表，支持正则；被屏蔽的弹幕在列表中以删除线标记，且不参与渲染
 - **顶部／底部屏蔽**：独立屏蔽顶部或底部固定弹幕，默认关闭，设置会保存；被屏蔽的条目仍显示删除线，且不计入列表数量
-- **去重**：将设定时间窗内的相同弹幕合并为「原文xN」并自动配色；固定弹幕支持渐进合并（x2/x3）
+- **去重**：将设定时间窗内同位置、同文本的弹幕静态合并为「原文xN」，后缀使用独立颜色；画面与列表共用合并结果（含固定弹幕）
 - **点击跳转**：点击时间戳跳转视频到对应位置；弹幕文本内的时间（如「空降 01:39」）也可点击跳转
 
 Nico JSON（V1／旧版）还可以在「基础」tab 按**投稿日期**切片：滑条按每天的弹幕数量分配宽度，弹幕多的日期占更长一段；两端滑块按日本时间的自然日选择，包含起止当天，最小可选一天。只支持拖动两端滑块调整范围，选中滑块后用方向键可切换到前一个或后一个有弹幕的日期；没有弹幕的日期会自动跳过。日期和条数会随拖动更新，进度条上的条数是密度过滤前的普通评论数量。密度计数显示「密度过滤后数量／日期切片后数量」。日期切片保留 owner／easy 评论及缺少有效日期的评论，切换弹幕来源或视频后恢复完整日期范围。
@@ -194,7 +194,7 @@ Nico JSON（V1／旧版）还可以在「基础」tab 按**投稿日期**切片�
 - **タイムライン一覧**：仮想スクロールにより数万件のコメントもスムーズに表示。再生位置に追従してスクロール。一覧の件数はブロックされていない項目のみを集計
 - **NGワード**：タグ形式のNGワード一覧、正規表現対応。NG判定されたコメントは一覧上で取り消し線表示となり、描画からも除外
 - **上部／下部のブロック**：上部・下部の固定コメントを個別にブロック。既定はオフで、設定は保存されます。ブロックした項目は取り消し線付きで一覧に残り、件数には含まれません
-- **重複排除**：設定した時間窓内の同一コメントを「原文xN」に統合して自動着色。固定コメントは段階的マージ（x2/x3）に対応
+- **重複排除**：設定した時間窓内の同じ位置・本文のコメントを「原文xN」にまとめ、接尾辞を色分け。固定コメントも含め、画面とリストで同じ静的なグループを使用
 - **クリックでジャンプ**：タイムスタンプをクリックすると動画の該当位置へジャンプ。コメント本文内の時刻（例：「空降 01:39」）もクリックでジャンプ可能
 
 #### コメント密度調整の設計意図
@@ -310,7 +310,7 @@ A new **Filter** tab in the sidebar provides a danmaku timeline browser with fil
 - **Timeline list**: Virtual scrolling keeps tens of thousands of danmaku smooth; live-follows playback position. The list count includes only unblocked entries
 - **Block words**: Tag-list blocklist with regex support; blocked danmaku are shown with strikethrough in the list and excluded from rendering
 - **Top/bottom blocking**: Independently block fixed comments at the top or bottom. Both options default to off and their settings are saved. Blocked entries remain in the list with strikethrough and are excluded from the count
-- **Dedupe**: Merges identical danmaku within a configurable time window into `text xN` with auto-coloring; fixed comments support progressive merging (x2/x3)
+- **Dedupe**: Merges identical text at the same position within a configurable window into `text xN`, with a colored suffix. Fixed and scrolling comments use the same static groups in the list and on screen
 - **Click-to-seek**: Click a timestamp to seek the video to that position; times inside danmaku text (e.g. `空降 01:39`) are also clickable
 
 For Nico JSON (V1 and legacy), the **Basic** tab also offers a **posting-date range**. Each day's track width is proportional to its comment count, so busier days occupy more space. Both handles snap to calendar days in Japan time, including the entire start and end dates; the minimum range is one day. Drag either handle to adjust the range, or focus it and use the arrow keys to move to the previous or next date with comments. Empty dates are skipped automatically. Dates and the ordinary-comment count on the range update while dragging, before density filtering. The density badge shows the count after density filtering divided by the count after date slicing. Owner/easy comments and comments without valid dates are retained. Changing the comment source or video restores the full date range.

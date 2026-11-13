@@ -1,3 +1,11 @@
+var pluginState = {};
+let danmakuDocument = require('./danmaku-document.js');
+// IINA resolves require against the executing script stack. Load the package
+// module here; callbacks only construct/use its converter, never call require.
+let openccLibrary = require('./overlay/lib/opencc.min.js') || globalThis.OpenCC;
+let parseDanmakuSource = danmakuDocument.parseDanmakuSource;
+let projectDanmaku = danmakuDocument.projectDanmaku;
+
 var overlay = iina.overlay;
 var sidebar = iina.sidebar;
 var event = iina.event;
@@ -13,40 +21,40 @@ var mpv = iina.mpv;
 let sidebarMessageHandlers = Object.create(null);
 let overlayMessageHandlers = Object.create(null);
 
-var danmakuEnabled = preferences.get("danmakuEnabled");
-var danmakuForceSimplified = !!preferences.get("danmakuForceSimplified"); // 默认 false,与 Info.json preferenceDefaults 一致
+pluginState.danmakuEnabled = preferences.get("danmakuEnabled");
+pluginState.danmakuForceSimplified = !!preferences.get("danmakuForceSimplified"); // 默认 false,与 Info.json preferenceDefaults 一致
 // 弹幕时长自动偏移检测(nico-json): 加载时对比弹幕源时长与视频时长
 // 默认关闭: 时长差无法区分片头/片尾差异, 只提醒, 由用户在高级设置中手动开启自动设置
-var danmakuAutoOffset = preferences.get("danmakuAutoOffset") !== undefined ? preferences.get("danmakuAutoOffset") : false;
-var danmakuBlocklist = [];
-try { danmakuBlocklist = JSON.parse(preferences.get("danmakuBlocklist") || '[]') || []; } catch (e) { danmakuBlocklist = []; }
-if (!Array.isArray(danmakuBlocklist)) danmakuBlocklist = [];
+pluginState.danmakuAutoOffset = preferences.get("danmakuAutoOffset") !== undefined ? preferences.get("danmakuAutoOffset") : false;
+pluginState.danmakuBlocklist = [];
+try { pluginState.danmakuBlocklist = JSON.parse(preferences.get("danmakuBlocklist") || '[]') || []; } catch (e) { pluginState.danmakuBlocklist = []; }
+if (!Array.isArray(pluginState.danmakuBlocklist)) pluginState.danmakuBlocklist = [];
 // Preserve literal text; transport escaping belongs exclusively to postSafeMessage.
-danmakuBlocklist = danmakuBlocklist
+pluginState.danmakuBlocklist = pluginState.danmakuBlocklist
   .map(function (w) { return String(w).trim(); })
   .filter(function (w, i, arr) { return w && arr.indexOf(w) === i; });
-var danmakuBlocklistEnabled = !!preferences.get("danmakuBlocklistEnabled");
-let danmakuBlockTopEnabled = !!preferences.get("danmakuBlockTopEnabled");
-let danmakuBlockBottomEnabled = !!preferences.get("danmakuBlockBottomEnabled");
+pluginState.danmakuBlocklistEnabled = !!preferences.get("danmakuBlocklistEnabled");
+pluginState.danmakuBlockTopEnabled = !!preferences.get("danmakuBlockTopEnabled");
+pluginState.danmakuBlockBottomEnabled = !!preferences.get("danmakuBlockBottomEnabled");
 var blockRegexes = []; // 编译缓存(列表变化时重建)
 rebuildBlockRegexes();
 // 弹幕去重: 开关 + 区间(秒,1-5)。窗口内重复文本合并为 "原文xN",时间取组内最早。
-var danmakuDedupeEnabled = !!preferences.get("danmakuDedupeEnabled");
-var danmakuDedupeWindow = parseFloat(preferences.get("danmakuDedupeWindow"));
-if (!isFinite(danmakuDedupeWindow) || danmakuDedupeWindow < 1 || danmakuDedupeWindow > 5) danmakuDedupeWindow = 2;
-var canvasOpacity = preferences.get("danmakuCanvasOpacity") || 0.8;
-var canvasFontScale = preferences.get("niconicommentsFontScale") || 1.0;
-var currentCanvasMode = preferences.get("canvasMode") || 'css';
-var strokeOpacity = preferences.get("strokeOpacity") !== undefined ? preferences.get("strokeOpacity") : 0.4;
-var strokeWidth = preferences.get("strokeWidth") !== undefined ? preferences.get("strokeWidth") : 2.8;
-var strokeColor = preferences.get("strokeColor") || '#000000';
-var strokeInversionColor = preferences.get("strokeInversionColor") || '#ffffff';
-var commentLimit = preferences.get("commentLimit") !== undefined ? preferences.get("commentLimit") : 0;
-var scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get("scrollSpeed") : 1.0;
-var danmakuTimeOffsetSec = 0; // 弹幕偏移不做持久化: 偏移量因视频/弹幕文件而异,每个会话从 0 开始
-var danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
-var danmakuFontWeight = preferences.get("danmakuFontWeight") || "400";
-var stylePreset = preferences.get("stylePreset") || "nico";
+pluginState.danmakuDedupeEnabled = !!preferences.get("danmakuDedupeEnabled");
+pluginState.danmakuDedupeWindow = parseFloat(preferences.get("danmakuDedupeWindow"));
+if (!isFinite(pluginState.danmakuDedupeWindow) || pluginState.danmakuDedupeWindow < 1 || pluginState.danmakuDedupeWindow > 5) pluginState.danmakuDedupeWindow = 2;
+pluginState.canvasOpacity = preferences.get("danmakuCanvasOpacity") !== undefined ? preferences.get("danmakuCanvasOpacity") : 0.8;
+pluginState.canvasFontScale = preferences.get("niconicommentsFontScale") || 1.0;
+pluginState.currentCanvasMode = preferences.get("canvasMode") || 'css';
+pluginState.strokeOpacity = preferences.get("strokeOpacity") !== undefined ? preferences.get("strokeOpacity") : 0.4;
+pluginState.strokeWidth = preferences.get("strokeWidth") !== undefined ? preferences.get("strokeWidth") : 2.8;
+pluginState.strokeColor = preferences.get("strokeColor") || '#000000';
+pluginState.strokeInversionColor = preferences.get("strokeInversionColor") || '#ffffff';
+pluginState.commentLimit = preferences.get("commentLimit") !== undefined ? preferences.get("commentLimit") : 0;
+pluginState.scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get("scrollSpeed") : 1.0;
+pluginState.danmakuTimeOffsetSec = 0; // 弹幕偏移不做持久化: 偏移量因视频/弹幕文件而异,每个会话从 0 开始
+pluginState.danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
+pluginState.danmakuFontWeight = preferences.get("danmakuFontWeight") || "400";
+pluginState.stylePreset = preferences.get("stylePreset") || "nico";
 var overlayReady = false;
 let overlayLoadId = 0;
 var preferencesSyncTimer = null;
@@ -56,9 +64,9 @@ var DDP_APP_SECRET = preferences.get("dandanplayAppSecret") || 'IDnPEdEKDIziKeYV
 var DDP_API_BASE = 'https://api.dandanplay.net';
 var DDP_LOAD_ORIGIN = { AUTO: 'auto', MANUAL: 'manual' };
 
-var dandanplayAutoNetwork = preferences.get("dandanplayAutoNetwork") !== false;
+pluginState.dandanplayAutoNetwork = preferences.get("dandanplayAutoNetwork") !== false;
 
-var dandanplayState = {
+pluginState.dandanplayState = {
   status: 'idle',
   animeTitle: '',
   episodeTitle: '',
@@ -206,59 +214,118 @@ var loadedDanmakuVideoUrl = null;
 var danmakuLoadGeneration = 0;
 let ddpRequestGeneration = 0;
 let ddpSearchGeneration = 0;
+let ddpBangumiGeneration = 0;
 var timePosListenerID = null;
 var windowScaleListenerID = null;
 var speedListenerID = null;
 
-var currentDanmakuStatus = {
+pluginState.currentDanmakuStatus = {
   fileType: null,
   isLoaded: false
 };
 
-var danmakuFileList = {
+pluginState.danmakuFileList = {
   xmlFiles: [],
   jsonFiles: [],
   selectedPaths: []
 };
 
-var danmakuCache = {};
+var danmakuCache = Object.create(null);
 
-let nicoJsonDateInfo = emptyNicoJsonDateInfo();
+pluginState.nicoJsonDateInfo = emptyNicoJsonDateInfo();
 // 时长检测: nico-json main 线程的 duration(下载弹幕时原视频长度,秒)与当前视频时长的差值
 // null = 无检测结果(非 nico-json / 无 duration 字段 / 时长一致)
-var nicoJsonDurationDiff = null;
-let nicoJsonHasDuration = false;
-let danmakuFilterStartDay = null;
-let danmakuFilterEndDay = null;
-var danmakuFilterDensity = preferences.get("danmakuFilterDensity") !== undefined ? preferences.get("danmakuFilterDensity") : 0;
+pluginState.nicoJsonDurationDiff = null;
+pluginState.nicoJsonHasDuration = false;
+pluginState.danmakuFilterStartDay = null;
+pluginState.danmakuFilterEndDay = null;
+pluginState.danmakuFilterDensity = preferences.get("danmakuFilterDensity") !== undefined ? preferences.get("danmakuFilterDensity") : 0;
 var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听(控制播放时间推送)
 var lastBrowserTimeSent = 0;
-var danmakuBrowserVisible = preferences.get("danmakuBrowserVisible") !== undefined ? !!preferences.get("danmakuBrowserVisible") : true;
-var pluginRootPath = '';         // 插件根目录(读 overlay/lib/opencc.min.js;与其他设置一样持久化)
-// 启动时从 preferences 重读: 重启后不依赖任何 webview 上报即可用
-var storedRoot = preferences.get("pluginRootPath");
-if (typeof storedRoot === 'string' && storedRoot.length > 0) {
-  pluginRootPath = sanitizePluginRoot(storedRoot);
-}
-
-// 校验 sidebar/overlay 上报的插件根目录: 只接受绝对路径且拒绝 .. 穿越
-// (消息源理论上可被篡改;裸路径会被 file.read + eval 执行任意文件)
-function sanitizePluginRoot(p) {
-  if (typeof p !== 'string' || p.length === 0) return '';
-  if (p.charAt(0) !== '/') return '';   // 必须绝对路径
-  if (p.split('/').indexOf('..') !== -1) return ''; // 拒绝路径穿越
-  return p;
-}
-
-// 路径上报后持久化(与其他设置一致): 重启后 main 直接读 preferences
-function persistPluginRoot(p) {
-  pluginRootPath = sanitizePluginRoot(p);
-  if (pluginRootPath) {
-    preferences.set("pluginRootPath", pluginRootPath);
-    syncPreferencesSoon();
-  }
-}
+pluginState.danmakuBrowserVisible = preferences.get("danmakuBrowserVisible") !== undefined ? !!preferences.get("danmakuBrowserVisible") : true;
 var openccSimplifier = null;     // 简繁转换器(hk→cn,懒加载;仅强制简体开启时构建)
+
+// Preference names are an I/O mapping, not a second copy of state.
+const statePreferenceKeys = {
+  danmakuEnabled: 'danmakuEnabled', canvasOpacity: 'danmakuCanvasOpacity',
+  canvasFontScale: 'niconicommentsFontScale', currentCanvasMode: 'canvasMode',
+};
+const persistentStateKeys = [
+  'danmakuForceSimplified', 'danmakuAutoOffset', 'danmakuBlocklist', 'danmakuBlocklistEnabled',
+  'danmakuBlockTopEnabled', 'danmakuBlockBottomEnabled', 'danmakuDedupeEnabled', 'danmakuDedupeWindow',
+  'strokeOpacity', 'strokeWidth', 'strokeColor', 'strokeInversionColor', 'commentLimit', 'scrollSpeed',
+  'danmakuFontFamily', 'danmakuFontWeight', 'stylePreset', 'dandanplayAutoNetwork',
+  'danmakuFilterDensity', 'danmakuBrowserVisible'
+];
+persistentStateKeys.forEach(function (key) { statePreferenceKeys[key] = key; });
+
+function stateSnapshot() {
+  return Object.assign({}, pluginState, {
+    enabled: pluginState.danmakuEnabled, canvasMode: pluginState.currentCanvasMode,
+    danmakuFileType: pluginState.currentDanmakuStatus.fileType,
+    danmakuLoaded: pluginState.currentDanmakuStatus.isLoaded,
+    blocklist: {enabled: pluginState.danmakuBlocklistEnabled, words: pluginState.danmakuBlocklist.slice()},
+    dedupe: {enabled: pluginState.danmakuDedupeEnabled, window: pluginState.danmakuDedupeWindow},
+  });
+}
+
+const overlayStateBindings = {
+  canvasOpacity: ['set-opacity', 'opacity'], canvasFontScale: ['set-fontscale', 'scale'],
+  currentCanvasMode: ['set-canvas-mode', 'mode'], strokeOpacity: ['set-stroke-opacity', 'opacity'],
+  strokeWidth: ['set-stroke-width', 'width'], strokeColor: ['set-stroke-color', 'color'],
+  strokeInversionColor: ['set-stroke-inversion-color', 'color'], commentLimit: ['set-comment-limit', 'limit'],
+  scrollSpeed: ['set-scroll-speed', 'speed'], danmakuTimeOffsetSec: ['set-danmaku-offset', 'offset'],
+};
+
+function commitState(patch, notify) {
+  let persist = false;
+  let changed = {};
+  Object.keys(patch).forEach(function (key) {
+    if (pluginState[key] === patch[key]) return;
+    pluginState[key] = patch[key];
+    changed[key] = patch[key];
+    if (statePreferenceKeys[key]) {
+      preferences.set(statePreferenceKeys[key], key === 'danmakuBlocklist' ? JSON.stringify(patch[key]) : patch[key]);
+      persist = true;
+    }
+  });
+  if (persist) syncPreferencesSoon();
+  if (overlayReady) {
+    Object.keys(changed).forEach(function (key) {
+      let binding = overlayStateBindings[key];
+      if (!binding) return;
+      let payload = {};
+      payload[binding[1]] = pluginState[key];
+      overlayPostMessage(binding[0], payload);
+    });
+    if ('danmakuFontFamily' in changed || 'danmakuFontWeight' in changed) overlayPostMessage('set-danmaku-font', {
+      fontFamily: pluginState.danmakuFontFamily, fontWeight: pluginState.danmakuFontWeight
+    });
+  }
+  if (notify === false || Object.keys(changed).length === 0) return;
+  // Incremental settings updates stay small. The complete snapshot is pulled
+  // once when the lazy sidebar opens; source metadata has its own notifications.
+  if ('danmakuEnabled' in changed) changed.enabled = pluginState.danmakuEnabled;
+  if ('currentCanvasMode' in changed) changed.canvasMode = pluginState.currentCanvasMode;
+  if ('currentDanmakuStatus' in changed) {
+    changed.danmakuFileType = pluginState.currentDanmakuStatus.fileType;
+    changed.danmakuLoaded = pluginState.currentDanmakuStatus.isLoaded;
+  }
+  if ('danmakuBlocklist' in changed || 'danmakuBlocklistEnabled' in changed) changed.blocklist = {
+    enabled: pluginState.danmakuBlocklistEnabled, words: pluginState.danmakuBlocklist.slice()
+  };
+  if ('danmakuDedupeEnabled' in changed || 'danmakuDedupeWindow' in changed) changed.dedupe = {
+    enabled: pluginState.danmakuDedupeEnabled, window: pluginState.danmakuDedupeWindow
+  };
+  delete changed.nicoJsonDateInfo;
+  delete changed.danmakuFileList;
+  delete changed.dandanplayState;
+  if (Object.keys(changed).length) sidebarPostMessage('danmaku-state', changed);
+}
+
+function commitDdpState(patch) {
+  commitState({dandanplayState: Object.assign({}, pluginState.dandanplayState, patch)}, false);
+}
 
 function sidebarOnMessage(name, callback) {
   sidebarMessageHandlers[name] = callback;
@@ -292,28 +359,19 @@ function overlayPostMessage(key, data) {
 function applyDanmakuOffset(offsetSec) {
   var nextOffset = parseFloat(offsetSec);
   if (!isFinite(nextOffset)) return;
-  danmakuTimeOffsetSec = nextOffset;
-  if (overlayReady) {
-    overlayPostMessage("set-danmaku-offset", { offset: danmakuTimeOffsetSec });
-  }
-  sidebarPostMessage("danmaku-state", { danmakuTimeOffsetSec: danmakuTimeOffsetSec });
+  commitState({danmakuTimeOffsetSec: nextOffset});
+  sidebarPostMessage("danmaku-state", { danmakuTimeOffsetSec: pluginState.danmakuTimeOffsetSec });
   if (danmakuBrowserWatch) pushBrowserTime(mpv.getNumber("time-pos"), true);
 }
 
 function applyDanmakuFont(fontFamily, fontWeight) {
-  danmakuFontFamily = fontFamily || "";
-  danmakuFontWeight = fontWeight || "";
-  preferences.set("danmakuFontFamily", danmakuFontFamily);
-  preferences.set("danmakuFontWeight", danmakuFontWeight);
-  syncPreferencesSoon();
-  if (overlayReady) {
-    overlayPostMessage("set-danmaku-font", { fontFamily: danmakuFontFamily, fontWeight: danmakuFontWeight });
-  }
-  sidebarPostMessage("danmaku-state", { danmakuFontFamily: danmakuFontFamily, danmakuFontWeight: danmakuFontWeight });
+  commitState({danmakuFontFamily: fontFamily || "", danmakuFontWeight: fontWeight || ""});
+
+  sidebarPostMessage("danmaku-state", { danmakuFontFamily: pluginState.danmakuFontFamily, danmakuFontWeight: pluginState.danmakuFontWeight });
 }
 
 function findDanmakuFileByPath(path) {
-  var groups = [danmakuFileList.xmlFiles, danmakuFileList.jsonFiles];
+  var groups = [pluginState.danmakuFileList.xmlFiles, pluginState.danmakuFileList.jsonFiles];
   for (var g = 0; g < groups.length; g++) {
     var files = groups[g] || [];
     for (var i = 0; i < files.length; i++) {
@@ -324,8 +382,8 @@ function findDanmakuFileByPath(path) {
 }
 
 function updateDanmakuStatus(status) {
-  currentDanmakuStatus = status;
-  sidebarPostMessage("danmaku-type", currentDanmakuStatus);
+  commitState({currentDanmakuStatus: status});
+  sidebarPostMessage("danmaku-type", pluginState.currentDanmakuStatus);
 }
 
 function danmakuNotFound() {
@@ -340,115 +398,8 @@ function filePathFromUrl(url) {
   return null;
 }
 
-function detectDanmakuType(content) {
-  if (!content) return 'bilibili-xml';
-  var s = content.trim();
-  if (s.charAt(0) === '[') return 'nico-json';
-  if (s.charAt(0) === '{') {
-    try {
-      var obj = JSON.parse(s);
-      if (obj.source === 'dandanplay' && obj.comments) return 'dandanplay';
-    } catch (e) {}
-  }
-  if (s.indexOf('<packet') !== -1) return 'nico-xml';
-  return 'bilibili-xml';
-}
-
 function emptyNicoJsonDateInfo() {
-  return { totalCount: 0, firstDay: null, lastDay: null, dayCounts: [], undatedCount: 0 };
-}
-
-// Calendar-day numbers use Japan time for both V1 postedAt and legacy Unix dates.
-// UTC arithmetic on these numbers keeps day steps independent of the host's DST.
-function getNicoCommentDay(comment, legacy) {
-  if (!comment) return null;
-  let timestamp;
-  if (legacy) {
-    let seconds = Number(comment.date);
-    if (!isFinite(seconds) || seconds <= 0) return null;
-    timestamp = seconds * 1000;
-  } else {
-    if (typeof comment.postedAt !== 'string' || !comment.postedAt) return null;
-    let postedAt = comment.postedAt;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(postedAt)) postedAt += 'T00:00:00+09:00';
-    else if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(postedAt)) postedAt += '+09:00';
-    timestamp = Date.parse(postedAt);
-  }
-  if (!isFinite(timestamp) || !isFinite(new Date(timestamp).getTime())) return null;
-  return Math.floor((timestamp + 9 * 60 * 60 * 1000) / 86400000);
-}
-
-function computeNicoJsonDateInfo(encodedContent) {
-  let info = emptyNicoJsonDateInfo();
-  if (!encodedContent) return info;
-  try {
-    let data = JSON.parse(decodeURIComponent(encodedContent));
-    if (!Array.isArray(data)) return info;
-    let counts = {};
-    function addComment(comment, legacy) {
-      if (!comment || comment.deleted === 1) return;
-      info.totalCount += 1;
-      let day = getNicoCommentDay(comment, legacy);
-      if (day === null) { info.undatedCount += 1; return; }
-      counts[day] = (counts[day] || 0) + 1;
-      if (info.firstDay === null || day < info.firstDay) info.firstDay = day;
-      if (info.lastDay === null || day > info.lastDay) info.lastDay = day;
-    }
-    for (let i = 0; i < data.length; i++) {
-      let entry = data[i];
-      if (!entry) continue;
-      if (Array.isArray(entry.comments) && entry.fork !== 'owner' && entry.fork !== 'easy') {
-        entry.comments.forEach(function (comment) { addComment(comment, false); });
-      } else if (entry.chat && !Array.isArray(entry.chat) && entry.chat.user_id) {
-        addComment(entry.chat, true);
-      }
-    }
-    info.dayCounts = Object.keys(counts).map(function (day) { return [Number(day), counts[day]]; })
-      .sort(function (a, b) { return a[0] - b[0]; });
-  } catch (e) {}
-  return info;
-}
-
-function matchesNicoDateRange(comment, legacy) {
-  if (danmakuFilterStartDay === null || danmakuFilterEndDay === null) return true;
-  let day = getNicoCommentDay(comment, legacy);
-  // Undated comments cannot be assigned a day; retain them instead of guessing.
-  return day === null || (day >= danmakuFilterStartDay && day <= danmakuFilterEndDay);
-}
-
-// 密度角标统计文件内的评论, 包括保留的 owner/easy, 不把 legacy 元数据当成评论。
-function countNicoJsonItems(data) {
-  let count = 0;
-  for (let i = 0; i < data.length; i++) {
-    let entry = data[i];
-    if (!entry) continue;
-    if (Array.isArray(entry.comments)) {
-      for (let j = 0; j < entry.comments.length; j++) {
-        let comment = entry.comments[j];
-        if (comment && comment.deleted !== 1) count += 1;
-      }
-    } else if (entry.chat && !Array.isArray(entry.chat) && entry.chat.deleted !== 1) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-// 读取 nico-json 中 main 线程的 duration 字段(下载弹幕时原视频的长度,单位秒)
-function extractNicoJsonDuration(encodedContent) {
-  if (!encodedContent) return null;
-  try {
-    var raw = decodeURIComponent(encodedContent);
-    var data = JSON.parse(raw);
-    if (!Array.isArray(data)) return null;
-    for (var i = 0; i < data.length; i++) {
-      var th = data[i];
-      if (th && th.fork === 'main' && typeof th.duration === 'number' && isFinite(th.duration) && th.duration > 0) {
-        return th.duration;
-      }
-    }
-  } catch (e) {}
-  return null;
+  return danmakuDocument.emptyDateInfo();
 }
 
 function formatSecondsShort(sec) {
@@ -457,14 +408,14 @@ function formatSecondsShort(sec) {
 }
 
 function setNicoJsonDurationDiff(diff) {
-  if (nicoJsonDurationDiff === diff) return;
-  nicoJsonDurationDiff = diff;
+  if (pluginState.nicoJsonDurationDiff === diff) return;
+  commitState({nicoJsonDurationDiff: diff});
   sidebarPostMessage("danmaku-state", { nicoJsonDurationDiff: diff });
 }
 
 function setNicoJsonDurationAvailability(hasDuration) {
-  if (nicoJsonHasDuration === hasDuration) return;
-  nicoJsonHasDuration = hasDuration;
+  if (pluginState.nicoJsonHasDuration === hasDuration) return;
+  commitState({nicoJsonHasDuration: hasDuration});
   sidebarPostMessage("danmaku-state", { nicoJsonHasDuration: hasDuration });
 }
 
@@ -484,7 +435,7 @@ function runDurationCompare(danmakuDuration) {
   if (Math.abs(diff) < 1) return true;
   setNicoJsonDurationDiff(diff);
   var offset = Math.round(-diff * 10) / 10;
-  if (danmakuAutoOffset) {
+  if (pluginState.danmakuAutoOffset) {
     applyDanmakuOffset(offset);
     core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
   } else {
@@ -493,17 +444,17 @@ function runDurationCompare(danmakuDuration) {
   return true;
 }
 
-function checkNicoJsonDuration(encodedContent) {
+function checkNicoJsonDuration(doc) {
   setNicoJsonDurationDiff(null);
-  var danmakuDuration = extractNicoJsonDuration(encodedContent);
+  var danmakuDuration = doc.durationSec;
   setNicoJsonDurationAvailability(danmakuDuration !== null);
   if (danmakuDuration === null) return;
   if (runDurationCompare(danmakuDuration)) return;
   // file-loaded 瞬间 mpv duration 可能还没就绪,延迟重试一次(仅当仍选中同一弹幕文件)
-  var savedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+  var savedPath = pluginState.danmakuFileList.selectedPaths.length > 0 ? pluginState.danmakuFileList.selectedPaths[0] : null;
   let generation = danmakuLoadGeneration;
   setTimeout(function () {
-    if (generation === danmakuLoadGeneration && savedPath && danmakuFileList.selectedPaths[0] === savedPath) {
+    if (generation === danmakuLoadGeneration && savedPath && pluginState.danmakuFileList.selectedPaths[0] === savedPath) {
       runDurationCompare(danmakuDuration);
     }
   }, 800);
@@ -511,9 +462,9 @@ function checkNicoJsonDuration(encodedContent) {
 
 // 加载弹幕后的 OSD: 若时长检测发现不一致,优先提醒(避免被"已加载"覆盖)
 function osdAfterDanmakuLoad(loadedName, loadedMessageKey) {
-  if (nicoJsonDurationDiff !== null) {
-    if (danmakuAutoOffset) {
-      var offset = Math.round(-nicoJsonDurationDiff * 10) / 10;
+  if (pluginState.nicoJsonDurationDiff !== null) {
+    if (pluginState.danmakuAutoOffset) {
+      var offset = Math.round(-pluginState.nicoJsonDurationDiff * 10) / 10;
       core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
     } else {
       core.osd(t('duration_mismatch_no_offset'));
@@ -524,367 +475,75 @@ function osdAfterDanmakuLoad(loadedName, loadedMessageKey) {
 }
 
 function sendDanmakuFilterInfo() {
-  let sourceTotalCount = 0;
-  var filteredCount = 0;
-
-  var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
-  var ft = currentDanmakuStatus.fileType;
-
-  if (selectedPath && ft === 'nico-json') {
-    var encodedContent = danmakuCache[selectedPath];
-    if (encodedContent) {
-      try {
-        var rawStr = decodeURIComponent(encodedContent);
-        var data = JSON.parse(rawStr);
-        if (Array.isArray(data)) {
-          var filteredData = filterNicoJsonData(data);
-          sourceTotalCount = countNicoJsonItems(filterNicoJsonData(data, 0));
-          filteredCount = countNicoJsonItems(filteredData);
-        }
-      } catch (e) {}
-    }
-  } else if (selectedPath && ft) {
-    var densityCounts = countDensityItems(danmakuCache[selectedPath], ft, danmakuFilterDensity);
-    if (densityCounts) {
-      sourceTotalCount = densityCounts.total;
-      filteredCount = densityCounts.kept;
-    }
-  }
-
+  let projection = getCurrentProjection();
   sidebarPostMessage("danmaku-filter-info", {
-    fileType: ft,
-    totalCount: nicoJsonDateInfo.totalCount,
-    sourceTotalCount: sourceTotalCount,
-    filterStartDay: danmakuFilterStartDay,
-    filterEndDay: danmakuFilterEndDay,
-    filterDensity: danmakuFilterDensity,
-    filteredCount: filteredCount,
-    dateInfo: nicoJsonDateInfo
+    fileType: pluginState.currentDanmakuStatus.fileType,
+    totalCount: pluginState.nicoJsonDateInfo.totalCount,
+    sourceTotalCount: projection ? projection.sourceTotalCount : 0,
+    filterStartDay: pluginState.danmakuFilterStartDay, filterEndDay: pluginState.danmakuFilterEndDay,
+    filterDensity: pluginState.danmakuFilterDensity, filteredCount: projection ? projection.filteredCount : 0,
+    dateInfo: pluginState.nicoJsonDateInfo
   });
 }
 
-// Nico JSON density filter: 60s windows, top N by no desc, nicoru>=3 protected (no quota)
-function densityFilterNicoJsonComments(comments, density) {
-  if (!density || density <= 0 || !Array.isArray(comments) || comments.length === 0) return comments;
-
-  var nicoruKept = [];
-  var candidates = [];
-  for (var i = 0; i < comments.length; i++) {
-    var c = comments[i];
-    if (!c) continue;
-    if (c.nicoruCount >= 3) {
-      nicoruKept.push(c);
-    } else {
-      candidates.push(c);
-    }
-  }
-
-  var windows = {};
-  for (var i = 0; i < candidates.length; i++) {
-    var c = candidates[i];
-    var win = Math.floor((c.vposMs || 0) / 60000);
-    if (!windows[win]) windows[win] = [];
-    windows[win].push(c);
-  }
-
-  var densityKept = [];
-  for (var win in windows) {
-    if (!windows.hasOwnProperty(win)) continue;
-    var arr = windows[win];
-    arr.sort(function(a, b) { return (b.no || 0) - (a.no || 0); });
-    var take = Math.min(density, arr.length);
-    for (var i = 0; i < take; i++) {
-      densityKept.push(arr[i]);
-    }
-  }
-
-  var result = nicoruKept.concat(densityKept);
-  result.sort(function(a, b) { return (a.no || 0) - (b.no || 0); });
-  return result;
-}
-
-// ── 密度过滤: nico-json 以外的格式 ──────────────────────────────────
-// XML 和 dandanplay 共用 selectDensityKeep: nico-xml 按 no, bilibili-xml 按 p[4]
-// 发送时间戳排序(部分导出留 0); dandanplay 则没有排序信号。
-// 窗口内每条都有信号就按信号取前 N, 只要缺一条就整窗退化为等间隔取样——不拿数组顺序
-// 冒充发送顺序: dandanplay 的 _dateSec 是固定常量(供 Canvas Auto HTML5 检测), 按它排序
-// 会静默退化成"保留整集末尾", 比没有信号更糟。
-function selectDensityKeep(records, density) {
-  var keep = new Array(records.length);
-  var windows = {};
-  for (var i = 0; i < records.length; i++) {
-    keep[i] = false;
-    if (records[i].protect) { keep[i] = true; continue; }
-    var win = Math.floor((records[i].t || 0) / 6000);
-    if (!windows[win]) windows[win] = [];
-    windows[win].push(i);
-  }
-
-  for (var w in windows) {
-    if (!windows.hasOwnProperty(w)) continue;
-    var idx = windows[w];
-    if (idx.length <= density) {
-      for (var a = 0; a < idx.length; a++) keep[idx[a]] = true;
-      continue;
-    }
-    var ordered = true;
-    for (var b = 0; b < idx.length; b++) {
-      var o = records[idx[b]].o;
-      if (o === null || o === undefined) { ordered = false; break; }
-    }
-    if (ordered) {
-      idx.sort(function(x, y) { return records[y].o - records[x].o; });
-      for (var c = 0; c < density; c++) keep[idx[c]] = true;
-    } else {
-      // 等间隔取样: 覆盖整个窗口, 不在 burst 处留头删尾
-      var stride = idx.length / density;
-      for (var d = 0; d < density; d++) keep[idx[Math.floor(d * stride)]] = true;
-    }
-  }
-  return keep;
-}
-
-function ddpDensityRecords(list) {
-  var records = new Array(list.length);
-  for (var i = 0; i < list.length; i++) {
-    var d = list[i];
-    records[i] = {
-      t: d && typeof d.t === 'number' ? d.t : 0,
-      o: null, // dandanplay 无发送时间信号 → 等间隔取样
-      protect: !!(d && d._isOwner)
-    };
-  }
-  return records;
-}
-
-// XML 扫描: 一趟正则同时取出原文区间与归一化字段。
-// nico-xml 用 <chat vpos no>; bilibili-xml 用 <d p="秒,模式,颜色,时间戳,...">。
-function getXmlAttribute(attributes, name) {
-  let re = /(?:^|\s)([\w:-]+)\s*=\s*(["'])([\s\S]*?)\2/g;
-  let match;
-  while ((match = re.exec(attributes)) !== null) {
-    if (match[1] === name) return decodeXmlText(match[3]);
-  }
-  return '';
-}
-
-function densityScanXml(rawStr, ft, includeText) {
-  let isNico = ft === 'nico-xml';
-  let re = isNico
-    ? /<!--[\s\S]*?-->|<chat\b((?:"[^"]*"|'[^']*'|[^'">])*)>((?:<!\[CDATA\[[\s\S]*?\]\]>|[\s\S])*?)<\/chat\s*>/g
-    : /<!--[\s\S]*?-->|<d\b((?:"[^"]*"|'[^']*'|[^'">])*)>((?:<!\[CDATA\[[\s\S]*?\]\]>|[\s\S])*?)<\/d\s*>/g;
-  let entries = [];
-  let m;
-  while ((m = re.exec(rawStr)) !== null) {
-    if (m[1] === undefined) continue;
-    if (/\/\s*$/.test(m[1])) { re.lastIndex = m.index + (isNico ? 6 : 3) + m[1].length; continue; }
-    let parts = isNico ? [] : getXmlAttribute(m[1], 'p').split(',');
-    let mode = Number(parts[1]);
-    if (!isNico && (!Number.isInteger(mode) || mode < 1 || mode > 6 || !parts[0].trim())) continue;
-    let time = isNico ? Number(getXmlAttribute(m[1], 'vpos')) : Number(parts[0]) * 100;
-    if (!isFinite(time)) continue;
-    let order = Number(isNico ? getXmlAttribute(m[1], 'no') : parts[4]);
-    let position = includeText && isNico ? getCommentPosition(null, getXmlAttribute(m[1], 'mail'))
-      : mode === 5 ? 'ue' : mode === 4 ? 'shita' : 'naka';
-    entries.push({ index: m.index, length: m[0].length, t: Math.round(time),
-      o: order > 0 ? order : null, protect: false, text: includeText ? decodeXmlContent(m[2]) : '',
-      position: position, bodyStart: m.index + (isNico ? 6 : 3) + m[1].length, bodyLength: m[2].length });
-  }
-  return entries;
-}
-
-function countKept(keep) {
-  var n = 0;
-  for (var i = 0; i < keep.length; i++) {
-    if (keep[i]) n++;
-  }
-  return n;
-}
-
-// 非 nico-json 的密度过滤出口。返回过滤后的内容(URI 编码); 无需改动时返回 null,
-// 调用方据此跳过重建, 避免无谓的重新序列化。
-function applyDensityFilter(encodedContent, ft, density) {
-  if (!density || density <= 0) return null;
-  if (ft === 'nico-json') return null; // 由 applyNicoJsonFilters 处理, 此处不介入
-  if (!ft) return null;
-  var rawStr;
-  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return null; }
-
-  if (ft === 'dandanplay') {
-    var list;
-    try { list = JSON.parse(rawStr); } catch (e) { return null; }
-    if (!Array.isArray(list)) return null;
-    var keep = selectDensityKeep(ddpDensityRecords(list), density);
-    var out = [];
-    for (var i = 0; i < list.length; i++) {
-      if (keep[i]) out.push(list[i]);
-    }
-    if (out.length === list.length) return null;
-    return encodeContent(JSON.stringify(out));
-  }
-
-  var entries = densityScanXml(rawStr, ft);
-  if (entries.length === 0) return null;
-  var xmlKeep = selectDensityKeep(entries, density);
-  var chunks = [];
-  var last = 0;
-  var dropped = false;
-  for (var k = 0; k < entries.length; k++) {
-    chunks.push(rawStr.slice(last, entries[k].index));
-    if (xmlKeep[k]) {
-      chunks.push(rawStr.slice(entries[k].index, entries[k].index + entries[k].length));
-    } else {
-      dropped = true;
-    }
-    last = entries[k].index + entries[k].length;
-  }
-  chunks.push(rawStr.slice(last));
-  if (!dropped) return null; // 未删任何条目: 保持原内容, 不触发重建
-  return encodeContent(chunks.join(''));
-}
-
-// 侧栏角标用: 文件总数与当前密度下的保留数 {total, kept}; 不限制时两者相等。
-function countDensityItems(encodedContent, ft, density) {
-  if (!encodedContent) return null;
-  var rawStr;
-  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return null; }
-
-  if (ft === 'dandanplay') {
-    var list;
-    try { list = JSON.parse(rawStr); } catch (e) { return null; }
-    if (!Array.isArray(list)) return null;
-    return { total: list.length, kept: density > 0 ? countKept(selectDensityKeep(ddpDensityRecords(list), density)) : list.length };
-  }
-  var entries = densityScanXml(rawStr, ft);
-  if (entries.length === 0) return null;
-  return { total: entries.length, kept: density > 0 ? countKept(selectDensityKeep(entries, density)) : entries.length };
-}
-
-function filterNicoJsonData(data, density) {
-  if (!Array.isArray(data)) return data;
-  if (density === undefined) density = danmakuFilterDensity;
-  // Legacy API returns [{chat: {...}}, ...], including non-comment metadata.
-  if (danmakuFilterStartDay !== null && danmakuFilterEndDay !== null) {
-    data = data.filter(function (entry) {
-      let chat = entry && entry.chat;
-      return !chat || Array.isArray(chat) || !chat.user_id || matchesNicoDateRange(chat, true);
-    });
-  }
-  if (density > 0 && data.some(function (entry) { return entry && entry.chat && !Array.isArray(entry.chat); })) {
-    let records = data.map(function (entry) {
-      let chat = entry && entry.chat;
-      return { t: chat && chat.vpos || 0, o: chat && chat.no > 0 ? chat.no : null,
-        protect: !chat || !chat.user_id || chat.nicoru >= 3 };
-    });
-    let keep = selectDensityKeep(records, density);
-    data = data.filter(function (_, index) { return keep[index]; });
-  }
-  var filteredData = [];
-  var hasFilter = false;
-  for (var i = 0; i < data.length; i++) {
-    var thread = data[i];
-    if (!thread || !Array.isArray(thread.comments)) {
-      filteredData.push(thread);
-      continue;
-    }
-    if (thread.fork === 'owner' || thread.fork === 'easy') {
-      filteredData.push(thread);
-    } else {
-      var comments = thread.comments;
-      var sliced = comments;
-      if (danmakuFilterStartDay !== null && danmakuFilterEndDay !== null) {
-        sliced = comments.filter(function (comment) { return matchesNicoDateRange(comment, false); });
-        hasFilter = true;
-      }
-      if (density > 0) {
-        sliced = densityFilterNicoJsonComments(sliced, density);
-        hasFilter = true;
-      }
-      if (sliced !== comments) {
-        var newObj = {};
-        for (var k in thread) {
-          if (thread.hasOwnProperty(k)) newObj[k] = thread[k];
-        }
-        newObj.comments = sliced;
-        newObj.commentCount = sliced.length;
-        filteredData.push(newObj);
-      } else {
-        filteredData.push(thread);
-      }
-    }
-  }
-  return hasFilter ? filteredData : data;
-}
-
-function applyNicoJsonFilters(encodedContent) {
-  if (danmakuFilterDensity <= 0 && danmakuFilterStartDay === null) return encodedContent;
-  var rawStr;
-  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return encodedContent; }
-  var data;
-  try { data = JSON.parse(rawStr); } catch (e) { return encodedContent; }
-  if (!Array.isArray(data)) return encodedContent;
-  var filteredData = filterNicoJsonData(data);
-  if (filteredData === data) return encodedContent;
-  return encodeContent(JSON.stringify(filteredData));
-}
-
 // load-danmaku 载荷统一构造。设置字段全量携带: overlay 端逐字段幂等应用,重复携带无副作用。
-function buildLoadDanmakuPayload(xmlContent, danmakuType) {
+function buildLoadDanmakuPayload(comments, danmakuType) {
   return {
     loadId: ++overlayLoadId,
-    xmlContent: xmlContent,
+    playback: playbackSnapshot(),
+    comments: comments,
     danmakuType: danmakuType,
-    canvasMode: currentCanvasMode,
+    canvasMode: pluginState.currentCanvasMode,
     videoAspectRatio: getVideoAspectRatio(),
     fullscreen: !!(core.window && core.window.fullscreen),
-    opacity: canvasOpacity,
-    canvasFontScale: canvasFontScale,
-    strokeColor: strokeColor,
-    strokeInversionColor: strokeInversionColor,
-    strokeOpacity: strokeOpacity,
-    strokeWidth: strokeWidth,
-    commentLimit: commentLimit,
-    scrollSpeed: scrollSpeed,
-    danmakuTimeOffsetSec: danmakuTimeOffsetSec,
-    danmakuFontFamily: danmakuFontFamily,
-    danmakuFontWeight: danmakuFontWeight,
-    fixedCombo: danmakuDedupeEnabled,
-    nakaDedupeWindow: danmakuDedupeEnabled ? danmakuDedupeWindow * 100 : 0,
+    opacity: pluginState.canvasOpacity,
+    canvasFontScale: pluginState.canvasFontScale,
+    strokeColor: pluginState.strokeColor,
+    strokeInversionColor: pluginState.strokeInversionColor,
+    strokeOpacity: pluginState.strokeOpacity,
+    strokeWidth: pluginState.strokeWidth,
+    commentLimit: pluginState.commentLimit,
+    scrollSpeed: pluginState.scrollSpeed,
+    danmakuTimeOffsetSec: pluginState.danmakuTimeOffsetSec,
+    danmakuFontFamily: pluginState.danmakuFontFamily,
+    danmakuFontWeight: pluginState.danmakuFontWeight,
+    fixedCombo: false,
+    nakaDedupeWindow: 0,
   };
 }
 
 function resetNicoJsonFilterState() {
-  nicoJsonDateInfo = emptyNicoJsonDateInfo();
+  commitState({nicoJsonDateInfo: emptyNicoJsonDateInfo()});
   clearNicoJsonDuration();
-  danmakuFilterStartDay = null;
-  danmakuFilterEndDay = null;
+  commitState({danmakuFilterStartDay: null});
+  commitState({danmakuFilterEndDay: null});
 }
 
 function applyDanmakuFilter(startDay, endDay) {
   if (startDay === null && endDay === null) {
-    danmakuFilterStartDay = null;
-    danmakuFilterEndDay = null;
+    commitState({danmakuFilterStartDay: null});
+    commitState({danmakuFilterEndDay: null});
   } else {
-    if (!Number.isInteger(startDay) || !Number.isInteger(endDay) || startDay > endDay || nicoJsonDateInfo.firstDay === null) return;
-    let days = nicoJsonDateInfo.dayCounts;
+    if (!Number.isInteger(startDay) || !Number.isInteger(endDay) || startDay > endDay || pluginState.nicoJsonDateInfo.firstDay === null) return;
+    let days = pluginState.nicoJsonDateInfo.dayCounts;
     let startIndex = 0;
     while (startIndex < days.length - 1 && days[startIndex][0] < startDay) startIndex += 1;
     let endIndex = startIndex;
     while (endIndex < days.length - 1 && days[endIndex + 1][0] <= endDay) endIndex += 1;
     startDay = days[startIndex][0];
     endDay = days[endIndex][0];
-    let fullRange = startDay === nicoJsonDateInfo.firstDay && endDay === nicoJsonDateInfo.lastDay;
-    danmakuFilterStartDay = fullRange ? null : startDay;
-    danmakuFilterEndDay = fullRange ? null : endDay;
+    let fullRange = startDay === pluginState.nicoJsonDateInfo.firstDay && endDay === pluginState.nicoJsonDateInfo.lastDay;
+    commitState({danmakuFilterStartDay: fullRange ? null : startDay});
+    commitState({danmakuFilterEndDay: fullRange ? null : endDay});
   }
   refreshDanmakuFilters();
 }
 
 function refreshDanmakuFilters() {
-  var ft = currentDanmakuStatus.fileType;
+  var ft = pluginState.currentDanmakuStatus.fileType;
   if (!ft) return;
 
-  var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+  var selectedPath = pluginState.danmakuFileList.selectedPaths.length > 0 ? pluginState.danmakuFileList.selectedPaths[0] : null;
   if (!selectedPath) return;
   if (!danmakuCache[selectedPath]) return;
 
@@ -893,112 +552,21 @@ function refreshDanmakuFilters() {
 }
 
 function applyDanmakuFilterDensity(density) {
-  danmakuFilterDensity = density;
-  preferences.set("danmakuFilterDensity", danmakuFilterDensity);
-  syncPreferencesSoon();
+  commitState({danmakuFilterDensity: density});
+
   refreshDanmakuFilters();
 }
 
-// ── 过滤 tab: 弹幕时间线列表 ──────────────────────────────────────────
-// 数据源为 danmakuCache(main.js 本就持有已加载的弹幕内容,发给 overlay 渲染的同一份),
-// 不经 overlay。sidebar 懒加载,只能由 sidebar 主动拉取(danmaku-browser-request);
-// 播放时间以 danmaku-visible-time 节流推送,sidebar 按时间线锚定跟随。
-// 列表与 overlay 渲染内容保持一致: nico-json 应用与 overlay 相同的日期范围/密度
-// 切片(applyNicoJsonFilters);其他格式文本过强制简体转换(OpenCC,与 overlay 同一库同参数)。
-
-// 纯 JS base64(UTF-8)——main.js 运行在 IINA 的 JavaScriptCore 环境,不保证有 btoa/unescape
-var B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-function b64Encode(str) {
-  var bytes = [];
-  for (var i = 0; i < str.length; i++) {
-    var c = str.charCodeAt(i);
-    if (c < 0x80) {
-      bytes.push(c);
-    } else if (c < 0x800) {
-      bytes.push(0xC0 | (c >> 6), 0x80 | (c & 63));
-    } else if (c >= 0xD800 && c <= 0xDBFF && i + 1 < str.length) {
-      var c2 = str.charCodeAt(i + 1);
-      if (c2 >= 0xDC00 && c2 <= 0xDFFF) {
-        var cp = 0x10000 + ((c - 0xD800) << 10) + (c2 - 0xDC00);
-        bytes.push(0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
-        i++;
-      } else {
-        bytes.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-      }
-    } else {
-      bytes.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-    }
-  }
-  var out = '';
-  for (var j = 0; j < bytes.length; j += 3) {
-    var b0 = bytes[j], b1 = bytes[j + 1], b2 = bytes[j + 2];
-    out += B64_CHARS[b0 >> 2];
-    out += B64_CHARS[((b0 & 3) << 4) | (b1 === undefined ? 0 : b1 >> 4)];
-    out += b1 === undefined ? '=' : B64_CHARS[((b1 & 15) << 2) | (b2 === undefined ? 0 : b2 >> 6)];
-    out += b2 === undefined ? '=' : B64_CHARS[b2 & 63];
-  }
-  return out;
-}
-
-function decodeXmlText(text) {
-  let entities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
-  if (text.indexOf('&') === -1) return text;
-  return text.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, function (entity, key) {
-    if (key.charAt(0) !== '#') return entities[key] === undefined ? entity : entities[key];
-    let code = key.charAt(1).toLowerCase() === 'x' ? parseInt(key.slice(2), 16) : Number(key.slice(1));
-    return code > 0 && code <= 0x10FFFF && !(code >= 0xD800 && code <= 0xDFFF) ? String.fromCodePoint(code) : entity;
-  });
-}
-
-function decodeXmlContent(content) {
-  // CDATA stays literal; ordinary text is decoded exactly once, like DOMParser.
-  return content.replace(/\r\n?/g, '\n').split(/(<!\[CDATA\[[\s\S]*?\]\]>|<!--[\s\S]*?-->)/g).map(function (part) {
-    if (part.indexOf('<!--') === 0) return '';
-    return part.indexOf('<![CDATA[') === 0 ? part.slice(9, -3) : decodeXmlText(part);
-  }).join('');
-}
-
-function simplifyFormattedContent(encodedContent, ft) {
-  if (!danmakuForceSimplified || !ensureBrowserSimplifier()) return encodedContent;
-  try {
-    let raw = decodeURIComponent(encodedContent);
-    if (ft === 'dandanplay') {
-      let list = JSON.parse(raw);
-      if (!Array.isArray(list)) return encodedContent;
-      list.forEach(function (item) {
-        if (item && typeof item.text === 'string') item.text = openccSimplifier(item.text);
-      });
-      return encodeContent(JSON.stringify(list));
-    }
-    let entries = densityScanXml(raw, ft, true);
-    let chunks = [], last = 0;
-    entries.forEach(function (entry) {
-      chunks.push(raw.slice(last, entry.bodyStart));
-      chunks.push(openccSimplifier(entry.text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
-      last = entry.bodyStart + entry.bodyLength;
-    });
-    chunks.push(raw.slice(last));
-    return encodeContent(chunks.join(''));
-  } catch (e) {
-    return encodedContent;
-  }
-}
-
-// 简繁转换器(OpenCC hk→cn,与 overlay/lib/opencc.min.js 同一库同参数)。
-// opencc.min.js 是 UMD bundle,无 DOM 依赖,file.read + eval 即可在 JavaScriptCore 运行;
-// 失败则返回 false(列表退化为原文,不影响渲染主链路)。首次构建 ~几百 ms,缓存复用。
+// IINA's package-local CommonJS loader owns initialization; no WebView path
+// messages, persisted absolute paths, or eval are involved.
 function ensureBrowserSimplifier() {
   if (openccSimplifier) return true;
-  if (!danmakuForceSimplified) return false;
-  if (!pluginRootPath) return false;
+  if (!pluginState.danmakuForceSimplified) return false;
   try {
-    var code = file.read(pluginRootPath + '/overlay/lib/opencc.min.js');
-    if (!code) return false;
-    eval(code); // UMD 挂到全局(globalThis.OpenCC)
-    if (!globalThis.OpenCC) return false;
-    openccSimplifier = globalThis.OpenCC.Converter({ from: 'hk', to: 'cn' });
+    openccSimplifier = openccLibrary.Converter({ from: 'hk', to: 'cn' });
     return true;
-  } catch (e) {
+  } catch (error) {
+    console.log('[OpenCC] initialization failed: ' + error);
     return false;
   }
 }
@@ -1008,8 +576,8 @@ function ensureBrowserSimplifier() {
 
 function rebuildBlockRegexes() {
   blockRegexes = [];
-  for (var i = 0; i < danmakuBlocklist.length; i++) {
-    var w = danmakuBlocklist[i];
+  for (var i = 0; i < pluginState.danmakuBlocklist.length; i++) {
+    var w = pluginState.danmakuBlocklist[i];
     if (!w) continue;
     var re;
     try {
@@ -1033,278 +601,55 @@ function isBlockedText(text) {
   return false;
 }
 
-// ── 弹幕去重(时间窗内重复文本合并) ───────────────────────────────────
-// 本函数用于 sidebar 列表的展示层合并(与引擎相同的窗口语义: 最早者胜,
-// 文本追加 xN,时间窗内同文本合成一条)。输入为已含 .t(1/100s) 与 .text 的
-// 对象数组(时间无需有序,内部按 t 排序);被合并对象从输出消失。
-function mergeDuplicateItems(items, windowMs) {
-  if (!items || items.length === 0) return items;
-  if (!(windowMs > 0)) return items;
-  var buckets = new Map();
-  var out = []; // 空文本条目(未解析/无效评论占位)不进桶,原样透传——否则被去重丢弃
-  for (var i = 0; i < items.length; i++) {
-    var it = items[i];
-    if (!it || typeof it.t !== 'number' || !isFinite(it.t)) continue;
-    if (!it.text) { out.push(it); continue; }
-    var bucket = buckets.get(it.text);
-    if (!bucket) { bucket = []; buckets.set(it.text, bucket); }
-    bucket.push(it);
-  }
-  buckets.forEach(function (bucket) {
-    bucket.sort(function (a, b) { return a.t - b.t; });
-    var i = 0;
-    while (i < bucket.length) {
-      var first = bucket[i];
-      var count = 1;
-      var j = i + 1;
-      while (j < bucket.length && bucket[j].t - first.t <= windowMs) {
-        count++;
-        j++;
-      }
-      if (count > 1) {
-        first.text = first.text + 'x' + count;
-      }
-      out.push(first);
-      i = j;
-    }
-  });
-  out.sort(function (a, b) { return a.t - b.t; });
-  return out;
-}
-
-// 固定弹幕(ue/shita)识别: 列表展示层合并跳过固定弹幕,它们由渲染引擎做渐进合并(combo)
-function isFixedCommentCommands(cmds, mail) {
-  return getCommentPosition(cmds, mail) !== 'naka';
-}
-
-// 与引擎一致: 大小写不敏感,前 64 个命令中第一个位置命令生效;默认滚动。
-function getCommentPosition(commands, mail) {
-  let cmds = Array.isArray(commands) ? commands : (Array.isArray(mail) ? mail : (typeof mail === 'string' ? mail.split(/\s+/) : []));
-  for (let i = 0; i < Math.min(cmds.length, 64); i++) {
-    if (typeof cmds[i] !== 'string') continue;
-    let command = cmds[i].toLowerCase();
-    if (command === 'ue' || command === 'shita' || command === 'naka') return command;
-  }
-  return 'naka';
-}
-
-
-function hasDanmakuBlocking() {
-  return danmakuBlockTopEnabled || danmakuBlockBottomEnabled || (danmakuBlocklistEnabled && blockRegexes.length > 0);
-}
-
 // 渲染过滤与列表 blocked 标记共用判定,各屏蔽条件独立叠加。
 function isBlockedComment(text, position) {
-  return (danmakuBlockTopEnabled && position === 'ue') ||
-    (danmakuBlockBottomEnabled && position === 'shita') ||
-    (danmakuBlocklistEnabled && isBlockedText(text));
+  return (pluginState.danmakuBlockTopEnabled && position === 'ue') ||
+    (pluginState.danmakuBlockBottomEnabled && position === 'shita') ||
+    (pluginState.danmakuBlocklistEnabled && isBlockedText(text));
 }
 
-// nico-json: 过滤所有 thread 的 comments(owner 线程 fork==='owner' 压根不进过滤器)
-function filterBlockedNicoJson(encodedContent) {
-  if (!hasDanmakuBlocking()) return encodedContent;
-  var rawStr;
-  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return encodedContent; }
-  var data;
-  try { data = JSON.parse(rawStr); } catch (e) { return encodedContent; }
-  if (!Array.isArray(data)) return encodedContent;
-  var changed = false;
-  var filteredData = [];
-  for (var i = 0; i < data.length; i++) {
-    var thread = data[i];
-    if (thread && thread.fork === 'owner') { filteredData.push(thread); continue; }
-    if (thread && thread.chat && !Array.isArray(thread.chat)) {
-      let chat = thread.chat;
-      if (chat.user_id && isBlockedComment(chat.content, getCommentPosition(null, chat.mail))) changed = true;
-      else filteredData.push(thread);
-      continue;
-    }
-    // legacy nico-json(thread.chat)与现代表格(thread.comments)都处理
-    var srcComments = thread ? (Array.isArray(thread.comments) ? thread.comments : (Array.isArray(thread.chat) ? thread.chat : null)) : null;
-    if (!srcComments) { filteredData.push(thread); continue; }
-    var kept = [];
-    for (var j = 0; j < srcComments.length; j++) {
-      var c = srcComments[j];
-      if (!c) { kept.push(c); continue; }
-      var text = c.body !== undefined ? c.body : c.content;
-      if (isBlockedComment(text, getCommentPosition(c.commands, c.mail))) changed = true;
-      else kept.push(c);
-    }
-    if (kept.length !== srcComments.length) {
-      var newObj = {};
-      for (var k in thread) { if (thread.hasOwnProperty(k)) newObj[k] = thread[k]; }
-      newObj[Array.isArray(thread.comments) ? 'comments' : 'chat'] = kept;
-      newObj.commentCount = kept.length;
-      filteredData.push(newObj);
-    } else {
-      filteredData.push(thread);
-    }
-  }
-  if (!changed) return encodedContent;
-  return encodeContent(JSON.stringify(filteredData));
+// Cache one projection per document/settings revision. Overlay, statistics and
+// lazy sidebar reads share the exact same arrays and selected membership.
+let projectionCache = null;
+function getCurrentProjection() {
+  let path = pluginState.danmakuFileList.selectedPaths[0];
+  let doc = path && danmakuCache[path];
+  if (!doc) return null;
+  let settings = {
+    startDay: pluginState.danmakuFilterStartDay, endDay: pluginState.danmakuFilterEndDay,
+    density: pluginState.danmakuFilterDensity, forceSimplified: pluginState.danmakuForceSimplified,
+    simplify: pluginState.danmakuForceSimplified && ensureBrowserSimplifier() ? openccSimplifier : null,
+    dedupeWindow: pluginState.danmakuDedupeEnabled ? pluginState.danmakuDedupeWindow * 100 : 0,
+    blockTop: pluginState.danmakuBlockTopEnabled, blockBottom: pluginState.danmakuBlockBottomEnabled,
+    blockEnabled: pluginState.danmakuBlocklistEnabled, regexes: blockRegexes,
+    isBlocked: isBlockedComment,
+  };
+  if (projectionCache && projectionCache.doc === doc && Object.keys(settings).every(function (key) {
+    return projectionCache.settings[key] === settings[key];
+  })) return projectionCache.result;
+  let result = projectDanmaku(doc, settings);
+  projectionCache = {doc: doc, settings: settings, result: result};
+  return result;
 }
 
-// 非 nico-json: 内容字符串层面的弹幕行过滤。dandanplay(JSON)解析后过滤;
-// XML(bilibili <d> / nico <chat>)行级正则,只删除匹配弹幕行,保留整体结构。
-function filterBlockedContent(encodedContent, ft) {
-  if (!hasDanmakuBlocking()) return encodedContent;
-  var rawStr;
-  try { rawStr = decodeURIComponent(encodedContent); } catch (e) { return encodedContent; }
-  if (ft === 'dandanplay') {
-    var list;
-    try { list = JSON.parse(rawStr); } catch (e) { return encodedContent; }
-    if (!Array.isArray(list)) return encodedContent;
-    var kept = [];
-    var changed = false;
-    for (var i = 0; i < list.length; i++) {
-      var d = list[i];
-      if (!d || !isBlockedComment(d.text, getCommentPosition(d._commands))) kept.push(d);
-      else changed = true;
-    }
-    if (!changed) return encodedContent;
-    return encodeContent(JSON.stringify(kept));
-  }
-  let entries = densityScanXml(rawStr, ft, true);
-  let chunks = [], last = 0, xmlChanged = false;
-  entries.forEach(function (entry) {
-    chunks.push(rawStr.slice(last, entry.index));
-    if (isBlockedComment(entry.text, entry.position)) xmlChanged = true;
-    else chunks.push(rawStr.slice(entry.index, entry.index + entry.length));
-    last = entry.index + entry.length;
-  });
-  chunks.push(rawStr.slice(last));
-  return xmlChanged ? encodeContent(chunks.join('')) : encodedContent;
-}
-
-// 单源内容出口: 按当前设置返回"最终内容"(URI 编码形式)。
-// overlay 的 load-danmaku 与 sidebar 过滤列表都从这里取数,保证两边拿到
-// 完全同一份数据——nico-json 应用 offset/limit/密度切片;其他格式应用强制简体转换;
-// 屏蔽词/顶部/底部开启时两者都再经过屏蔽过滤。去重不在本层做: 渲染侧由引擎
-// nakaDedupeWindow 配置静态合并,列表侧由 buildDanmakuBrowserList 自行合并。
 function getEffectiveContent(path) {
-  var encodedContent = danmakuCache[path];
-  if (!encodedContent) return null;
-  var ft = currentDanmakuStatus.fileType;
-  var out;
-  if (ft === 'nico-json') {
-    out = applyNicoJsonFilters(encodedContent);
-    out = filterBlockedNicoJson(out);
-    return out;
-  }
-  out = simplifyFormattedContent(encodedContent, ft);
-  // 密度先于屏蔽词, 与 nico-json 路径(applyNicoJsonFilters → filterBlockedNicoJson)同序;
-  // 列表侧(buildDanmakuBrowserList)用同一份输入走同一个函数, 保证两侧保留集合一致。
-  var densityOut = applyDensityFilter(out, ft, danmakuFilterDensity);
-  if (densityOut) out = densityOut;
-  out = filterBlockedContent(out, ft);
-  return out;
+  if (pluginState.danmakuFileList.selectedPaths[0] !== path) return [];
+  let projection = getCurrentProjection();
+  return projection ? projection.formatted : [];
 }
 
-// 从原始内容构建 [{t, text, blocked}] 时间线(vpos 升序)。
-// 与 getEffectiveContent 完全相同的变换序列: nico-json 先切片/密度(排除的不入列表,
-// 它们不在当前范围而非"被屏蔽");其他格式先过密度过滤(同样不入列表);文本按强制简体
-// 转换;屏蔽词或位置命中标记 blocked——被屏蔽弹幕仍显示在列表(划线),其 blocked 状态与
-// overlay 实际过滤掉的弹幕一一对应。
-// 格式字段与 overlay 解析一致: nico-json v1(vposMs/body)与 legacy(vpos/content);
-// dandanplay 缓存已是 {t,text}; nico/bilibili XML 轻量正则提取。
 function buildDanmakuBrowserList() {
-  var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
-  if (!selectedPath) return [];
-  var encodedContent = danmakuCache[selectedPath];
-  if (!encodedContent) return [];
-  var ft = currentDanmakuStatus.fileType;
-  var base = ft === 'nico-json' ? applyNicoJsonFilters(encodedContent) : simplifyFormattedContent(encodedContent, ft);
-  var densityOut = applyDensityFilter(base, ft, danmakuFilterDensity);
-  if (densityOut) base = densityOut;
-  var rawStr;
-  try {
-    rawStr = decodeURIComponent(base);
-  } catch (e) { return []; }
-  var items = [];
-  try {
-    if (ft === 'nico-json') {
-      var data = JSON.parse(rawStr);
-      if (Array.isArray(data)) {
-        for (var i = 0; i < data.length; i++) {
-          var thread = data[i];
-          if (!thread) continue;
-          var comments = Array.isArray(thread.comments) ? thread.comments : (thread.chat && !Array.isArray(thread.chat) ? [thread.chat] : null);
-          if (!comments) continue;
-          var isOwnerThread = thread.fork === 'owner';
-          for (var j = 0; j < comments.length; j++) {
-            var c = comments[j];
-            if (!c || c.deleted === 1) continue;
-            let isOwner = isOwnerThread || !!(thread.chat && !c.user_id);
-            var t = c.vposMs !== undefined ? Math.floor(c.vposMs / 10) : (typeof c.vpos === 'number' ? Math.round(c.vpos) : NaN);
-            var text = c.body !== undefined ? c.body : c.content;
-            if (!isFinite(t) || !text) continue;
-            // owner 弹幕进列表但不参与任何过滤: 不打屏蔽标记、不做展示层合并
-            let position = getCommentPosition(c.commands, c.mail);
-            items.push({ t: t, text: text, blocked: !isOwner && isBlockedComment(text, position), _fixed: isFixedCommentCommands(c.commands, c.mail), _owner: isOwner || undefined });
-          }
-        }
-      }
-    } else if (ft === 'dandanplay') {
-      var list = JSON.parse(rawStr);
-      if (Array.isArray(list)) {
-        for (var k = 0; k < list.length; k++) {
-          var d = list[k];
-          if (!d || typeof d.t !== 'number' || !isFinite(d.t) || !d.text) continue;
-          var st = d.text;
-          let position = getCommentPosition(d._commands);
-          items.push({ t: Math.round(d.t), text: st, blocked: isBlockedComment(st, position), _fixed: isFixedCommentCommands(d._commands) });
-        }
-      }
-    } else {
-      densityScanXml(rawStr, ft, true).forEach(function (entry) {
-        if (!entry.text) return;
-        items.push({ t: entry.t, text: entry.text,
-          blocked: isBlockedComment(entry.text, entry.position), _fixed: entry.position !== 'naka' });
-      });
-    }
-  } catch (e) {
-    return [];
-  }
-  // 去重: 可见弹幕合并(与 overlay 相同规则——屏蔽先于去重,overlay 不渲染
-  // 被屏蔽弹幕所以不参与画面合并);被屏蔽弹幕按同一规则做展示层合并
-  // (已屏蔽/全部视图里 2s 内重复的屏蔽弹幕显示为 草x5,而非逐条列出)。
-  if (danmakuDedupeEnabled && danmakuDedupeWindow > 0) {
-    var visible = [];
-    var blockedItems = [];
-    var fixedItems = [];
-    var ownerItems = [];
-    for (var di = 0; di < items.length; di++) {
-      if (items[di]._owner) ownerItems.push(items[di]); // owner 弹幕不参与展示层合并(原样逐条列出)
-      else if (items[di]._fixed) fixedItems.push(items[di]); // 固定弹幕不做展示层合并(画面由引擎渐进合并)
-      else if (items[di].blocked) blockedItems.push(items[di]);
-      else visible.push(items[di]);
-    }
-    var mergedOut = mergeDuplicateItems(visible, danmakuDedupeWindow * 100);
-    // 被屏蔽弹幕展示层合并(保持 blocked 标记;时间窗相同)
-    var blockedMerged = mergeDuplicateItems(blockedItems, danmakuDedupeWindow * 100);
-    items = blockedMerged.concat(ownerItems).concat(fixedItems).concat(mergedOut);
-  }
-  items.sort(function (a, b) { return a.t - b.t; });
-  return items;
+  let projection = getCurrentProjection();
+  return projection ? projection.items : [];
 }
 
-// 分块 + base64 投递。IINA 的 sidebar 桥把数据拼进 JS 模板字符串(String.raw`...`),
-// 文本里出现 ${ 或反引号会让整条消息被 JS 异常静默丢弃;base64 字母表与之不相交。
 function sendDanmakuBrowserData(items) {
-  var CHUNK = 2000;
-  var total = items.length;
-  if (total === 0) {
-    sidebarPostMessage("danmaku-browser-data", { payload: b64Encode('[]'), total: 0, chunkIndex: 0, done: true });
-    pushBrowserTime(mpv.getNumber('time-pos'), true);
-    return;
-  }
-  var n = Math.ceil(total / CHUNK);
-  for (var c = 0; c < n; c++) {
+  const CHUNK = 2000;
+  const total = items.length;
+  for (let index = 0; index < Math.max(1, Math.ceil(total / CHUNK)); index++) {
     sidebarPostMessage("danmaku-browser-data", {
-      payload: b64Encode(JSON.stringify(items.slice(c * CHUNK, (c + 1) * CHUNK))),
-      total: total,
-      chunkIndex: c,
-      done: c === n - 1
+      items: items.slice(index * CHUNK, (index + 1) * CHUNK), total: total,
+      chunkIndex: index, done: (index + 1) * CHUNK >= total
     });
   }
   pushBrowserTime(mpv.getNumber('time-pos'), true);
@@ -1316,7 +661,7 @@ function pushBrowserTime(timeSec, force) {
   var now = Date.now();
   if (!force && now - lastBrowserTimeSent < 300) return;
   lastBrowserTimeSent = now;
-  sidebarPostMessage("danmaku-visible-time", { time: timeSec, offset: danmakuTimeOffsetSec });
+  sidebarPostMessage("danmaku-visible-time", { time: timeSec, offset: pluginState.danmakuTimeOffsetSec });
 }
 
 var browserDataPending = false; // 列表开关关闭期间数据变化: 不构建不发送,打开时补发一次
@@ -1324,7 +669,7 @@ var browserDataPending = false; // 列表开关关闭期间数据变化: 不构�
 // 弹幕加载/切换/清空后,若 sidebar 正在监听则推送刷新列表
 function notifyBrowserDataChanged() {
   if (!danmakuBrowserWatch) return;
-  if (!danmakuBrowserVisible) {
+  if (!pluginState.danmakuBrowserVisible) {
     browserDataPending = true;
     return;
   }
@@ -1335,9 +680,9 @@ function notifyBrowserDataChanged() {
 // 屏蔽词/简体等设置变化后调用,让渲染内容与 sidebar 列表同步更新。
 function resendDanmakuToOverlay() {
   if (!overlayReady) return;
-  var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+  var selectedPath = pluginState.danmakuFileList.selectedPaths.length > 0 ? pluginState.danmakuFileList.selectedPaths[0] : null;
   if (!selectedPath || !danmakuCache[selectedPath]) return;
-  overlayPostMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), currentDanmakuStatus.fileType));
+  overlayPostMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), pluginState.currentDanmakuStatus.fileType));
 }
 
 function extractNumberFromName(name) {
@@ -1445,7 +790,7 @@ function findDanmakuByEpisode(videoUrl) {
 }
 
 function localDanmakuCandidates() {
-  return danmakuFileList.xmlFiles.concat(danmakuFileList.jsonFiles).filter(function (item) {
+  return pluginState.danmakuFileList.xmlFiles.concat(pluginState.danmakuFileList.jsonFiles).filter(function (item) {
     return item.type !== 'DDP';
   }).sort(function (a, b) {
     let rankA = a._matchRank === undefined ? 100 : a._matchRank;
@@ -1460,10 +805,6 @@ function loadFirstLocalDanmaku() {
     if (loadDanmakuFile(files[i].path)) return true;
   }
   return false;
-}
-
-function encodeContent(str) {
-  return encodeURIComponent(str);
 }
 
 function ddpRequest(method, path, queryParams, body) {
@@ -1584,40 +925,12 @@ function ddpErrStr(err) {
   try { return JSON.stringify(err); } catch (e) { return String(err); }
 }
 
-function ddpConvertComments(ddpComments) {
-  var list = new Array(ddpComments.length);
-  var write = 0;
-  for (var i = 0; i < ddpComments.length; i++) {
-    var c = ddpComments[i];
-    if (!c || typeof c.p !== 'string' || typeof c.m !== 'string' || !c.m) continue;
-    var parts = c.p.split(',');
-    if (parts.length < 3) continue;
-    var timeSec = parseFloat(parts[0]);
-    var mode = parseInt(parts[1]);
-    var colorDec = parseInt(parts[2]);
-    if (!isFinite(timeSec) || !isFinite(mode) || !isFinite(colorDec)) continue;
-    if (mode < 1 || mode > 6) continue;
-    if (colorDec < 0) colorDec = (colorDec >>> 0) & 0xFFFFFF;
-    var colorHex = '#' + colorDec.toString(16).padStart(6, '0');
-    var commands = [];
-    if (mode === 4) commands.push('shita');
-    else if (mode === 5) commands.push('ue');
-    else commands.push('naka');
-    commands.push(colorHex);
-    list[write++] = {
-      t: Math.round(timeSec * 100),
-      text: c.m,
-      _isOwner: false,
-      _commands: commands,
-      _userId: parts[3] || '',
-      _dateSec: 1767196800
-    };
-  }
-  list.length = write;
-  return list;
+function ddpConvertComments(comments) {
+  return parseDanmakuSource(comments, '', 'dandanplay');
 }
 
 let ddpCacheDirPromise = null;
+let cacheWriteQueue = Promise.resolve();
 function ensureCacheDir() {
   if (ddpCacheDirPromise) return ddpCacheDirPromise;
   try {
@@ -1663,16 +976,18 @@ function ddpSaveVideoCache(videoPath, episodeId, animeTitle, episodeTitle, comme
     animeTitle: animeTitle || '',
     episodeTitle: episodeTitle || '',
     cachedAt: Date.now(),
-    comments: comments || []
+    schemaVersion: 2,
+    comments: comments && comments.sourceType ? comments.comments : comments || []
   });
-  return ensureCacheDir().then(function (dir) {
+  cacheWriteQueue = cacheWriteQueue.then(ensureCacheDir).then(function (dir) {
     if (!dir) return false;
-    file.write(ddpCacheFile(videoPath), content);
+    if (file.write(ddpCacheFile(videoPath), content) === false) throw new Error('Cache write failed');
     return true;
   }).catch(function (e) {
     console.log('[ddp] saveVideoCache error: ' + e);
     return false;
   });
+  return cacheWriteQueue;
 }
 
 function ddpReadVideoCache(videoPath) {
@@ -1690,6 +1005,8 @@ function ddpReadVideoCache(videoPath) {
     if (!isFinite(cachedAt) || cachedAt <= 0 || age < 0 || age >= 24 * 60 * 60 * 1000) {
       data.stale = true;
     }
+    data.document = parseDanmakuSource(data.comments, '', 'dandanplay');
+    data.comments = data.document.comments;
     return data;
   } catch (e) {
     console.log('[ddp] readVideoCache error: ' + e);
@@ -1699,15 +1016,15 @@ function ddpReadVideoCache(videoPath) {
 
 function ddpSyncState() {
   sidebarPostMessage("dandanplay-status", {
-    status: dandanplayState.status,
-    animeTitle: dandanplayState.animeTitle,
-    episodeTitle: dandanplayState.episodeTitle,
-    episodeId: dandanplayState.episodeId,
-    commentCount: dandanplayState.commentCount,
-    error: dandanplayState.error,
-    matches: projectMatches(dandanplayState.matches),
-    autoNetwork: dandanplayAutoNetwork,
-    matchType: dandanplayState.matchType
+    status: pluginState.dandanplayState.status,
+    animeTitle: pluginState.dandanplayState.animeTitle,
+    episodeTitle: pluginState.dandanplayState.episodeTitle,
+    episodeId: pluginState.dandanplayState.episodeId,
+    commentCount: pluginState.dandanplayState.commentCount,
+    error: pluginState.dandanplayState.error,
+    matches: projectMatches(pluginState.dandanplayState.matches),
+    autoNetwork: pluginState.dandanplayAutoNetwork,
+    matchType: pluginState.dandanplayState.matchType
   });
 }
 
@@ -1731,7 +1048,9 @@ function projectMatches(matches) {
 
 function ddpResetState() {
   ddpRequestGeneration += 1;
-  dandanplayState = {
+  ddpSearchGeneration += 1;
+  ddpBangumiGeneration += 1;
+  commitState({dandanplayState: {
     status: 'idle',
     animeTitle: '',
     episodeTitle: '',
@@ -1740,7 +1059,7 @@ function ddpResetState() {
     error: '',
     matches: null,
     matchType: ''
-  };
+  }});
   ddpSyncState();
 }
 
@@ -1752,7 +1071,7 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
   let requestGeneration = ++ddpRequestGeneration;
   if (origin === undefined) origin = DDP_LOAD_ORIGIN.AUTO;
   var isManual = isManualDdpLoad(origin);
-  var loadEnabled = danmakuEnabled;
+  var loadEnabled = pluginState.danmakuEnabled;
   if (loadGeneration === undefined) loadGeneration = danmakuLoadGeneration;
   var path = filePathFromUrl(url);
   var fileName;
@@ -1763,7 +1082,7 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
   }
   if (!fileName) return;
 
-  dandanplayState = {
+  commitState({dandanplayState: {
     status: 'matching',
     animeTitle: '',
     episodeTitle: '',
@@ -1772,60 +1091,55 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
     error: '',
     matches: null,
     matchType: ''
-  };
+  }});
   ddpSyncState();
 
   ddpMatchVideo(fileName, path).then(function(res) {
     if (url !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
-    if (!isManual && !danmakuEnabled) { ddpResetState(); return; }
+    if (!isManual && !pluginState.danmakuEnabled) { ddpResetState(); return; }
     var data = ddpParseBody(res);
     if (res.statusCode === 403) {
-      dandanplayState.status = 'error';
-      dandanplayState.error = t('ddp_auth_error');
+      commitDdpState({status: 'error', error: t('ddp_auth_error')});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
     }
     if (!data) {
-      dandanplayState.status = 'error';
-      dandanplayState.error = t('ddp_api_error');
+      commitDdpState({status: 'error', error: t('ddp_api_error')});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
     }
     if (data.success === false) {
-      dandanplayState.status = 'error';
-      dandanplayState.error = data.errorMessage || t('ddp_api_error');
+      commitDdpState({status: 'error', error: data.errorMessage || t('ddp_api_error')});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
     }
     if (!data.matches || data.matches.length === 0) {
-      dandanplayState.status = 'no-match';
-      dandanplayState.error = t('ddp_no_match');
+      commitDdpState({status: 'no-match', error: t('ddp_no_match')});
       ddpSyncState();
       core.osd(t('ddp_no_match'));
       ddpFallbackToLocal();
       return;
     }
 
-    dandanplayState.matches = JSON.parse(JSON.stringify(data.matches));
+    commitDdpState({matches: projectMatches(data.matches)});
 
     if (data.isMatched) {
-      if (!isManual && loadEnabled && !danmakuEnabled) return;
+      if (!isManual && loadEnabled && !pluginState.danmakuEnabled) return;
       var match = data.matches[0];
-      var forceLoad = isManual || (loadEnabled && dandanplayAutoNetwork);
-      dandanplayState.matchType = 'hash';
+      var forceLoad = isManual || (loadEnabled && pluginState.dandanplayAutoNetwork);
+      commitDdpState({matchType: 'hash'});
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, forceLoad, origin, loadGeneration);
     } else {
-      dandanplayState.status = 'matched';
+      commitDdpState({status: 'matched'});
       ddpSyncState();
       ddpFallbackToLocal();
     }
   }).catch(function(err) {
     if (url !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
-    dandanplayState.status = 'error';
-    dandanplayState.error = ddpErrStr(err);
+    commitDdpState({status: 'error', error: ddpErrStr(err)});
     ddpSyncState();
     core.osd(t('ddp_network_error'));
     ddpFallbackToLocal(true);
@@ -1835,19 +1149,15 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
 function ddpUpsertFileListEntry(episodeId, animeTitle, episodeTitle, converted, fresh) {
   var virtualPath = 'dandanplay://' + episodeId;
   var displayName = (animeTitle || 'DanDanPlay') + ' - ' + (episodeTitle || '') + (fresh ? '' : t('cache_stale')) + ' 🌐';
-  danmakuCache[virtualPath] = encodeContent(JSON.stringify(converted));
+  let doc = converted && converted.sourceType ? converted : parseDanmakuSource(converted, virtualPath, 'dandanplay');
+  danmakuCache[virtualPath] = Object.freeze(Object.assign({}, doc, {path: virtualPath}));
 
-  var existing = findDanmakuFileByPath(virtualPath);
-  if (existing) {
-    if (fresh) existing.filename = displayName;
-  } else {
-    danmakuFileList.jsonFiles.push({
-      path: virtualPath,
-      filename: displayName,
-      relativePath: 'DanDanPlay #' + episodeId,
-      type: 'DDP'
-    });
-  }
+  let files = pluginState.danmakuFileList.jsonFiles;
+  let existing = files.find(function (entry) { return entry.path === virtualPath; });
+  let next = existing ? files.map(function (entry) {
+    return entry === existing && fresh ? Object.assign({}, entry, {filename: displayName}) : entry;
+  }) : files.concat({path: virtualPath, filename: displayName, relativePath: 'DanDanPlay #' + episodeId, type: 'DDP'});
+  commitState({danmakuFileList: Object.assign({}, pluginState.danmakuFileList, {jsonFiles: next})}, false);
   return virtualPath;
 }
 
@@ -1857,7 +1167,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
     // 网络弹幕的激活统一复用 loadDanmakuFile,避免复制 overlay/pending/开关逻辑。
     loadDanmakuFile(virtualPath, { enableDanmaku: true, loadedMessageKey: 'network_loaded' });
   } else {
-    sidebarPostMessage("danmaku-file-list", danmakuFileList);
+    sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
   }
 }
 
@@ -1867,35 +1177,29 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
   var isManual = isManualDdpLoad(origin);
   var videoUrl = currentVideoUrl;
   if (loadGeneration === undefined) loadGeneration = danmakuLoadGeneration;
-  dandanplayState.status = 'loading';
-  dandanplayState.episodeId = episodeId;
-  dandanplayState.animeTitle = animeTitle || '';
-  dandanplayState.episodeTitle = episodeTitle || '';
+  commitDdpState({status: 'loading', episodeId: episodeId, animeTitle: animeTitle || '', episodeTitle: episodeTitle || ''});
   ddpSyncState();
 
   ddpGetComments(episodeId).then(function(res) {
     if (videoUrl !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
-    if (!danmakuEnabled && !isManual) { ddpResetState(); return; }
-    if (!isManual && !dandanplayAutoNetwork) forceLoad = false;
+    if (!pluginState.danmakuEnabled && !isManual) { ddpResetState(); return; }
+    if (!isManual && !pluginState.dandanplayAutoNetwork) forceLoad = false;
     if (res.statusCode === 403) {
-      dandanplayState.status = 'error';
-      dandanplayState.error = t('ddp_auth_error');
+      commitDdpState({status: 'error', error: t('ddp_auth_error')});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
     }
     var data = ddpParseBody(res);
     if (!data) {
-      dandanplayState.status = 'error';
-      dandanplayState.error = t('ddp_api_error');
+      commitDdpState({status: 'error', error: t('ddp_api_error')});
       ddpSyncState();
       core.osd(t('ddp_api_error'));
       ddpFallbackToLocal(true);
       return;
     }
     if (!data.comments || data.comments.length === 0) {
-      dandanplayState.status = 'error';
-      dandanplayState.error = t('ddp_no_comments');
+      commitDdpState({status: 'error', error: t('ddp_no_comments')});
       ddpSyncState();
       core.osd(t('ddp_no_comments'));
       ddpFallbackToLocal(true);
@@ -1904,10 +1208,9 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
 
     var converted = ddpConvertComments(data.comments);
 
-    if (converted.length === 0) {
+    if (converted.comments.length === 0) {
       // 全部条目 malformed:视为下载失败,不覆盖磁盘上的 stale 缓存
-      dandanplayState.status = 'error';
-      dandanplayState.error = t('ddp_no_comments');
+      commitDdpState({status: 'error', error: t('ddp_no_comments')});
       ddpSyncState();
       core.osd(t('ddp_no_comments'));
       ddpFallbackToLocal(true);
@@ -1916,14 +1219,12 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
 
     ddpSaveVideoCache(videoUrl, episodeId, animeTitle, episodeTitle, converted);
 
-    dandanplayState.status = 'loaded';
-    dandanplayState.commentCount = converted.length;
+    commitDdpState({status: 'loaded', commentCount: converted.comments.length});
     ddpSyncState();
     ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted, forceLoad, true);
   }).catch(function(err) {
     if (videoUrl !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
-    dandanplayState.status = 'error';
-    dandanplayState.error = ddpErrStr(err);
+    commitDdpState({status: 'error', error: ddpErrStr(err)});
     ddpSyncState();
     core.osd(t('ddp_load_failed'));
     ddpFallbackToLocal(true);
@@ -1931,14 +1232,14 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
 }
 
 function ddpFallbackToLocal(allowStale) {
-  if (!dandanplayAutoNetwork || !danmakuEnabled) return;
-  if (currentDanmakuStatus.isLoaded) return;
+  if (!pluginState.dandanplayAutoNetwork || !pluginState.danmakuEnabled) return;
+  if (pluginState.currentDanmakuStatus.isLoaded) return;
   if (loadFirstLocalDanmaku()) return;
   // 仅下载失败路径启用:无本地文件时回退到过期缓存(成功下载会覆盖写同一文件)
   if (!allowStale) return;
   var cached = ddpReadVideoCache(currentVideoUrl);
   if (cached && cached.stale && cached.comments && cached.comments.length > 0) {
-    ddpAddToFileListAndLoad(cached.episodeId, cached.animeTitle, cached.episodeTitle, cached.comments, true, false);
+    ddpAddToFileListAndLoad(cached.episodeId, cached.animeTitle, cached.episodeTitle, cached.document, true, false);
   }
 }
 
@@ -1951,7 +1252,8 @@ function loadDanmakuForVideo(url) {
   overlayLoadId += 1;
   danmakuLoadGeneration += 1;
   var loadGeneration = danmakuLoadGeneration;
-  danmakuCache = {};
+  danmakuCache = Object.create(null);
+  projectionCache = null;
   currentVideoUrl = url;
   pendingDanmaku = null;
   loadedDanmakuVideoUrl = null;
@@ -1965,47 +1267,47 @@ function loadDanmakuForVideo(url) {
   if (core.status.isNetworkResource) {
     core.osd(t('network_skip_local'));
     danmakuNotFound();
-    danmakuFileList = { xmlFiles: [], jsonFiles: [], selectedPaths: [] };
-    sidebarPostMessage("danmaku-file-list", danmakuFileList);
+    commitState({danmakuFileList: { xmlFiles: [], jsonFiles: [], selectedPaths: [] }});
+    sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
     sendDanmakuFilterInfo();
     notifyBrowserDataChanged();
-    if (danmakuEnabled && dandanplayAutoNetwork) ddpAutoMatchAndLoad(url, DDP_LOAD_ORIGIN.AUTO, loadGeneration);
+    if (pluginState.danmakuEnabled && pluginState.dandanplayAutoNetwork) ddpAutoMatchAndLoad(url, DDP_LOAD_ORIGIN.AUTO, loadGeneration);
     return;
   }
 
   // === Step 1: Build complete file list (local + cached DDP) ===
   var discovered = findDanmakuByEpisode(url);
 
-  danmakuFileList = {
+  commitState({danmakuFileList: {
     xmlFiles: discovered.xmlFiles,
     jsonFiles: discovered.jsonFiles,
     selectedPaths: []
-  };
+  }});
 
   var ddpCached = ddpReadVideoCache(url);
   var hasDDPCache = ddpCached && ddpCached.comments && ddpCached.comments.length > 0;
   var hasFreshDDPCache = hasDDPCache && !ddpCached.stale;
   if (hasDDPCache) {
-    addDDPToFileList(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, ddpCached.stale);
+    addDDPToFileList(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.document, ddpCached.stale);
   }
 
   // === Step 2: Send file list (all available sources, regardless of priority) ===
-  sidebarPostMessage("danmaku-file-list", danmakuFileList);
+  sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
   sendDanmakuFilterInfo();
   notifyBrowserDataChanged();
 
   // 关闭状态只更新当前视频及其可用文件,不启动本地/网络弹幕加载。
   // toggleDanmaku() 在重新开启时会根据 loadedDanmakuVideoUrl 补做加载。
-  if (!danmakuEnabled) return;
+  if (!pluginState.danmakuEnabled) return;
 
   // === Step 3: Auto-load to overlay based on autoNetwork setting ===
-  if (dandanplayAutoNetwork) {
+  if (pluginState.dandanplayAutoNetwork) {
     // network-first: 缓存新鲜(24h TTL 内)时只用缓存,完全跳过后台自动匹配
     // (不重算 hash、不发 API)。缓存刷新发生在 TTL 过期后,
     // 或用户在「网络弹幕」面板手动触发匹配时(dandanplay-trigger-match);
     // 过期缓存带「(旧)」标记进列表,不自动加载,等刷新结果
     if (hasFreshDDPCache) {
-      ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, true, true);
+      ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.document, true, true);
     } else {
       ddpAutoMatchAndLoad(url, DDP_LOAD_ORIGIN.AUTO, loadGeneration);
     }
@@ -2013,7 +1315,7 @@ function loadDanmakuForVideo(url) {
     // local-first: prefer local files, fallback to DDP cache as last resort
     if (loadFirstLocalDanmaku()) return;
     if (hasFreshDDPCache) {
-      ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.comments, true, true);
+      ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.document, true, true);
     } else {
       danmakuNotFound();
     }
@@ -2021,7 +1323,7 @@ function loadDanmakuForVideo(url) {
 }
 
 // 自动加载、菜单和侧栏选择共用同一入口。读取成功后才切换选中源;
-// 本地文件每次从磁盘读取,避免把已解包的 DDP 数组误判成 nico-json。
+// 本地文件在首次 I/O 时解析,同一视频会话内重选复用 IR。
 // DDP 虚拟条目在加入列表时已写入会话缓存,无需另从磁盘重建。
 function loadDanmakuFile(path, options) {
   if (!path) return;
@@ -2031,9 +1333,9 @@ function loadDanmakuFile(path, options) {
   let fileInfo = findDanmakuFileByPath(path);
   let fileName = fileInfo ? fileInfo.filename : path.split("/").pop();
   let fileType = 'dandanplay';
-  let encodedContent = danmakuCache[path];
+  let doc = danmakuCache[path];
 
-  if (path.indexOf('dandanplay://') !== 0) {
+  if (!doc && path.indexOf('dandanplay://') !== 0) {
     let content = null;
     try {
       content = file.read(path);
@@ -2043,9 +1345,11 @@ function loadDanmakuFile(path, options) {
       sidebarPostMessage("danmaku-file-error", { path: path, message: t('read_failed') });
       return;
     }
-    fileType = detectDanmakuType(content);
-    if (fileType === 'dandanplay') content = JSON.stringify(JSON.parse(content).comments);
-    encodedContent = encodeContent(content);
+    try { doc = parseDanmakuSource(content, path); } catch (error) {
+      core.osd(t('read_failed_name') + fileName);
+      sidebarPostMessage('danmaku-file-error', {path: path, message: t('read_failed')});
+      return;
+    }
 
     if (!fileInfo) {
       let videoPath = filePathFromUrl(currentVideoUrl);
@@ -2057,10 +1361,13 @@ function loadDanmakuFile(path, options) {
         relativePath: videoDir && path.startsWith(videoDir + '/') ? path.substring(videoDir.length + 1) : path,
         type: isXml ? 'XML' : 'JSON'
       };
-      (isXml ? danmakuFileList.xmlFiles : danmakuFileList.jsonFiles).push(fileInfo);
+      let group = isXml ? 'xmlFiles' : 'jsonFiles';
+      let next = Object.assign({}, pluginState.danmakuFileList);
+      next[group] = next[group].concat(fileInfo);
+      commitState({danmakuFileList: next}, false);
     }
   }
-  if (!encodedContent) {
+  if (!doc) {
     core.osd(t('content_unavailable'));
     return;
   }
@@ -2068,15 +1375,14 @@ function loadDanmakuFile(path, options) {
   // 用户选定本地来源后,此前的后台匹配/下载不得覆盖该选择。
   if (enableDanmaku && path.indexOf('dandanplay://') !== 0) ddpResetState();
 
-  danmakuCache[path] = encodedContent;
-  danmakuFileList.selectedPaths = [path];
+  danmakuCache[path] = doc;
+  fileType = doc.sourceType.indexOf('nico-json') === 0 ? 'nico-json' : doc.sourceType;
+  commitState({danmakuFileList: Object.assign({}, pluginState.danmakuFileList, {selectedPaths: [path]})}, false);
   resetNicoJsonFilterState();
-  if (fileType === 'nico-json') {
-    nicoJsonDateInfo = computeNicoJsonDateInfo(encodedContent);
-    checkNicoJsonDuration(encodedContent);
-  }
+  commitState({nicoJsonDateInfo: doc.dateInfo});
+  if (fileType === 'nico-json') checkNicoJsonDuration(doc);
   updateDanmakuStatus({ fileType: fileType, isLoaded: true });
-  sidebarPostMessage("danmaku-file-list", danmakuFileList);
+  sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
   sendDanmakuFilterInfo();
   notifyBrowserDataChanged();
 
@@ -2118,26 +1424,32 @@ function postVideoAspect() {
   });
 }
 
+function playbackSnapshot() {
+  let time = mpv.getNumber('time-pos');
+  let speed = mpv.getNumber('speed');
+  return {enabled: pluginState.danmakuEnabled, time: Number.isFinite(time) ? time : 0,
+    paused: !!core.status.paused, speed: Number.isFinite(speed) && speed > 0 ? speed : 1};
+}
+
 function markOverlayReady() {
   if (overlayReady) return;
   overlayReady = true;
   overlay.show();
   postVideoAspect();
-  overlayPostMessage("toggle-danmaku", { enabled: danmakuEnabled });
-  overlayPostMessage("pause-state", { paused: !!core.status.paused });
+  overlayPostMessage("toggle-danmaku", playbackSnapshot());
 
   if (pendingDanmaku) {
     var pending = pendingDanmaku;
-    let selectedPath = danmakuFileList.selectedPaths[0];
-    overlayPostMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), currentDanmakuStatus.fileType));
+    let selectedPath = pluginState.danmakuFileList.selectedPaths[0];
+    overlayPostMessage("load-danmaku", buildLoadDanmakuPayload(getEffectiveContent(selectedPath), pluginState.currentDanmakuStatus.fileType));
     loadedDanmakuVideoUrl = currentVideoUrl;
-    var pendingPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : "";
+    var pendingPath = pluginState.danmakuFileList.selectedPaths.length > 0 ? pluginState.danmakuFileList.selectedPaths[0] : "";
     var pendingInfo = pendingPath ? findDanmakuFileByPath(pendingPath) : null;
     var loadedName = pendingInfo ? pendingInfo.filename : (pendingPath ? pendingPath.split("/").pop() : "");
     osdAfterDanmakuLoad(loadedName, pending.loadedMessageKey);
     pendingDanmaku = null;
     setObserver(true);
-  } else if (danmakuEnabled && !core.status.idle && !currentVideoUrl && core.status.url) {
+  } else if (pluginState.danmakuEnabled && !core.status.idle && !currentVideoUrl && core.status.url) {
     loadDanmakuForVideo(core.status.url);
   }
 }
@@ -2147,9 +1459,8 @@ function setObserver(start) {
   if (windowScaleListenerID) { event.off("mpv.window-scale.changed", windowScaleListenerID); windowScaleListenerID = null; }
   if (speedListenerID) { event.off("mpv.speed.changed", speedListenerID); speedListenerID = null; }
 
-  if (start && overlayReady && danmakuEnabled) {
-    overlayPostMessage("pause-state", { paused: !!core.status.paused });
-    timePosListenerID = event.on("mpv.time-pos.changed", function (t) {
+  if (start && overlayReady && pluginState.danmakuEnabled) {
+      timePosListenerID = event.on("mpv.time-pos.changed", function (t) {
       overlayPostMessage("time-update", { time: t });
       if (danmakuBrowserWatch) pushBrowserTime(t);
     });
@@ -2160,22 +1471,16 @@ function setObserver(start) {
     speedListenerID = event.on("mpv.speed.changed", function (speed) {
       overlayPostMessage("playback-speed", { speed: speed });
     });
-    var t = mpv.getNumber("time-pos");
-    if (t !== undefined && t !== null) overlayPostMessage("time-update", { time: t });
-    var speed = mpv.getNumber("speed");
-    if (speed !== undefined && speed !== null) {
-      overlayPostMessage("playback-speed", { speed: speed });
-    }
+    overlayPostMessage("toggle-danmaku", playbackSnapshot());
     overlayPostMessage("resize", {});
   }
 }
 
 function toggleDanmaku() {
-  danmakuEnabled = !danmakuEnabled;
-  preferences.set("danmakuEnabled", danmakuEnabled);
-  syncPreferencesSoon();
-  overlayPostMessage("toggle-danmaku", { enabled: danmakuEnabled });
-  if (danmakuEnabled) {
+  commitState({danmakuEnabled: !pluginState.danmakuEnabled});
+
+  overlayPostMessage("toggle-danmaku", playbackSnapshot());
+  if (pluginState.danmakuEnabled) {
     overlay.show();
     if (currentVideoUrl && loadedDanmakuVideoUrl !== currentVideoUrl) {
       loadDanmakuForVideo(currentVideoUrl);
@@ -2185,7 +1490,7 @@ function toggleDanmaku() {
     core.osd(t('danmaku_on'));
   }
   else { setObserver(false); core.osd(t('danmaku_off')); }
-  sidebarPostMessage("danmaku-state", { enabled: danmakuEnabled, canvasMode: currentCanvasMode });
+  sidebarPostMessage("danmaku-state", { enabled: pluginState.danmakuEnabled, canvasMode: pluginState.currentCanvasMode });
 }
 
 function ensureDanmakuEnabled() {
@@ -2193,14 +1498,13 @@ function ensureDanmakuEnabled() {
   // 观察者从未注册,网络/手动路径此时加载弹幕后 overlay 收不到 time-update,
   // 弹幕按自身墙钟盲跑、seek 失效。setObserver(true) 重复调用安全(先注销
   // 再注册,并补发一次时间同步,与 loadDanmakuFile 的自动加载行为一致)。
-  if (danmakuEnabled) { setObserver(true); return; }
-  danmakuEnabled = true;
-  preferences.set("danmakuEnabled", true);
-  syncPreferencesSoon();
-  overlayPostMessage("toggle-danmaku", { enabled: true });
+  if (pluginState.danmakuEnabled) { setObserver(true); return; }
+  commitState({danmakuEnabled: true});
+
+  overlayPostMessage("toggle-danmaku", playbackSnapshot());
   overlay.show();
   setObserver(true);
-  sidebarPostMessage("danmaku-state", { enabled: true, canvasMode: currentCanvasMode });
+  sidebarPostMessage("danmaku-state", { enabled: true, canvasMode: pluginState.currentCanvasMode });
 }
 
 function chooseDanmakuFile() {
@@ -2212,50 +1516,35 @@ function chooseDanmakuFile() {
 function registerSidebarHandlers() {
   sidebarOnMessage("toggle-danmaku", function () { toggleDanmaku(); });
 
-  // 同构设置处理器: 更新全局变量 → 持久化 → 原样转发给 overlay。
-  // [消息名, 偏好键, 载荷字段, 全局变量赋值]
-  var simpleSettings = [
-    ["set-opacity", "danmakuCanvasOpacity", "opacity", function (v) { canvasOpacity = v; }],
-    ["set-fontscale", "niconicommentsFontScale", "scale", function (v) { canvasFontScale = v; }],
-    ["set-canvas-mode", "canvasMode", "mode", function (v) { currentCanvasMode = v; }],
-    ["set-stroke-opacity", "strokeOpacity", "opacity", function (v) { strokeOpacity = v; }],
-    ["set-stroke-width", "strokeWidth", "width", function (v) { strokeWidth = v; }],
-    ["set-stroke-color", "strokeColor", "color", function (v) { strokeColor = v; }],
-    ["set-stroke-inversion-color", "strokeInversionColor", "color", function (v) { strokeInversionColor = v; }],
-    ["set-comment-limit", "commentLimit", "limit", function (v) { commentLimit = v; }],
-    ["set-scroll-speed", "scrollSpeed", "speed", function (v) { scrollSpeed = v; }]
-  ];
-  simpleSettings.forEach(function (entry) {
+  // [message, state property, payload field]. Persistence lives in commitState.
+  [
+    ['set-opacity', 'canvasOpacity', 'opacity'], ['set-fontscale', 'canvasFontScale', 'scale'],
+    ['set-canvas-mode', 'currentCanvasMode', 'mode'], ['set-stroke-opacity', 'strokeOpacity', 'opacity'],
+    ['set-stroke-width', 'strokeWidth', 'width'], ['set-stroke-color', 'strokeColor', 'color'],
+    ['set-stroke-inversion-color', 'strokeInversionColor', 'color'], ['set-comment-limit', 'commentLimit', 'limit'],
+    ['set-scroll-speed', 'scrollSpeed', 'speed']
+  ].forEach(function (entry) {
     sidebarOnMessage(entry[0], function (data) {
-      var value = data[entry[2]];
-      entry[3](value);
-      preferences.set(entry[1], value);
-      syncPreferencesSoon();
-      overlayPostMessage(entry[0], data);
+      let patch = {};
+      patch[entry[1]] = data[entry[2]];
+      commitState(patch);
     });
   });
 
   sidebarOnMessage("set-danmaku-force-simplified", function (data) {
-    danmakuForceSimplified = !!data.value;
-
-    preferences.set("danmakuForceSimplified", danmakuForceSimplified);
-    syncPreferencesSoon();
+    commitState({danmakuForceSimplified: !!data.value});
 
     // 当前已加载弹幕时重新驱动加载管道（内容经 getEffectiveContent 单源转换）
-    // nico-json 只可能是日语弹幕，繁简转换对其无意义（getEffectiveContent 也不转换该格式），跳过重建
-    if (currentDanmakuStatus.fileType !== 'nico-json') {
-      resendDanmakuToOverlay();
-    }
+    resendDanmakuToOverlay();
     // 过滤 tab 列表与 overlay 同源: 简体开关变化 → 重新构建并推送
     notifyBrowserDataChanged();
   });
 
   sidebarOnMessage("set-danmaku-auto-offset", function (data) {
-    danmakuAutoOffset = !!data.value;
-    preferences.set("danmakuAutoOffset", danmakuAutoOffset);
-    syncPreferencesSoon();
-    if (danmakuAutoOffset && currentDanmakuStatus.fileType === 'nico-json') {
-      var selectedPath = danmakuFileList.selectedPaths.length > 0 ? danmakuFileList.selectedPaths[0] : null;
+    commitState({danmakuAutoOffset: !!data.value});
+
+    if (pluginState.danmakuAutoOffset && pluginState.currentDanmakuStatus.fileType === 'nico-json') {
+      var selectedPath = pluginState.danmakuFileList.selectedPaths.length > 0 ? pluginState.danmakuFileList.selectedPaths[0] : null;
       if (selectedPath && danmakuCache[selectedPath]) {
         checkNicoJsonDuration(danmakuCache[selectedPath]);
       }
@@ -2271,9 +1560,8 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("set-style-preset", function (data) {
-    stylePreset = data.preset || "nico";
-    preferences.set("stylePreset", stylePreset);
-    syncPreferencesSoon();
+    commitState({stylePreset: data.preset || "nico"});
+
   });
 
   sidebarOnMessage("set-danmaku-filter", function (data) {
@@ -2287,68 +1575,57 @@ function registerSidebarHandlers() {
   });
 
   // ── 屏蔽词 ──
-  sidebarOnMessage("danmaku-blocklist-request", function () {
-    sidebarPostMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
-  });
 
   sidebarOnMessage("danmaku-blocklist-set-enabled", function (data) {
-    danmakuBlocklistEnabled = !!data.enabled;
-    preferences.set("danmakuBlocklistEnabled", danmakuBlocklistEnabled);
-    syncPreferencesSoon();
+    commitState({danmakuBlocklistEnabled: !!data.enabled});
+
     // 屏蔽词为零时开关不影响弹幕内容,跳过重建以省性能
-    if (danmakuBlocklist.length > 0) {
+    if (pluginState.danmakuBlocklist.length > 0) {
       notifyBrowserDataChanged();
       resendDanmakuToOverlay();
     }
-    sidebarPostMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
+    sidebarPostMessage("danmaku-blocklist-state", { enabled: pluginState.danmakuBlocklistEnabled, words: pluginState.danmakuBlocklist.slice() });
   });
 
   sidebarOnMessage("danmaku-blocklist-add", function (data) {
     var w = String(data.word || '').trim();
     if (!w) return;
-    if (danmakuBlocklist.indexOf(w) === -1) danmakuBlocklist.push(w);
-    preferences.set("danmakuBlocklist", JSON.stringify(danmakuBlocklist));
-    syncPreferencesSoon();
+    if (pluginState.danmakuBlocklist.indexOf(w) === -1) commitState({danmakuBlocklist: pluginState.danmakuBlocklist.concat(w)});
+
     rebuildBlockRegexes();
     notifyBrowserDataChanged();
     resendDanmakuToOverlay();
-    sidebarPostMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
+    sidebarPostMessage("danmaku-blocklist-state", { enabled: pluginState.danmakuBlocklistEnabled, words: pluginState.danmakuBlocklist.slice() });
   });
 
   // 按词值删除(不按下标): 渲染与点击之间列表可能变化,下标会删错词
   sidebarOnMessage("danmaku-blocklist-remove", function (data) {
     var word = data && data.word !== undefined ? String(data.word) : null;
-    var idx = word !== null ? danmakuBlocklist.indexOf(word) : -1;
+    var idx = word !== null ? pluginState.danmakuBlocklist.indexOf(word) : -1;
     if (idx < 0) return;
-    danmakuBlocklist.splice(idx, 1);
-    preferences.set("danmakuBlocklist", JSON.stringify(danmakuBlocklist));
-    syncPreferencesSoon();
+    commitState({danmakuBlocklist: pluginState.danmakuBlocklist.filter(function (_, i) { return i !== idx; })});
+
     rebuildBlockRegexes();
     notifyBrowserDataChanged();
     resendDanmakuToOverlay();
-    sidebarPostMessage("danmaku-blocklist-state", { enabled: danmakuBlocklistEnabled, words: danmakuBlocklist.slice() });
+    sidebarPostMessage("danmaku-blocklist-state", { enabled: pluginState.danmakuBlocklistEnabled, words: pluginState.danmakuBlocklist.slice() });
   });
 
   // ── 顶部 / 底部弹幕屏蔽 ──
   function sendPositionFilterState() {
     sidebarPostMessage("danmaku-position-filter-state", {
-      danmakuBlockTopEnabled: danmakuBlockTopEnabled,
-      danmakuBlockBottomEnabled: danmakuBlockBottomEnabled,
+      danmakuBlockTopEnabled: pluginState.danmakuBlockTopEnabled,
+      danmakuBlockBottomEnabled: pluginState.danmakuBlockBottomEnabled,
     });
   }
 
-  sidebarOnMessage("danmaku-position-filter-request", sendPositionFilterState);
-
   sidebarOnMessage("danmaku-position-filter-set", function (data) {
     if (!data) return;
-    let top = typeof data.danmakuBlockTopEnabled === 'boolean' ? data.danmakuBlockTopEnabled : danmakuBlockTopEnabled;
-    let bottom = typeof data.danmakuBlockBottomEnabled === 'boolean' ? data.danmakuBlockBottomEnabled : danmakuBlockBottomEnabled;
-    if (top !== danmakuBlockTopEnabled || bottom !== danmakuBlockBottomEnabled) {
-      danmakuBlockTopEnabled = top;
-      danmakuBlockBottomEnabled = bottom;
-      preferences.set("danmakuBlockTopEnabled", top);
-      preferences.set("danmakuBlockBottomEnabled", bottom);
-      syncPreferencesSoon();
+    let top = typeof data.danmakuBlockTopEnabled === 'boolean' ? data.danmakuBlockTopEnabled : pluginState.danmakuBlockTopEnabled;
+    let bottom = typeof data.danmakuBlockBottomEnabled === 'boolean' ? data.danmakuBlockBottomEnabled : pluginState.danmakuBlockBottomEnabled;
+    if (top !== pluginState.danmakuBlockTopEnabled || bottom !== pluginState.danmakuBlockBottomEnabled) {
+      commitState({danmakuBlockTopEnabled: top, danmakuBlockBottomEnabled: bottom});
+
       notifyBrowserDataChanged();
       resendDanmakuToOverlay();
     }
@@ -2356,14 +1633,11 @@ function registerSidebarHandlers() {
   });
 
   // ── 弹幕去重 ──
-  sidebarOnMessage("danmaku-dedupe-request", function () {
-    sidebarPostMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
-  });
 
   // 点击列表时间戳 → 跳转到该弹幕时间(弹幕 vpos 换算为视频秒,考虑弹幕偏移)
   sidebarOnMessage("danmaku-seek", function (data) {
     if (!data || typeof data.vpos !== 'number' || !isFinite(data.vpos)) return;
-    var sec = data.vpos / 100 - (danmakuTimeOffsetSec || 0);
+    var sec = data.vpos / 100 - (pluginState.danmakuTimeOffsetSec || 0);
     if (sec < 0) sec = 0;
     try {
       core.seekTo(sec);
@@ -2373,26 +1647,23 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("danmaku-dedupe-set", function (data) {
-    if (data.enabled !== undefined) danmakuDedupeEnabled = !!data.enabled;
+    if (data.enabled !== undefined) commitState({danmakuDedupeEnabled: !!data.enabled});
     if (data.window !== undefined) {
       var w = parseFloat(data.window);
-      if (isFinite(w) && w >= 1 && w <= 5) danmakuDedupeWindow = w;
+      if (isFinite(w) && w >= 1 && w <= 5) commitState({danmakuDedupeWindow: w});
     }
-    preferences.set("danmakuDedupeEnabled", danmakuDedupeEnabled);
-    preferences.set("danmakuDedupeWindow", danmakuDedupeWindow);
-    syncPreferencesSoon();
+
     notifyBrowserDataChanged();
     resendDanmakuToOverlay();
-    sidebarPostMessage("danmaku-dedupe-state", { enabled: danmakuDedupeEnabled, window: danmakuDedupeWindow });
+    sidebarPostMessage("danmaku-dedupe-state", { enabled: pluginState.danmakuDedupeEnabled, window: pluginState.danmakuDedupeWindow });
   });
 
   sidebarOnMessage("danmaku-browser-vis-set", function (data) {
     if (data && data.visible !== undefined) {
-      danmakuBrowserVisible = !!data.visible;
-      preferences.set("danmakuBrowserVisible", danmakuBrowserVisible);
-      syncPreferencesSoon();
-      sidebarPostMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible });
-      if (danmakuBrowserVisible && browserDataPending) {
+      commitState({danmakuBrowserVisible: !!data.visible});
+
+      sidebarPostMessage("danmaku-browser-vis-state", { visible: pluginState.danmakuBrowserVisible });
+      if (pluginState.danmakuBrowserVisible && browserDataPending) {
         browserDataPending = false;
         sendDanmakuBrowserData(buildDanmakuBrowserList());
       }
@@ -2401,32 +1672,8 @@ function registerSidebarHandlers() {
 
   sidebarOnMessage("request-state", function () {
     // 主进程在视频/弹幕切换时维护状态;侧栏懒加载只拉取快照,不能重建并覆盖会话文件列表。
-    sidebarPostMessage("danmaku-state", {
-      enabled: danmakuEnabled,
-      canvasMode: currentCanvasMode,
-      canvasOpacity: canvasOpacity,
-      canvasFontScale: canvasFontScale,
-      strokeOpacity: strokeOpacity,
-      strokeWidth: strokeWidth,
-      strokeColor: strokeColor,
-      strokeInversionColor: strokeInversionColor,
-      commentLimit: commentLimit,
-      scrollSpeed: scrollSpeed,
-      danmakuTimeOffsetSec: danmakuTimeOffsetSec,
-      danmakuFontFamily: danmakuFontFamily,
-      danmakuFontWeight: danmakuFontWeight,
-      stylePreset: stylePreset,
-      danmakuForceSimplified: danmakuForceSimplified,
-      danmakuAutoOffset: danmakuAutoOffset,
-      danmakuBlockTopEnabled: danmakuBlockTopEnabled,
-      danmakuBlockBottomEnabled: danmakuBlockBottomEnabled,
-      danmakuFileType: currentDanmakuStatus.fileType,
-      danmakuLoaded: currentDanmakuStatus.isLoaded,
-      danmakuFilterDensity: danmakuFilterDensity,
-      nicoJsonDurationDiff: nicoJsonDurationDiff,
-      nicoJsonHasDuration: nicoJsonHasDuration,
-    });
-    sidebarPostMessage("danmaku-file-list", danmakuFileList);
+    sidebarPostMessage('danmaku-state', stateSnapshot());
+    sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
     sendDanmakuFilterInfo();
     ddpSyncState();
   });
@@ -2442,14 +1689,14 @@ function registerSidebarHandlers() {
   sidebarOnMessage("danmaku-file-add", chooseDanmakuFile);
 
   sidebarOnMessage("dandanplay-set-auto-network", function (data) {
-    dandanplayAutoNetwork = !!data.autoNetwork;
-    preferences.set("dandanplayAutoNetwork", dandanplayAutoNetwork);
-    syncPreferencesSoon();
+    commitState({dandanplayAutoNetwork: !!data.autoNetwork});
+
     ddpSyncState();
   });
 
   sidebarOnMessage("dandanplay-search", function (data) {
     let generation = ++ddpSearchGeneration;
+    ddpBangumiGeneration += 1;
     let searchId = data.searchId;
     var keyword = data.keyword;
     if (!keyword) return;
@@ -2472,9 +1719,12 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("dandanplay-get-bangumi", function (data) {
+    let generation = ++ddpBangumiGeneration;
+    let searchGeneration = ddpSearchGeneration;
     var bangumiId = data.bangumiId;
     var animeTitle = data.animeTitle;
     ddpGetBangumi(bangumiId).then(function(res) {
+      if (generation !== ddpBangumiGeneration || searchGeneration !== ddpSearchGeneration) return;
       var result = ddpParseBody(res);
       if (!result || !result.bangumi) {
         sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: [], error: t('ddp_api_error') });
@@ -2486,6 +1736,7 @@ function registerSidebarHandlers() {
       }
       sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: episodes });
     }).catch(function(err) {
+      if (generation !== ddpBangumiGeneration || searchGeneration !== ddpSearchGeneration) return;
       console.log('[bangumi] API error: ' + ddpErrStr(err));
       sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: [], error: ddpErrStr(err) });
     });
@@ -2494,13 +1745,13 @@ function registerSidebarHandlers() {
   sidebarOnMessage("dandanplay-select-match", function (data) {
     var match = data.match;
     if (match && match.episodeId) {
-      dandanplayState.matchType = 'filename';
+      commitDdpState({matchType: 'filename'});
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, true, DDP_LOAD_ORIGIN.MANUAL);
     }
   });
 
   sidebarOnMessage("dandanplay-select-episode", function (data) {
-    dandanplayState.matchType = 'filename';
+    commitDdpState({matchType: 'filename'});
     ddpLoadComments(data.episodeId, data.animeTitle, data.episodeTitle, true, DDP_LOAD_ORIGIN.MANUAL);
   });
 
@@ -2510,16 +1761,10 @@ function registerSidebarHandlers() {
     }
   });
 
-  // sidebar 加载即上报插件根目录并持久化(简繁转换器初始化不依赖过滤 tab 打开)
-  sidebarOnMessage("danmaku-sidebar-ready", function (data) {
-    if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
-  });
-
   // 过滤 tab: sidebar 懒加载,只能由 sidebar 主动拉取弹幕列表;watch 控制播放时间推送
   sidebarOnMessage("danmaku-browser-request", function (data) {
-    if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
-    sidebarPostMessage("danmaku-browser-vis-state", { visible: danmakuBrowserVisible });
-    if (danmakuBrowserVisible) {
+    sidebarPostMessage("danmaku-browser-vis-state", { visible: pluginState.danmakuBrowserVisible });
+    if (pluginState.danmakuBrowserVisible) {
       sendDanmakuBrowserData(buildDanmakuBrowserList());
     } else {
       browserDataPending = true;
@@ -2538,17 +1783,17 @@ function registerSidebarHandlers() {
 }
 
 event.on("iina.window-loaded", function () {
+  overlayReady = false;
+  if (pluginState.danmakuFileList.selectedPaths.length) pendingDanmaku = {};
   overlay.loadFile("overlay/index.html");
   sidebar.loadFile("sidebar/index.html");
   registerSidebarHandlers();
 });
 
-
 event.on("iina.plugin-overlay-loaded", function () {
   registerOverlayHandlers();
   overlayPostMessage("request-overlay-state", {});
   overlay.show();
-  setTimeout(function () { if (!overlayReady) markOverlayReady(); }, 2000);
 });
 
 event.on("iina.file-loaded", function (url) {
@@ -2576,19 +1821,18 @@ event.on("iina.window-fs.changed", function (fullscreen) {
 function registerOverlayHandlers() {
   // IINA replaces listeners by name; re-register after every overlay navigation.
   overlayOnMessage("overlay-ready", function (data) {
-    if (data && data.pluginRoot) persistPluginRoot(data.pluginRoot);
     markOverlayReady();
   });
 
   overlayOnMessage("danmaku-load-result", function (data) {
     if (!data || data.loadId !== overlayLoadId) return;
-    updateDanmakuStatus({ fileType: currentDanmakuStatus.fileType, isLoaded: !!data.success });
+    updateDanmakuStatus({ fileType: pluginState.currentDanmakuStatus.fileType, isLoaded: !!data.success });
     if (!data.success) {
-      let path = danmakuFileList.selectedPaths[0];
+      let path = pluginState.danmakuFileList.selectedPaths[0];
       sidebarPostMessage("danmaku-file-error", { path: path, message: t('render_failed') });
       core.osd(t('render_failed'));
     } else {
-      sidebarPostMessage("danmaku-file-list", danmakuFileList);
+      sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
     }
   });
 

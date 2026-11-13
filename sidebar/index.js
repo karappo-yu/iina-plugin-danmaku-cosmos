@@ -86,33 +86,8 @@ var ddpState = {
 var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closest('.section'), strokeOpacitySlider.closest('.section')];
 
 var state = {
-  enabled: true,
-  useCanvasRenderer: false,
-  danmakuForceSimplified: false, // 与 Info.json preferenceDefaults 一致
-  danmakuAutoOffset: false, // 与 main.js 的默认值一致: 需用户手动开启
-  danmakuType: 'none',
-  danmakuLoaded: false,
-  canvasOpacity: 0.8,
-  canvasFontScale: 1.0,
-  strokeOpacity: 0.4,
-  strokeWidth: 2.8,
-  strokeColor: '#000000',
-  strokeInversionColor: '#ffffff',
-  commentLimit: 0,
-  scrollSpeed: 1.0,
-  danmakuOffsetSeconds: 0,
-  nicoJsonDurationDiff: null,
-  nicoJsonHasDuration: false,
-  danmakuFontFamily: "",
-  danmakuFontWeight: "400",
-  stylePreset: "nico",
-  nicoJsonTotalCount: 0,
-  danmakuFilterStartDay: null,
-  danmakuFilterEndDay: null,
-  dateInfo: { firstDay: null, lastDay: null, dayCounts: [], undatedCount: 0 },
-  danmakuFilterDensity: 0,
-  sourceTotalCount: 0,
-  filteredCount: 0,
+  dateInfo: {firstDay: null, lastDay: null, dayCounts: [], undatedCount: 0},
+  danmakuFilterStartDay: null, danmakuFilterEndDay: null,
 };
 
 var fileListState = {
@@ -191,6 +166,7 @@ function updateDanmakuInfoUI() {
 }
 
 function updateEnabledUI() {
+  if (state.enabled === undefined) return;
   var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0;
   var show = state.enabled && (state.danmakuLoaded || hasFiles);
   settingsSections.forEach(function(sec) {
@@ -500,24 +476,20 @@ var STYLE_PRESETS = {
 };
 
 function applyStylePreset(p) {
-  state.canvasFontScale = p.fontScale;
   fontsizeSlider.value = Math.round(p.fontScale * 100);
   fontsizeValue.textContent = Math.round(p.fontScale * 100) + "%";
   iina.postMessage("set-fontscale", { scale: p.fontScale });
-  state.danmakuFontWeight = p.fontWeight;
   iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: p.fontWeight });
-  state.strokeWidth = p.strokeWidth;
   strokeWidthSlider.value = p.strokeWidth;
   strokeWidthValue.textContent = String(p.strokeWidth) + 'px';
   iina.postMessage("set-stroke-width", { width: p.strokeWidth });
-  state.scrollSpeed = p.scrollSpeed;
   speedSlider.value = Math.round(p.scrollSpeed * 100);
   speedValue.textContent = Math.round(p.scrollSpeed * 100) + '%';
   iina.postMessage("set-scroll-speed", { speed: p.scrollSpeed });
-  updateFontUI();
 }
 
 function updateUI() {
+  if (state.enabled === undefined) return;
   var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0;
   var hasDanmaku = state.danmakuLoaded || hasFiles;
   toggleDanmaku.checked = state.enabled && hasDanmaku;
@@ -559,7 +531,7 @@ function syncStylePresetUI() {
 }
 
 function updateFilterUI() {
-  let showRange = state.enabled && state.danmakuLoaded && state.danmakuType === 'nico-json' && state.dateInfo.firstDay !== null;
+  let showRange = state.enabled && state.danmakuLoaded && state.dateInfo.firstDay !== null;
   if (filterSection) filterSection.style.display = showRange ? '' : 'none';
   if (showRange) {
     updateRangeSelector();
@@ -667,8 +639,6 @@ function updateRangeSelector() {
 
 toggleDanmaku.addEventListener("change", function () {
   if (toggleDanmaku.disabled) { toggleDanmaku.checked = false; return; }
-  state.enabled = toggleDanmaku.checked;
-  updateEnabledUI();
   iina.postMessage("toggle-danmaku");
 });
 
@@ -686,12 +656,8 @@ if (tabButtons.length) {
         tabFilter.style.display = showFilter ? "" : "none";
         if (showFilter) {
           // sidebar 懒加载: 主动拉取弹幕列表 + 开启播放时间推送
-          // 带上插件根目录(file:// 定位),供 main 读取 overlay/lib/opencc.min.js(简繁转换)
-          iina.postMessage("danmaku-browser-request", { pluginRoot: browserPluginRoot() });
+          iina.postMessage("danmaku-browser-request", {});
           iina.postMessage("danmaku-browser-watch", { watch: true });
-          iina.postMessage("danmaku-blocklist-request");
-          iina.postMessage("danmaku-position-filter-request");
-          iina.postMessage("danmaku-dedupe-request");
         } else {
           iina.postMessage("danmaku-browser-watch", { watch: false });
         }
@@ -709,7 +675,6 @@ if (fileAddBtn) {
 if (canvasRendererToggle) {
   canvasRendererToggle.addEventListener("change", function () {
     var useCanvas = canvasRendererToggle.checked;
-    state.useCanvasRenderer = useCanvas;
     iina.postMessage("set-canvas-mode", { mode: useCanvas ? 'default' : 'css' });
   });
 }
@@ -717,7 +682,6 @@ if (canvasRendererToggle) {
 if (danmakuForceSimplifiedToggle) {
   danmakuForceSimplifiedToggle.addEventListener("change", function () {
     var forceSimp = danmakuForceSimplifiedToggle.checked;
-    state.danmakuForceSimplified = forceSimp;
     
     iina.postMessage("set-danmaku-force-simplified", { value: forceSimp });
   });
@@ -726,47 +690,40 @@ if (danmakuForceSimplifiedToggle) {
 if (danmakuAutoOffsetToggle) {
   danmakuAutoOffsetToggle.addEventListener("change", function () {
     var on = danmakuAutoOffsetToggle.checked;
-    state.danmakuAutoOffset = on;
     iina.postMessage("set-danmaku-auto-offset", { value: on });
   });
 }
 
 opacitySlider.addEventListener("input", function () {
   var val = parseFloat(opacitySlider.value);
-  state.canvasOpacity = val;
   opacityValue.textContent = Math.round(val * 100) + "%";
   iina.postMessage("set-opacity", { opacity: val });
 });
 
 fontsizeSlider.addEventListener("input", function () {
   var val = parseFloat(fontsizeSlider.value) / 100;
-  state.canvasFontScale = val;
   fontsizeValue.textContent = Math.round(val * 100) + "%";
   iina.postMessage("set-fontscale", { scale: val });
 });
 
 strokeOpacitySlider.addEventListener("input", function () {
   var val = parseFloat(strokeOpacitySlider.value) / 100;
-  state.strokeOpacity = val;
   strokeOpacityValue.textContent = Math.round(val * 100) + "%";
   iina.postMessage("set-stroke-opacity", { opacity: val });
 });
 
 strokeWidthSlider.addEventListener("input", function () {
   var val = parseFloat(strokeWidthSlider.value);
-  state.strokeWidth = val;
   strokeWidthValue.textContent = String(val) + 'px';
   iina.postMessage("set-stroke-width", { width: val });
 });
 
 strokeColorInput.addEventListener("input", function () {
-  state.strokeColor = strokeColorInput.value;
-  iina.postMessage("set-stroke-color", { color: state.strokeColor });
+  iina.postMessage("set-stroke-color", { color: strokeColorInput.value });
 });
 
 strokeInversionInput.addEventListener("input", function () {
-  state.strokeInversionColor = strokeInversionInput.value;
-  iina.postMessage("set-stroke-inversion-color", { color: state.strokeInversionColor });
+  iina.postMessage("set-stroke-inversion-color", { color: strokeInversionInput.value });
 });
 
 commentLimitSlider.addEventListener("input", function () {
@@ -777,7 +734,6 @@ commentLimitSlider.addEventListener("input", function () {
 commentLimitSlider.addEventListener("change", function () {
   let val = parseInt(commentLimitSlider.value, 10);
   let limit = val >= COMMENT_LIMIT_SLIDER_UNLIMITED ? 0 : val;
-  state.commentLimit = limit;
   iina.postMessage("set-comment-limit", { limit: limit });
 });
 
@@ -785,9 +741,7 @@ if (offsetInput) {
   offsetInput.addEventListener("change", function () {
     var val = parseFloat(offsetInput.value);
     if (isNaN(val)) val = 0;
-    state.danmakuOffsetSeconds = val;
-    iina.postMessage("set-danmaku-offset", { offset: state.danmakuOffsetSeconds });
-    updateOffsetUI();
+    iina.postMessage("set-danmaku-offset", { offset: val });
   });
 }
 
@@ -799,13 +753,11 @@ if (fontSelect) {
       fontCustomInput.focus();
       var customFamily = fontCustomInput.value.trim();
       if (customFamily) {
-        state.danmakuFontFamily = customFamily;
         iina.postMessage("set-danmaku-font", { fontFamily: customFamily, fontWeight: state.danmakuFontWeight });
       }
     } else {
       fontCustomRow.style.display = "none";
       var preset = FONT_PRESETS[key] !== undefined ? FONT_PRESETS[key] : "";
-      state.danmakuFontFamily = preset;
       iina.postMessage("set-danmaku-font", { fontFamily: preset, fontWeight: state.danmakuFontWeight });
     }
   });
@@ -813,22 +765,19 @@ if (fontSelect) {
 
 if (fontCustomInput) {
   fontCustomInput.addEventListener("input", function () {
-    state.danmakuFontFamily = fontCustomInput.value.trim();
-    iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: state.danmakuFontWeight });
+    iina.postMessage("set-danmaku-font", { fontFamily: fontCustomInput.value.trim(), fontWeight: state.danmakuFontWeight });
   });
 }
 
 if (fontWeightSlider) {
   fontWeightSlider.addEventListener("input", function () {
-    state.danmakuFontWeight = fontWeightSlider.value;
     if (fontWeightValue) fontWeightValue.textContent = fontWeightSlider.value;
-    iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: state.danmakuFontWeight });
+    iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: fontWeightSlider.value });
     });
 }
 
 speedSlider.addEventListener("input", function () {
   var val = parseFloat(speedSlider.value) / 100;
-  state.scrollSpeed = val;
   speedValue.textContent = Math.round(val * 100) + '%';
   iina.postMessage("set-scroll-speed", { speed: val });
 });
@@ -841,9 +790,7 @@ if (stylePresetSegmented) {
     var preset = STYLE_PRESETS[presetName];
     if (!preset) return;
     applyStylePreset(preset);
-    state.stylePreset = presetName;
     iina.postMessage("set-style-preset", { preset: presetName });
-    syncStylePresetUI();
   });
 }
 
@@ -936,15 +883,11 @@ document.addEventListener("keydown", function (e) {
   // must not also adjust the time offset.
   if ((key === 'a' || key === 'd') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
     e.preventDefault();
-    var delta = Math.abs(state.danmakuOffsetSeconds || 0);
-    if (delta <= 0) delta = 1;
-    if (key === 'a') {
-      state.danmakuOffsetSeconds = (state.danmakuOffsetSeconds || 0) - delta;
-    } else {
-      state.danmakuOffsetSeconds = (state.danmakuOffsetSeconds || 0) + delta;
-    }
-    iina.postMessage("set-danmaku-offset", { offset: state.danmakuOffsetSeconds });
-    updateOffsetUI();
+    var current = parseFloat(offsetInput.value) || 0;
+    var delta = Math.abs(current) || 1;
+    var offset = current + (key === 'a' ? -delta : delta);
+    offsetInput.value = offset;
+    iina.postMessage("set-danmaku-offset", { offset: offset });
   }
 });
 
@@ -972,7 +915,6 @@ if (densitySlider) {
   densitySlider.addEventListener("change", function () {
     var val = parseInt(densitySlider.value, 10);
     var density = val >= DENSITY_SLIDER_OFF ? 0 : val;
-    state.danmakuFilterDensity = density;
     iina.postMessage("set-danmaku-filter-density", { density: density });
   });
 }
@@ -1012,6 +954,9 @@ onPluginMessage("danmaku-state", function (data) {
   if (data.danmakuForceSimplified !== undefined) state.danmakuForceSimplified = !!data.danmakuForceSimplified;
   if (data.danmakuAutoOffset !== undefined) state.danmakuAutoOffset = !!data.danmakuAutoOffset;
   applyPositionFilterState(data);
+  if (data.blocklist) applyBlocklistState(data.blocklist);
+  if (data.dedupe) applyDedupeState(data.dedupe);
+  if (data.danmakuBrowserVisible !== undefined) applyBrowserVis(data.danmakuBrowserVisible);
   if (data.danmakuFileType !== undefined) state.danmakuType = data.danmakuFileType;
   if (data.danmakuLoaded !== undefined) state.danmakuLoaded = data.danmakuLoaded;
   if (data.danmakuFilterDensity !== undefined) state.danmakuFilterDensity = data.danmakuFilterDensity;
@@ -1054,7 +999,7 @@ onPluginMessage("danmaku-file-error", function (data) {
 });
 
 applyI18n();
-iina.postMessage("request-state");
+
 
 var ddpMatchesExpanded = false;
 
@@ -1361,16 +1306,6 @@ browserList.spacerEl = browserList.el.querySelector(".danmaku-browser-spacer");
 browserList.emptyEl = browserList.el.querySelector(".danmaku-browser-empty");
 
 // sidebar 自身的 file:// 根目录,上报给 main 用于读 overlay/lib/opencc.min.js
-function browserPluginRoot() {
-  try {
-    var u = new URL('../', window.location.href);
-    var p = decodeURIComponent(u.pathname);
-    if (p.length > 1 && p.charAt(p.length - 1) === '/') p = p.slice(0, -1);
-    return p;
-  } catch (e) {
-    return '';
-  }
-}
 
 function browserFmtTime(vpos) {
   var sec = Math.floor((vpos || 0) / 100);
@@ -1509,59 +1444,16 @@ function requestBrowserDataRefresh() {
   if (now - browserLastRefreshRequest < 1500) return;
   browserLastRefreshRequest = now;
   debugLog('danmaku-browser: data missing, re-requesting');
-  iina.postMessage("danmaku-browser-request", { pluginRoot: browserPluginRoot() });
+  iina.postMessage("danmaku-browser-request", {});
   iina.postMessage("danmaku-browser-watch", { watch: true });
 }
 
-// main.js 以 base64 编码投递(绕开 IINA 桥的模板字符串注入);解码失败返回 null
-function browserDecodePayload(payload) {
-  try {
-    var bin = atob(payload);
-    var bytes = [];
-    for (var i = 0; i < bin.length; i++) bytes.push(bin.charCodeAt(i));
-    return JSON.parse(browserUtf8Decode(bytes));
-  } catch (e) {
-    return null;
-  }
-}
-
-function browserUtf8Decode(bytes) {
-  var out = '';
-  for (var i = 0; i < bytes.length;) {
-    var b = bytes[i];
-    if (b < 0x80) {
-      out += String.fromCharCode(b);
-      i++;
-    } else if (b < 0xE0) {
-      out += String.fromCharCode(((b & 0x1F) << 6) | (bytes[i + 1] & 0x3F));
-      i += 2;
-    } else if (b < 0xF0) {
-      out += String.fromCharCode(((b & 0x0F) << 12) | ((bytes[i + 1] & 0x3F) << 6) | (bytes[i + 2] & 0x3F));
-      i += 3;
-    } else {
-      var cp = ((b & 0x07) << 18) | ((bytes[i + 1] & 0x3F) << 12) | ((bytes[i + 2] & 0x3F) << 6) | (bytes[i + 3] & 0x3F);
-      out += String.fromCharCode(((cp - 0x10000) >> 10) + 0xD800, ((cp - 0x10000) & 0x3FF) + 0xDC00);
-      i += 4;
-    }
-  }
-  return out;
-}
+// Chunk payloads arrive decoded by the shared IPC envelope boundary.
 
 onPluginMessage("danmaku-browser-data", function (data) {
   if (!data) return;
-  var items = null;
-  if (typeof data.payload === 'string') {
-    items = browserDecodePayload(data.payload);
-    if (items === null) {
-      requestBrowserDataRefresh(); // 解码失败: 请求重发
-      return;
-    }
-  } else if (Array.isArray(data.items)) {
-    items = data.items;
-  }
-  if (items === null) {
-    return;
-  }
+  var items = data.items;
+  if (!Array.isArray(items)) return;
   // 缺 chunkIndex/done 字段时视为单块完整消息
   var chunkIndex = data.chunkIndex === undefined ? 0 : data.chunkIndex;
   var isDone = data.done !== false;
@@ -1679,8 +1571,7 @@ onPluginMessage("danmaku-browser-vis-state", function (data) {
   if (data && data.visible !== undefined) applyBrowserVis(data.visible);
 });
 
-// 加载即上报插件根目录(main 的简繁转换器初始化不依赖过滤 tab 打开)
-iina.postMessage("danmaku-sidebar-ready", { pluginRoot: browserPluginRoot() });
+
 
 /* ========== 屏蔽词(tag 列表 + 开关 + 添加/删除) ========== */
 var blocklistToggle = document.getElementById("danmaku-blocklist-toggle");
@@ -1855,3 +1746,5 @@ if (typeof ResizeObserver !== 'undefined') {
     else browserRenderList(browserList);
   }).observe(browserList.el);
 }
+
+iina.postMessage("request-state");
