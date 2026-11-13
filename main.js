@@ -21,9 +21,9 @@ var danmakuAutoOffset = preferences.get("danmakuAutoOffset") !== undefined ? pre
 var danmakuBlocklist = [];
 try { danmakuBlocklist = JSON.parse(preferences.get("danmakuBlocklist") || '[]') || []; } catch (e) { danmakuBlocklist = []; }
 if (!Array.isArray(danmakuBlocklist)) danmakuBlocklist = [];
-// 持久化的屏蔽词也必须在载入时规范化和去重,保证增删查与回显使用同一形式。
+// Preserve literal text; transport escaping belongs exclusively to postSafeMessage.
 danmakuBlocklist = danmakuBlocklist
-  .map(function (w) { return sanitizeIPCString(String(w)).trim(); })
+  .map(function (w) { return String(w).trim(); })
   .filter(function (w, i, arr) { return w && arr.indexOf(w) === i; });
 var danmakuBlocklistEnabled = !!preferences.get("danmakuBlocklistEnabled");
 let danmakuBlockTopEnabled = !!preferences.get("danmakuBlockTopEnabled");
@@ -57,8 +57,6 @@ var DDP_API_BASE = 'https://api.dandanplay.net';
 var DDP_LOAD_ORIGIN = { AUTO: 'auto', MANUAL: 'manual' };
 
 var dandanplayAutoNetwork = preferences.get("dandanplayAutoNetwork") !== false;
-var dandanplayChConvert = preferences.get("dandanplayChConvert") !== undefined ? preferences.get("dandanplayChConvert") : 0;
-var dandanplayWithRelated = preferences.get("dandanplayWithRelated") !== undefined ? preferences.get("dandanplayWithRelated") : true;
 
 var dandanplayState = {
   status: 'idle',
@@ -262,51 +260,6 @@ function persistPluginRoot(p) {
 }
 var openccSimplifier = null;     // 简繁转换器(hk→cn,懒加载;仅强制简体开启时构建)
 
-function sanitizeIPCString(value) {
-  return String(value || '').replace(/[`\u2018\u2019\u201C\u201D]/g, "'");
-}
-
-// 路径传输前编码(encodeURIComponent 输出不含反引号/弯引号): 含这些字符的路径
-// 原样传输仍会让整条消息被桥丢弃。sidebar 把路径当不透明字符串回传,
-// main 在入口(select-danmaku-file)解码后查表——两端一致即可,sidebar 无需感知。
-function encodeIPCPath(p) {
-  return encodeURIComponent(String(p));
-}
-
-function decodeIPCPath(p) {
-  try { return decodeURIComponent(String(p)); } catch (e) { return p; }
-}
-
-// sidebar.postMessage 统一出口: 深度消毒消息里的字符串(反引号/弯引号 → ')。
-// 这些字符会让 IINA 的 sidebar 桥把整条消息静默丢弃(文件名/屏蔽词/字体名
-// 都可能携带)。path 类字段是往返标识符——sidebar 点击条目时原样回传,
-// main 据此查表/file.read,不能做字符替换,改为编码后传输(见 encodeIPCPath)。
-function sanitizeIPCValue(value, key) {
-  if (typeof value === 'string') {
-    return key === 'path' ? encodeIPCPath(value) : sanitizeIPCString(value);
-  }
-  if (Array.isArray(value)) {
-    if (key === 'selectedPaths') return value.map(encodeIPCPath);
-    return value.map(function (item) { return sanitizeIPCValue(item); });
-  }
-  if (value && typeof value === 'object') {
-    let out = {};
-    for (let k in value) {
-      if (Object.prototype.hasOwnProperty.call(value, k)) out[k] = sanitizeIPCValue(value[k], k);
-    }
-    return out;
-  }
-  return value;
-}
-
-function containsTemplateSyntax(value) {
-  if (typeof value === 'string') return value.indexOf('${') !== -1 || value.indexOf('`') !== -1;
-  if (!value || typeof value !== 'object') return false;
-  return Object.keys(value).some(function (key) {
-    return containsTemplateSyntax(key) || containsTemplateSyntax(value[key]);
-  });
-}
-
 function sidebarOnMessage(name, callback) {
   sidebarMessageHandlers[name] = callback;
   sidebar.onMessage(name, callback);
@@ -317,22 +270,23 @@ function overlayOnMessage(name, callback) {
   overlay.onMessage(name, callback);
 }
 
-function sendWebViewMessage(target, key, data) {
+function postSafeMessage(target, key, data) {
   let payload = data === undefined ? {} : data;
   // IINA interpolates JSON into a JS template literal. Also protect ${...},
   // including persisted font names and API text, without altering the content.
-  if (containsTemplateSyntax(payload)) {
-    payload = { encodedPayload: encodeContent(JSON.stringify(payload)) };
+  let json = JSON.stringify(payload);
+  if (/[`\\\u2018-\u201D]|\$\{/.test(json)) {
+    payload = { __encoded: encodeURIComponent(json) };
   }
   target.postMessage(key, payload);
 }
 
 function sidebarPostMessage(key, data) {
-  sendWebViewMessage(sidebar, key, sanitizeIPCValue(data === undefined ? {} : data));
+  postSafeMessage(sidebar, key, data);
 }
 
 function overlayPostMessage(key, data) {
-  sendWebViewMessage(overlay, key, data);
+  postSafeMessage(overlay, key, data);
 }
 
 function applyDanmakuOffset(offsetSec) {
@@ -347,8 +301,7 @@ function applyDanmakuOffset(offsetSec) {
 }
 
 function applyDanmakuFont(fontFamily, fontWeight) {
-  // 字体名来自 sidebar 自由输入,会持久化并经 danmaku-state 回显: 入口消毒
-  danmakuFontFamily = sanitizeIPCString(fontFamily || "");
+  danmakuFontFamily = fontFamily || "";
   danmakuFontWeight = fontWeight || "";
   preferences.set("danmakuFontFamily", danmakuFontFamily);
   preferences.set("danmakuFontWeight", danmakuFontWeight);
@@ -1615,8 +1568,8 @@ function ddpSearchAnime(keyword) {
 
 function ddpGetComments(episodeId) {
   return ddpRequest('GET', '/api/v2/comment/' + episodeId, {
-    withRelated: dandanplayWithRelated ? 'true' : 'false',
-    chConvert: String(dandanplayChConvert)
+    withRelated: 'true',
+    chConvert: '0' // OpenCC is the sole conversion policy.
   });
 }
 
@@ -1747,27 +1700,27 @@ function ddpReadVideoCache(videoPath) {
 function ddpSyncState() {
   sidebarPostMessage("dandanplay-status", {
     status: dandanplayState.status,
-    animeTitle: sanitizeIPCString(dandanplayState.animeTitle),
-    episodeTitle: sanitizeIPCString(dandanplayState.episodeTitle),
+    animeTitle: dandanplayState.animeTitle,
+    episodeTitle: dandanplayState.episodeTitle,
     episodeId: dandanplayState.episodeId,
     commentCount: dandanplayState.commentCount,
-    error: sanitizeIPCString(dandanplayState.error),
-    matches: sanitizeMatches(dandanplayState.matches),
+    error: dandanplayState.error,
+    matches: projectMatches(dandanplayState.matches),
     autoNetwork: dandanplayAutoNetwork,
     matchType: dandanplayState.matchType
   });
 }
 
-function sanitizeMatches(matches) {
+function projectMatches(matches) {
   if (!matches) return null;
   var result = new Array(matches.length);
   for (var i = 0; i < matches.length; i++) {
     var match = matches[i] || {};
     result[i] = {
       animeId: match.animeId,
-      animeTitle: sanitizeIPCString(match.animeTitle),
+      animeTitle: match.animeTitle,
       episodeId: match.episodeId,
-      episodeTitle: sanitizeIPCString(match.episodeTitle),
+      episodeTitle: match.episodeTitle,
       type: match.type,
       typeDescription: match.typeDescription,
       shift: match.shift
@@ -1881,7 +1834,7 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
 
 function ddpUpsertFileListEntry(episodeId, animeTitle, episodeTitle, converted, fresh) {
   var virtualPath = 'dandanplay://' + episodeId;
-  var displayName = sanitizeIPCString((animeTitle || 'DanDanPlay') + ' - ' + (episodeTitle || '') + (fresh ? '' : t('cache_stale')) + ' 🌐');
+  var displayName = (animeTitle || 'DanDanPlay') + ' - ' + (episodeTitle || '') + (fresh ? '' : t('cache_stale')) + ' 🌐';
   danmakuCache[virtualPath] = encodeContent(JSON.stringify(converted));
 
   var existing = findDanmakuFileByPath(virtualPath);
@@ -2351,9 +2304,7 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("danmaku-blocklist-add", function (data) {
-    // 入库前消毒: 含反引号的词会让 danmaku-blocklist-state 回显被 IPC 丢弃,
-    // 且列表按词值回传删除时永远匹配不上——必须在源头杜绝
-    var w = sanitizeIPCString(String(data.word || '')).trim();
+    var w = String(data.word || '').trim();
     if (!w) return;
     if (danmakuBlocklist.indexOf(w) === -1) danmakuBlocklist.push(w);
     preferences.set("danmakuBlocklist", JSON.stringify(danmakuBlocklist));
@@ -2485,8 +2436,7 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("select-danmaku-file", function (data) {
-    // path 经 encodeIPCPath 编码传输,入口解码后查表
-    if (data && data.path) loadDanmakuFile(decodeIPCPath(data.path), { enableDanmaku: true });
+    if (data && data.path) loadDanmakuFile(data.path, { enableDanmaku: true });
   });
 
   sidebarOnMessage("danmaku-file-add", chooseDanmakuFile);
@@ -2511,7 +2461,7 @@ function registerSidebarHandlers() {
         return;
       }
       for (var i = 0; i < result.animes.length; i++) {
-        if (result.animes[i].animeTitle) result.animes[i].animeTitle = sanitizeIPCString(result.animes[i].animeTitle);
+        if (result.animes[i].animeTitle) result.animes[i].animeTitle = result.animes[i].animeTitle;
       }
       sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: result.animes, error: null });
     }).catch(function(err) {
@@ -2532,7 +2482,7 @@ function registerSidebarHandlers() {
       }
       var episodes = result.bangumi.episodes || [];
       for (var i = 0; i < episodes.length; i++) {
-        if (episodes[i].episodeTitle) episodes[i].episodeTitle = sanitizeIPCString(episodes[i].episodeTitle);
+        if (episodes[i].episodeTitle) episodes[i].episodeTitle = episodes[i].episodeTitle;
       }
       sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: episodes });
     }).catch(function(err) {

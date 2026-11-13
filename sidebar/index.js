@@ -1,7 +1,7 @@
 function onPluginMessage(name, callback) {
   iina.onMessage(name, function (data) {
-    if (data && typeof data.encodedPayload === 'string') {
-      data = JSON.parse(decodeURIComponent(data.encodedPayload));
+    if (data && typeof data.__encoded === 'string') {
+      data = JSON.parse(decodeURIComponent(data.__encoded));
     }
     callback(data);
   });

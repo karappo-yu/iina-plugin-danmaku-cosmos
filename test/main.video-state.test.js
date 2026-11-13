@@ -429,7 +429,7 @@ for (const density of [300, 0]) {
     assert.equal(restarted.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.danmakuFilterDensity, density);
     assert.equal(loadedComments(restarted.overlayMessages).at(-1).match(/<d\b/g).length, density || 400);
 
-    restarted.emitSidebar('select-danmaku-file', { path: encodeURIComponent('/videos/B.xml') });
+    restarted.emitSidebar('select-danmaku-file', { path: '/videos/B.xml' });
     assert.equal(loadedComments(restarted.overlayMessages).at(-1).match(/<d\b/g).length, density || 400);
     restarted.setVideo('file:///videos/B.mp4');
     const info = restarted.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
@@ -450,7 +450,7 @@ test('V1 density counts use the date-sliced input total and include protected th
     { fork: 'owner', comments: [{ vposMs: 1000, body: 'owner', commands: [] }] },
     { fork: 'easy', comments: [{ vposMs: 1000, body: 'easy', commands: [] }] },
   ]));
-  harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent('/videos/counts.json') });
+  harness.emitSidebar('select-danmaku-file', { path: '/videos/counts.json' });
   function assertCounts(kept, inputCount = 22) {
     harness.emitSidebar('request-state');
     const info = harness.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
@@ -479,7 +479,7 @@ test('legacy density counts include owner comments and exclude metadata records'
     ...Array.from({ length: 20 }, (_, index) =>
       ({ chat: { no: index + 1, vpos: 100, content: `comment ${index}`, user_id: 'viewer' } })),
   ]));
-  harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent('/videos/legacy-counts.json') });
+  harness.emitSidebar('select-danmaku-file', { path: '/videos/legacy-counts.json' });
   let info = harness.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
   assert.equal(info.sourceTotalCount, 21);
   assert.equal(info.filteredCount, 6);
@@ -657,7 +657,7 @@ for (const entry of ['automatic', 'menu', 'sidebar']) {
     }
     assertDdpLoaded();
     await harness.loadFromMenu('/videos/A.xml');
-    harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent(filePath) });
+    harness.emitSidebar('select-danmaku-file', { path: filePath });
     assertDdpLoaded();
   });
 }
@@ -684,9 +684,9 @@ test('request-state only reports current sources without rescanning or replacing
   assert.equal(harness.fileReads.length, readsBefore);
   assert.equal(harness.directoryReads.length, scansBefore);
   const reported = harness.sidebarMessages.filter((message) => message.name === 'danmaku-file-list').at(-1).data;
-  assert.deepEqual(Array.from(reported.selectedPaths), [encodeURIComponent(manualPath)]);
+  assert.deepEqual(Array.from(reported.selectedPaths), [manualPath]);
   assert.equal(reported.jsonFiles.length, 2);
-  assert.ok(reported.xmlFiles.some((item) => item.path === encodeURIComponent(manualPath)));
+  assert.ok(reported.xmlFiles.some((item) => item.path === manualPath));
 });
 
 test('manual selection before overlay readiness queues the latest source and enables time updates', async () => {
@@ -745,7 +745,7 @@ test('automatic loading handles file.read exceptions as a load failure', () => {
   assert.equal(harness.context.pendingDanmaku, null);
   assert.ok(harness.osdMessages.includes('Cannot read danmaku file: C.xml'));
   const errors = harness.sidebarMessages.filter((message) => message.name === 'danmaku-file-error');
-  assert.equal(errors.at(-1).data.path, encodeURIComponent(filePath));
+  assert.equal(errors.at(-1).data.path, filePath);
 });
 
 test('manual loading catches file.read exceptions and preserves the active source', async () => {
@@ -766,7 +766,7 @@ test('manual loading catches file.read exceptions and preserves the active sourc
   assert.equal(harness.osdMessages.filter((message) => message === 'Cannot read danmaku file: broken.xml').length, 2);
   const errors = harness.sidebarMessages.filter((message) => message.name === 'danmaku-file-error');
   assert.equal(errors.length, 2);
-  assert.deepEqual(errors.map((message) => message.data.path), [encodeURIComponent(brokenPath), encodeURIComponent(brokenPath)]);
+  assert.deepEqual(errors.map((message) => message.data.path), [brokenPath, brokenPath]);
 });
 
 test('manual exact match loads network danmaku with auto-network off', async () => {
@@ -1101,9 +1101,25 @@ test('IPC envelopes prevent template interpolation while preserving the string',
   const simulatedBridge = vm.createContext({});
   const json = vm.runInContext('String.raw`' + JSON.stringify(data) + '`', simulatedBridge);
   assert.equal(simulatedBridge.injected, undefined);
-  assert.equal(JSON.parse(decodeURIComponent(JSON.parse(json).encodedPayload)).text, text);
+  assert.equal(JSON.parse(decodeURIComponent(JSON.parse(json).__encoded)).text, text);
   h.context.overlayPostMessage('test', {fontFamily: '`' + text});
-  assert.equal(JSON.parse(decodeURIComponent(h.overlayMessages.at(-1).data.encodedPayload)).fontFamily, '`' + text);
+  assert.equal(JSON.parse(decodeURIComponent(h.overlayMessages.at(-1).data.__encoded)).fontFamily, '`' + text);
+});
+
+test('IPC preserves paths, regexes, quotes, backslashes and Unicode through the real template boundary', () => {
+  const h = createHarness(true);
+  const word = '`‘’“”\\w+${text} 😀';
+  const payload = {path: '/videos/' + word + '.xml', words: [word], selectedPaths: ['%20']};
+  for (const send of [h.context.sidebarPostMessage, h.context.overlayPostMessage]) {
+    send('test', payload);
+    const message = send === h.context.sidebarPostMessage ? h.sidebarMessages.at(-1) : h.overlayMessages.at(-1);
+    const bridge = vm.runInNewContext('String.raw`' + JSON.stringify(message.data) + '`');
+    assert.deepEqual(JSON.parse(decodeURIComponent(JSON.parse(bridge).__encoded)), payload);
+  }
+  h.emitSidebar('danmaku-blocklist-add', {word});
+  assert.deepEqual(JSON.parse(h.preferences.get('danmakuBlocklist')), [word]);
+  h.emitSidebar('danmaku-blocklist-remove', {word});
+  assert.deepEqual(JSON.parse(h.preferences.get('danmakuBlocklist')), []);
 });
 
 test('automatic local loading prioritizes exact JSON and retries unreadable candidates', () => {
@@ -1139,7 +1155,7 @@ test('duration availability reaches a lazily opened sidebar independently of dur
     const h = createHarness(true, false, {danmakuAutoOffset: false});
     h.setMpv('duration', videoDuration);
     h.setFile('/videos/with-duration.json', JSON.stringify([{fork: 'main', duration: 100, comments: []}]));
-    h.emitSidebar('select-danmaku-file', {path: encodeURIComponent('/videos/with-duration.json')});
+    h.emitSidebar('select-danmaku-file', {path: '/videos/with-duration.json'});
     assert.equal(h.sidebarMessages.findLast(m => m.data?.nicoJsonHasDuration !== undefined).data.nicoJsonHasDuration, true);
     h.emitSidebar('request-state');
     const state = h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data;
@@ -1155,7 +1171,7 @@ test('automatic intro offset stays off until the user enables it', () => {
   const h = createHarness(true);
   h.setMpv('duration', 120);
   h.setFile('/videos/with-duration.json', JSON.stringify([{fork: 'main', duration: 100, comments: []}]));
-  h.emitSidebar('select-danmaku-file', {path: encodeURIComponent('/videos/with-duration.json')});
+  h.emitSidebar('select-danmaku-file', {path: '/videos/with-duration.json'});
   assert.equal(h.context.danmakuTimeOffsetSec, 0);
   assert.equal(h.context.nicoJsonDurationDiff, 20);
   h.emitSidebar('request-state');
@@ -1181,15 +1197,15 @@ test('switching sources clears duration availability for unsupported or missing 
   ];
   h.setFile('/videos/with-duration.json', JSON.stringify([{fork: 'main', duration: 100, comments: []}]));
   for (const [name, source] of sources) {
-    h.emitSidebar('select-danmaku-file', {path: encodeURIComponent('/videos/with-duration.json')});
+    h.emitSidebar('select-danmaku-file', {path: '/videos/with-duration.json'});
     const sourcePath = '/videos/' + name;
     h.setFile(sourcePath, typeof source === 'string' ? source : JSON.stringify(source));
-    h.emitSidebar('select-danmaku-file', {path: encodeURIComponent(sourcePath)});
+    h.emitSidebar('select-danmaku-file', {path: sourcePath});
     assert.equal(h.sidebarMessages.findLast(m => m.data?.nicoJsonHasDuration !== undefined).data.nicoJsonHasDuration, false, name);
     h.emitSidebar('request-state');
     assert.equal(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.nicoJsonHasDuration, false, name);
   }
-  h.emitSidebar('select-danmaku-file', {path: encodeURIComponent('/videos/with-duration.json')});
+  h.emitSidebar('select-danmaku-file', {path: '/videos/with-duration.json'});
   h.setVideo('file:///videos/B.mp4');
   h.emitSidebar('request-state');
   const state = h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data;
@@ -1244,7 +1260,7 @@ function calendarDay(date) {
 
 function loadDateFixture(harness, data, filePath = '/videos/dates.json') {
   harness.setFile(filePath, JSON.stringify(data));
-  harness.emitSidebar('select-danmaku-file', { path: encodeURIComponent(filePath) });
+  harness.emitSidebar('select-danmaku-file', { path: filePath });
 }
 
 function latestFilterInfo(harness) {

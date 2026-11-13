@@ -16,7 +16,10 @@
   "sidebarTab": {
     "name": "Danmaku"
   },
-  "allowedDomains": ["api.dandanplay.net", "*.dandanplay.net"],
+  "allowedDomains": [
+    "api.dandanplay.net",
+    "*.dandanplay.net"
+  ],
   "preferenceDefaults": {
     "danmakuEnabled": true,
     "danmakuCanvasOpacity": 0.8,
@@ -35,8 +38,6 @@
     "dandanplayAppId": "",
     "dandanplayAppSecret": "",
     "dandanplayAutoNetwork": true,
-    "dandanplayChConvert": 0,
-    "dandanplayWithRelated": true,
     "danmakuForceSimplified": false,
     "danmakuAutoOffset": false,
     "danmakuBlocklistEnabled": false,
