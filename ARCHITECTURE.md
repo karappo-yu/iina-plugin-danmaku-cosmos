@@ -20,7 +20,7 @@ DDP writes are serialized and failures do not poison the queue. A versioned cach
 
 ## Engine provenance and validation
 
-The bundled `overlay/lib/niconicomments.min.js` is generated from the sibling `niconicomments-dom` repository, commit `e1632bd`, on `codex/canonical-danmaku-ir`. Use the fork's existing `rolldown -c rolldown.config.mjs` build and copy `dist/bundle.js`; do not hand-edit the vendored file.
+The bundled `overlay/lib/niconicomments.min.js` is generated from the sibling `niconicomments-dom` repository, commit `f477bb7`, on `develop`. Use the fork's existing `rolldown -c rolldown.config.mjs` build and copy `dist/bundle.js`; do not hand-edit the vendored file.
 
 - Plugin: `node --test test/*.test.js` and syntax checks for all entry/module files.
 - Engine: TypeScript check, JavaScript/declaration builds, `vitest run`, and `playwright test -c playwright.motion.config.ts` (WebKit).
