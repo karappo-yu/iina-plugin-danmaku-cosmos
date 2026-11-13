@@ -103,7 +103,7 @@ The sidebar sends one `set-style-preset` intent containing only the preset name.
 ### Font Settings
 
 - Font family: preset dropdown (Japanese/Chinese/Generic groups) or custom input → `set-danmaku-font` `{fontFamily, fontWeight}` → `applyDanmakuFont()` (main.js: persist + forward) → overlay rebuilds renderer via `initCanvasRenderer()` (instant apply, no reload)
-- Font weight: slider 100–900 (step 50)
+- Font weight: slider 100–900 (step 50); input previews locally and change submits one font update, matching speed/comment-limit controls.
 - Custom font selection is a view-only edit mode: choosing an empty Custom input does not send a preference or disappear when focus moves to weight. Submit on ordinary input and compositionend (deduplicating any trailing input), preserve pending drafts until the family echo arrives, and do not overwrite composition/caret on blur. Clearing an existing custom family still reverts to default.
 
 ### Font Scale
@@ -114,7 +114,7 @@ Slider 25%–100% (step 5) → `set-fontscale` → `canvasFontScale`. CSS mode k
 
 `scrollSpeed` is an independent engine config field (plugin UI: 0.25–1; engine API: 0.25–4). `setScrollSpeed()` updates the existing instance, deriving horizontal speed, visibility windows and collision occupancy from one formula. Native `long` and `@N` commands remain unchanged, including on custom-duration comments. Owner motion and fixed comment lifetimes remain unchanged.
 
-The sidebar previews speed on input and commits on change. Runtime settings coalesce until the next draw, which recalculates lanes/timeline in place and reanimates each surviving CSS node once using alternating keyframe names (no forced layout read); they do not reparse sources, remeasure text, or reconstruct the renderer. Reflow still costs CPU and existing positions reflect the new motion model. Do not promise constant-time or entirely cost-free updates. No plugin-side command injection or duplicate raw source is permitted.
+The sidebar previews speed on input and commits on change. Speed/weight state echoes are blocked only during an active pointer drag, never merely because a range retains focus. End gesture protection on change, pointer release/cancel, capture loss or window blur; WebKit can blur the input itself while dragging continues. Runtime settings coalesce until the next draw, which recalculates lanes/timeline in place and reanimates each surviving CSS node once using alternating keyframe names (no forced layout read); they do not reparse sources, remeasure text, or reconstruct the renderer. Reflow still costs CPU and existing positions reflect the new motion model. Do not promise constant-time or entirely cost-free updates. No plugin-side command injection or duplicate raw source is permitted.
 
 ### Time Offset
 

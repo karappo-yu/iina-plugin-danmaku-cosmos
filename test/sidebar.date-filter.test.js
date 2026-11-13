@@ -57,9 +57,10 @@ function createSidebar() {
       return attr ? [...elements.values()].filter(el => Object.hasOwn(el.attributes, attr[1])) : [];
     },
   });
+  const window = Object.assign(element(), {location: {href: 'file:///plugin/sidebar/index.html'}});
   const context = vm.createContext({
     document, navigator: { language: 'zh-CN' }, console,
-    window: { location: { href: 'file:///plugin/sidebar/index.html' } },
+    window,
     iina: { onMessage: (name, handler) => handlers.set(name, handler), postMessage: (name, data) => messages.push({ name, data }) },
     setTimeout(callback) { timers.set(++timerId, callback); return timerId; },
     clearTimeout(id) { timers.delete(id); },
@@ -76,7 +77,7 @@ function createSidebar() {
   emit('danmaku-state', { enabled: true, danmakuLoaded: true, danmakuFileType: 'nico-json' });
   filterInfo();
   return {
-    elements, document, messages, emit, filterInfo,
+    elements, document, window, messages, emit, filterInfo,
     flush() { for (const [id, callback] of Array.from(timers)) { timers.delete(id); callback(); } },
     filterMessages() { return messages.filter(message => message.name === 'set-danmaku-filter'); },
   };
@@ -223,6 +224,7 @@ test('font state echoes preserve the focused draft, spaces, caret and empty cust
 test('speed dragging previews locally and commits one intent on change', () => {
   const h = createSidebar();
   const speed = h.elements.get('speed-slider');
+  speed.fire('pointerdown', {button: 0});
   for (const value of ['90', '75', '50', '25']) {speed.value = value; speed.fire('input');}
   assert.equal(h.elements.get('speed-value').textContent, '25%');
   speed.focus();
@@ -267,7 +269,7 @@ test('empty Custom mode survives blur and a font-weight echo until a different f
   const slider = h.elements.get('danmaku-font-weight-slider');
   select.value = 'custom'; select.fire('change');
   slider.focus(); input.fire('blur');
-  slider.value = '600'; slider.fire('input');
+  slider.value = '600'; slider.fire('input'); slider.fire('change');
   h.emit('danmaku-state', {danmakuFontFamily: '', danmakuFontWeight: '600'});
   assert.equal(select.value, 'custom');
   assert.equal(input.value, '');
@@ -328,4 +330,84 @@ test('a preset click sends one named intent, without separate appearance message
   const preset = {dataset: {preset: 'nico'}};
   h.elements.get('style-preset-segmented').fire('click', {target: {closest() {return preset;}}});
   assert.deepEqual(h.messages.filter(m => m.name.startsWith('set-')).map(m => [m.name, m.data.preset]), [['set-style-preset', 'nico']]);
+});
+
+const gestureSliders = [
+  {id: 'speed-slider', label: 'speed-value', draft: '75', next: '40', text: '40%', message: 'set-scroll-speed'},
+  {id: 'danmaku-font-weight-slider', label: 'danmaku-font-weight-value', draft: '800', next: '200', text: '200', message: 'set-danmaku-font'},
+];
+
+for (const control of gestureSliders) test(control.id + ' accepts preset echoes after release even if it keeps keyboard focus', () => {
+  const h = createSidebar();
+  h.emit('danmaku-state', {scrollSpeed: 1, danmakuFontFamily: 'Helvetica Neue', danmakuFontWeight: '400'});
+  const slider = h.elements.get(control.id);
+  slider.focus(); slider.fire('mousedown', {button: 0});
+  slider.value = control.draft; slider.fire('input');
+  h.emit('danmaku-state', {scrollSpeed: 0.5, danmakuFontWeight: '500'});
+  assert.equal(slider.value, control.draft, 'a held pointer keeps its preview');
+  assert.equal(h.messages.filter(m => m.name === control.message).length, 0);
+  slider.fire('change');
+  const preset = {dataset: {preset: 'bilibili'}};
+  h.elements.get('style-preset-segmented').fire('click', {target: {closest() {return preset;}}});
+  assert.equal(h.document.activeElement, slider, 'simulate the WebKit button focus behavior');
+  h.emit('danmaku-state', {stylePreset: 'bilibili', scrollSpeed: 0.4, danmakuFontWeight: '200'});
+  assert.equal(String(slider.value), control.next);
+  assert.equal(h.elements.get(control.label).textContent, control.text);
+  assert.equal(h.messages.filter(m => m.name === control.message).length, 1);
+});
+
+test('range drag protection ends on release outside the control, cancellation, capture loss or blur', () => {
+  for (const control of gestureSliders) for (const event of ['pointerup', 'mouseup', 'pointercancel', 'lostpointercapture', 'window-blur']) {
+    const h = createSidebar();
+    const slider = h.elements.get(control.id);
+    slider.focus(); slider.fire('pointerdown', {button: 0});
+    slider.value = control.draft; slider.fire('input');
+    h.emit('danmaku-state', {scrollSpeed: 1, danmakuFontWeight: '400'});
+    assert.equal(slider.value, control.draft);
+    const target = event === 'window-blur' ? h.window : event === 'lostpointercapture' ? slider : h.document;
+    target.fire(event === 'window-blur' ? 'blur' : event);
+    h.emit('danmaku-state', {scrollSpeed: 0.4, danmakuFontWeight: '200'});
+    assert.equal(String(slider.value), control.next, control.id + ': ' + event);
+    assert.equal(h.elements.get(control.label).textContent, control.text);
+  }
+});
+
+test('font-weight input previews locally and change submits only the final weight', () => {
+  const h = createSidebar();
+  h.emit('danmaku-state', {danmakuFontFamily: 'Helvetica Neue', danmakuFontWeight: '400'});
+  const slider = h.elements.get('danmaku-font-weight-slider');
+  slider.fire('pointerdown', {button: 0});
+  for (const value of ['450', '550', '650', '800']) { slider.value = value; slider.fire('input'); }
+  assert.equal(h.elements.get('danmaku-font-weight-value').textContent, '800');
+  assert.equal(h.messages.filter(m => m.name === 'set-danmaku-font').length, 0);
+  h.document.fire('pointerup');
+  assert.equal(slider.value, '800', 'pointerup must not overwrite the draft before change');
+  slider.fire('change');
+  assert.deepEqual(h.messages.filter(m => m.name === 'set-danmaku-font').map(m => [m.data.fontFamily, m.data.fontWeight]), [['Helvetica Neue', '800']]);
+});
+
+test('keyboard range changes and secondary clicks do not leave drag protection active', () => {
+  const h = createSidebar();
+  const slider = h.elements.get('speed-slider');
+  slider.focus(); slider.value = '95'; slider.fire('input'); slider.fire('change');
+  assert.equal(h.messages.filter(m => m.name === 'set-scroll-speed').at(-1).data.speed, 0.95);
+  slider.fire('mousedown', {button: 2});
+  h.emit('danmaku-state', {scrollSpeed: 0.5});
+  assert.equal(slider.value, 50);
+  assert.equal(h.elements.get('speed-value').textContent, '50%');
+});
+
+test('WebKit element blur during a held range drag does not unlock its preview', () => {
+  for (const control of gestureSliders) {
+    const h = createSidebar();
+    const slider = h.elements.get(control.id);
+    slider.focus(); slider.fire('pointerdown', {button: 0});
+    slider.value = control.draft; slider.fire('input');
+    h.document.activeElement = null; slider.fire('blur');
+    h.emit('danmaku-state', {scrollSpeed: 0.4, danmakuFontWeight: '200'});
+    assert.equal(slider.value, control.draft);
+    h.document.fire('pointerup');
+    h.emit('danmaku-state', {scrollSpeed: 0.4, danmakuFontWeight: '200'});
+    assert.equal(String(slider.value), control.next);
+  }
 });

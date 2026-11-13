@@ -451,6 +451,34 @@ function fontFamilyToPresetKey(family) {
   return "custom";
 }
 
+// macOS WebKit may keep a range focused after a button click. Only an
+// active pointer drag owns the preview; focus alone must not block state echoes.
+function trackSliderDrag(slider) {
+  let drag = {active: false};
+  if (!slider) return drag;
+  function begin(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    drag.active = true;
+  }
+  function end() { drag.active = false; }
+  slider.addEventListener('pointerdown', begin);
+  slider.addEventListener('mousedown', begin);
+  // Register change before the submit handler so even a synchronous echo is
+  // accepted. Do not reset the value here: pointerup may precede change.
+  slider.addEventListener('change', end);
+  // WebKit can blur the input as a native range drag starts. Window blur,
+  // pointer cancellation and release end the gesture; element blur does not.
+  slider.addEventListener('lostpointercapture', end);
+  document.addEventListener('pointerup', end, true);
+  document.addEventListener('pointercancel', end, true);
+  document.addEventListener('mouseup', end, true);
+  if (typeof window.addEventListener === 'function') window.addEventListener('blur', end);
+  return drag;
+}
+
+const speedSliderDrag = trackSliderDrag(speedSlider);
+const fontWeightSliderDrag = trackSliderDrag(fontWeightSlider);
+
 // View-only edit state: an empty Custom choice is not a preference change.
 let fontCustomEmptyChoice = false;
 let fontCustomComposing = false;
@@ -478,7 +506,7 @@ function updateFontUI() {
       fontCustomInput.value = family;
     }
   }
-  if (fontWeightSlider && document.activeElement !== fontWeightSlider) {
+  if (fontWeightSlider && !fontWeightSliderDrag.active) {
     fontWeightSlider.value = state.danmakuFontWeight || "400";
   }
   if (fontWeightValue) {
@@ -504,7 +532,7 @@ function updateUI() {
   strokeInversionInput.value = state.strokeInversionColor;
   commentLimitSlider.value = state.commentLimit > 0 ? state.commentLimit : COMMENT_LIMIT_SLIDER_UNLIMITED;
   commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : t('unlimited');
-  if (document.activeElement !== speedSlider) {
+  if (!speedSliderDrag.active) {
     speedSlider.value = Math.round(state.scrollSpeed * 100);
     speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
   }
@@ -789,8 +817,10 @@ if (fontCustomInput) {
 if (fontWeightSlider) {
   fontWeightSlider.addEventListener("input", function () {
     if (fontWeightValue) fontWeightValue.textContent = fontWeightSlider.value;
+  });
+  fontWeightSlider.addEventListener("change", function () {
     iina.postMessage("set-danmaku-font", { fontFamily: pendingFontFamily !== null ? pendingFontFamily : state.danmakuFontFamily, fontWeight: fontWeightSlider.value });
-    });
+  });
 }
 
 speedSlider.addEventListener("input", function () {
