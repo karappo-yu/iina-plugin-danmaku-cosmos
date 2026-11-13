@@ -16,7 +16,7 @@ function harness() {
   class Renderer {
     constructor(canvas, data, options) { this.data = data; this.options = options; this.draws = []; instances.push(this); }
     addEventListener() {} removeEventListener() {} clear() {this.clears = (this.clears || 0) + 1;} destroy() {}
-    pauseCSS() {} resumeCSS() {} setPlaybackSpeed() {} setScrollSpeed(speed) {this.scrollSpeed = speed;}
+    pauseCSS() {} resumeCSS() {} setPlaybackSpeed() {} setScrollSpeed(speed) {if (this.scrollSpeed === speed) return false; this.scrollSpeed = speed; return true;}
     drawCanvas(vpos) { this.draws.push(vpos); }
     resize(width, height) { this.size = {width, height}; return true; }
   }
@@ -223,4 +223,45 @@ test('atomic enabling and repeated pause/speed changes keep offset out of the vi
   assert.equal(h.read('canvasVideoAnchorTime'), 45);
   h.send('time-update', {time: 44.75});
   assert.equal(h.instances[0].draws.at(-1), 4175);
+});
+
+test('small forward seeks correct CSS position while ordinary high-speed progress stays smooth', () => {
+  const h = harness(); load(h, [comment('test', [])]);
+  h.send('toggle-danmaku', {enabled: true, time: 10, paused: false, speed: 1});
+  const renderer = h.instances[0]; const before = renderer.clears || 0;
+  h.advance(100); h.send('time-update', {time: 10.6});
+  assert.equal(renderer.clears, before + 1);
+  assert.equal(renderer.draws.at(-1), 1060);
+  h.advance(100); h.send('time-update', {time: 10.75, seek: true});
+  assert.equal(renderer.clears, before + 2);
+  assert.equal(renderer.draws.at(-1), 1075);
+  h.send('playback-speed', {speed: 8});
+  h.advance(500); h.send('time-update', {time: 14.75});
+  assert.equal(renderer.clears, before + 2);
+});
+
+test('an enabled load restores a Canvas surface hidden by the previous toggle', () => {
+  const h = harness();
+  h.send('toggle-danmaku', {enabled: false, time: 1, paused: true, speed: 1});
+  assert.equal(h.canvas.style.display, 'none');
+  h.send('load-danmaku', {comments: formatted([comment('test', [])]), canvasMode: 'default',
+    playback: {enabled: true, time: 2, paused: true, speed: 1}});
+  assert.equal(h.canvas.style.display, '');
+  assert.equal(h.instances.length, 1);
+  assert.equal(h.instances[0].clears || 0, 0, 'no post-construction clear');
+  assert.deepEqual(h.instances[0].draws, [200]);
+});
+
+test('speed updates use the playing loop and draw once immediately when paused', () => {
+  const h = harness();
+  load(h, [comment('test', [])]);
+  const renderer = h.instances[0];
+  const count = renderer.draws.length;
+  h.send('set-scroll-speed', {speed: 0.5});
+  assert.equal(renderer.draws.length, count, 'playing waits for the next frame');
+  h.send('pause-state', {paused: true});
+  h.send('set-scroll-speed', {speed: 0.25});
+  assert.equal(renderer.draws.length, count + 1);
+  h.send('set-scroll-speed', {speed: 0.25});
+  assert.equal(renderer.draws.length, count + 1, 'unchanged speed does not draw');
 });

@@ -297,6 +297,7 @@ function initCanvasRenderer(data) {
   if (!canvas || typeof NiconiComments === 'undefined') return;
   const useCssMode = canvasNicoMode === 'css';
   canvas.style.opacity = useCssMode ? 0 : canvasOpacity;
+  canvas.style.display = danmakuVisible ? '' : 'none';
   disposeCanvasRenderer();
   updateCanvasViewport();
   niconiComments = new NiconiComments(canvas, data, {
@@ -410,7 +411,8 @@ onPluginMessage("time-update", (data) => {
   const expectedDelta = isPaused ? 0 : elapsedSec * playbackSpeed * 100;
   const actualDelta = lastTime === null ? 0 : t - lastTime;
   const drift = actualDelta - expectedDelta;
-  const isSeek = lastTime !== null && (actualDelta < -10 || Math.abs(drift) > Math.max(80, 100 * playbackSpeed));
+  const isSeek = data.seek === true || (lastTime !== null &&
+    (actualDelta < -10 || Math.abs(drift) > Math.max(20, 10 * playbackSpeed)));
   if (isSeek) stopCanvasLoop();
   syncVideoAnchor(data.time);
   lastTime = t;
@@ -553,8 +555,12 @@ onPluginMessage("set-comment-limit", (data) => {
 onPluginMessage("set-scroll-speed", (data) => {
   scrollSpeed = data.speed;
   if (niconiComments) {
-    niconiComments.setScrollSpeed(scrollSpeed);
-    drawCanvasAtVpos((getVideoTimeSec() + danmakuTimeOffsetSec) * 100, true);
+    if (niconiComments.setScrollSpeed(scrollSpeed)) {
+      // Playback consumes the pending layout on its next frame. Paused video
+      // has no loop, so apply the one required draw immediately.
+      if (isPaused) drawCanvasAtVpos((getVideoTimeSec() + danmakuTimeOffsetSec) * 100, false);
+      else startCanvasLoop();
+    }
   }
 });
 

@@ -177,3 +177,53 @@ test('density count displays the date-sliced input total and resets with the dat
   h.filterInfo({ sourceTotalCount: 97, filteredCount: 97, filterDensity: 0 });
   assert.equal(h.elements.get('density-count').textContent, '97/97');
 });
+
+test('font state echoes preserve the focused draft, spaces, caret and empty custom field', () => {
+  const h = createSidebar();
+  const input = h.elements.get('danmaku-font-custom');
+  const row = h.elements.get('danmaku-font-custom-row');
+  const select = h.elements.get('danmaku-font-select');
+  select.value = 'custom';
+  row.style.display = '';
+  input.focus();
+  input.value = 'Helvetica ';
+  input.selectionStart = input.selectionEnd = 10;
+  input.fire('input');
+  assert.equal(h.messages.at(-1).data.fontFamily, 'Helvetica');
+  h.emit('danmaku-state', {danmakuFontFamily: 'Helvetica'});
+  assert.equal(input.value, 'Helvetica ');
+  assert.equal(input.selectionStart, 10);
+  assert.equal(select.value, 'custom');
+  input.value = 'Helvetica Neue';
+  input.selectionStart = input.selectionEnd = 4;
+  input.fire('input');
+  h.emit('danmaku-state', {danmakuFontFamily: 'Helvetica Neue'});
+  assert.equal(input.value, 'Helvetica Neue');
+  assert.equal(input.selectionStart, 4);
+  input.value = '';
+  input.fire('input');
+  h.emit('danmaku-state', {danmakuFontFamily: ''});
+  assert.equal(row.style.display, '');
+  assert.equal(select.value, 'custom');
+  const sent = h.messages.length;
+  input.fire('input', {isComposing: true});
+  assert.equal(h.messages.length, sent, 'intermediate IME composition is not submitted');
+  h.document.activeElement = null;
+  input.fire('blur');
+  assert.equal(row.style.display, 'none');
+});
+
+test('speed dragging previews locally and commits one intent on change', () => {
+  const h = createSidebar();
+  const speed = h.elements.get('speed-slider');
+  for (const value of ['90', '75', '50', '25']) {speed.value = value; speed.fire('input');}
+  assert.equal(h.elements.get('speed-value').textContent, '25%');
+  speed.focus();
+  h.emit('danmaku-state', {scrollSpeed: 1});
+  assert.equal(speed.value, '25', 'an unrelated state echo does not overwrite the active drag');
+  assert.equal(h.messages.filter(m => m.name === 'set-scroll-speed').length, 0);
+  speed.fire('change');
+  const messages = h.messages.filter(m => m.name === 'set-scroll-speed');
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].data.speed, 0.25);
+});

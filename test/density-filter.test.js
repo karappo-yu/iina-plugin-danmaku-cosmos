@@ -79,3 +79,17 @@ test('screen and list share greedy inclusive dedupe groups for all positions', (
   assert.deepEqual(bodies(result), result.items.filter(c => !c.blocked).map(c => c.text));
   assert.deepEqual(bodies(result), ['samex2', 'same', 'same', 'samex2']);
 });
+
+test('OpenCC preserves owner control text while converting ordinary owner text', () => {
+  const doc = parse([{fork: 'owner', comments: [
+    {vposMs: 1000, body: '/command 繁體', commands: []},
+    {vposMs: 2000, body: '繁體字幕', commands: []},
+    {vposMs: 3000, body: '@置換 繁體', commands: []},
+  ]}]);
+  const converted = [];
+  const result = project(doc, {forceSimplified: true, simplify(text) {converted.push(text); return text.replace(/體/g, '体');}});
+  assert.deepEqual(converted, ['繁體字幕']);
+  assert.deepEqual(bodies(result), ['/command 繁體', '繁体字幕', '@置換 繁體']);
+  assert.equal(result.formatted[0].mail.includes('invisible'), true);
+  assert.equal(doc.comments[0].simplifiedText, null);
+});

@@ -454,12 +454,14 @@ function fontFamilyToPresetKey(family) {
 function updateFontUI() {
   if (!fontSelect || !fontCustomInput || !fontCustomRow) return;
   var key = state.danmakuFontFamily ? fontFamilyToPresetKey(state.danmakuFontFamily) : "";
-  fontSelect.value = key;
-  if (key === "custom") {
-    fontCustomRow.style.display = "";
-    fontCustomInput.value = state.danmakuFontFamily;
-  } else {
-    fontCustomRow.style.display = "none";
+  // State echoes may arrive for every keystroke. The focused field owns its
+  // draft (including spaces, composition and selection) until editing ends.
+  if (document.activeElement !== fontCustomInput) {
+    fontSelect.value = key;
+    fontCustomRow.style.display = key === "custom" ? "" : "none";
+    if (key === "custom" && fontCustomInput.value !== state.danmakuFontFamily) {
+      fontCustomInput.value = state.danmakuFontFamily;
+    }
   }
   if (fontWeightSlider) {
     fontWeightSlider.value = state.danmakuFontWeight || "400";
@@ -506,8 +508,10 @@ function updateUI() {
   strokeInversionInput.value = state.strokeInversionColor;
   commentLimitSlider.value = state.commentLimit > 0 ? state.commentLimit : COMMENT_LIMIT_SLIDER_UNLIMITED;
   commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : t('unlimited');
-  speedSlider.value = Math.round(state.scrollSpeed * 100);
-  speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
+  if (document.activeElement !== speedSlider) {
+    speedSlider.value = Math.round(state.scrollSpeed * 100);
+    speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
+  }
   if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
   if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified; 
   if (danmakuAutoOffsetToggle) danmakuAutoOffsetToggle.checked = state.danmakuAutoOffset; 
@@ -764,7 +768,9 @@ if (fontSelect) {
 }
 
 if (fontCustomInput) {
-  fontCustomInput.addEventListener("input", function () {
+  fontCustomInput.addEventListener("blur", updateFontUI);
+  fontCustomInput.addEventListener("input", function (event) {
+    if (event.isComposing) return;
     iina.postMessage("set-danmaku-font", { fontFamily: fontCustomInput.value.trim(), fontWeight: state.danmakuFontWeight });
   });
 }
@@ -779,7 +785,10 @@ if (fontWeightSlider) {
 speedSlider.addEventListener("input", function () {
   var val = parseFloat(speedSlider.value) / 100;
   speedValue.textContent = Math.round(val * 100) + '%';
-  iina.postMessage("set-scroll-speed", { speed: val });
+});
+
+speedSlider.addEventListener("change", function () {
+  iina.postMessage("set-scroll-speed", { speed: parseFloat(speedSlider.value) / 100 });
 });
 
 if (stylePresetSegmented) {
@@ -964,12 +973,7 @@ onPluginMessage("danmaku-state", function (data) {
   updateEnabledUI();
 });
 
-onPluginMessage("danmaku-type", function (data) {
-  if (data.fileType !== undefined) state.danmakuType = data.fileType;
-  if (data.isLoaded !== undefined) state.danmakuLoaded = data.isLoaded;
-  updateUI();
-  updateEnabledUI();
-});
+
 
 onPluginMessage("danmaku-file-list", function (data) {
   var count = (data.jsonFiles ? data.jsonFiles.length : 0);
@@ -1567,9 +1571,7 @@ if (browserVisToggle) {
     iina.postMessage("danmaku-browser-vis-set", { visible: v });
   });
 }
-onPluginMessage("danmaku-browser-vis-state", function (data) {
-  if (data && data.visible !== undefined) applyBrowserVis(data.visible);
-});
+
 
 
 
@@ -1654,9 +1656,7 @@ function applyBlocklistState(state) {
   }
 }
 
-onPluginMessage("danmaku-blocklist-state", function (data) {
-  applyBlocklistState(data);
-});
+
 
 if (blocklistToggle) {
   blocklistToggle.addEventListener("change", function () {
@@ -1677,7 +1677,7 @@ function applyPositionFilterState(data) {
   }
 }
 
-onPluginMessage("danmaku-position-filter-state", applyPositionFilterState);
+
 
 if (blockTopToggle) {
   blockTopToggle.addEventListener("change", function () {
@@ -1710,9 +1710,7 @@ function applyDedupeState(state) {
   }
 }
 
-onPluginMessage("danmaku-dedupe-state", function (data) {
-  applyDedupeState(data);
-});
+
 
 if (dedupeToggle && dedupeSegmented) {
   dedupeToggle.addEventListener("change", function () {

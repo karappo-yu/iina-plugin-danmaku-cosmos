@@ -112,9 +112,9 @@ Slider 25%–100% (step 5) → `set-fontscale` → `canvasFontScale`. CSS mode k
 
 ### Scroll Speed (native engine motion)
 
-`scrollSpeed` is an independent engine config field (plugin UI: 0.25–1; engine API: 0.25–4). `setScrollSpeed()` updates the existing instance, deriving horizontal speed, visibility windows and collision occupancy from one formula. Native `long` and `@N` commands remain unchanged, including on custom-duration comments. Fixed comment lifetimes remain unchanged.
+`scrollSpeed` is an independent engine config field (plugin UI: 0.25–1; engine API: 0.25–4). `setScrollSpeed()` updates the existing instance, deriving horizontal speed, visibility windows and collision occupancy from one formula. Native `long` and `@N` commands remain unchanged, including on custom-duration comments. Owner motion and fixed comment lifetimes remain unchanged.
 
-Runtime changes recalculate lanes/timeline in place and reanimate existing CSS nodes; they do not reparse sources, remeasure text, or reconstruct the renderer. Reflow still costs CPU and existing positions reflect the new motion model. Do not promise constant-time or entirely cost-free updates. No plugin-side command injection or duplicate raw source is permitted.
+The sidebar previews speed on input and commits on change. Runtime settings coalesce until the next draw, which recalculates lanes/timeline in place and reanimates each surviving CSS node once using alternating keyframe names (no forced layout read); they do not reparse sources, remeasure text, or reconstruct the renderer. Reflow still costs CPU and existing positions reflect the new motion model. Do not promise constant-time or entirely cost-free updates. No plugin-side command injection or duplicate raw source is permitted.
 
 ### Time Offset
 
@@ -180,7 +180,7 @@ Hardcoded in `main.js (`DDP_APP_ID` / `DDP_APP_SECRET`)` as fallback defaults. N
 - Register overlay message handlers after `iina.plugin-overlay-loaded`: IINA ignores registrations before the view exists and `overlay.loadFile()` clears listeners. Main then sends `request-overlay-state`, and overlay answers `overlay-ready`. Only this handshake unlocks the latest pending source; there is no timeout that pretends readiness. Enabling and loading transmit an atomic `{enabled,time,paused,speed}` snapshot.
 - Register WebView callbacks through `sidebarOnMessage()` / `overlayOnMessage()` in main. These helpers keep the current function for each message name in a global JS table so IINA's `JSManagedValue` cannot lose an otherwise unreferenced callback during garbage collection. Re-registration replaces the saved function; do not clear the tables on video changes or WebView navigation before new callbacks are installed.
 - Main owns the selected file type; overlay no longer echoes `danmaku-type`. Render success/failure uses `danmaku-load-result` with a `loadId`; replies from an older source/video are ignored.
-- Use `sidebarPostMessage()` / `overlayPostMessage()` from main. All sends pass through `postSafeMessage()`. JSON containing template syntax, backslashes or curly quotes is wrapped in `{__encoded: encodeURIComponent(json)}`; `onPluginMessage()` unwraps it in each WebView. Business strings and paths remain lossless. Comment arrays and list chunks use this same envelope; no `xmlContent`, special path codec or Base64 list protocol remains.
+- Use `sidebarPostMessage()` / `overlayPostMessage()` from main. All sends pass through `postSafeMessage()`. Payloads containing actual template syntax, curly quotes or lone surrogates are wrapped in `{__encoded: encodeURIComponent(json)}`; `onPluginMessage()` unwraps it in each WebView. Ordinary JSON quotes, newlines and backslashes do not require an envelope. Lone surrogates are escaped in serialized JSON before URI encoding, preserving code units. Business strings and paths remain lossless. Comment arrays and list chunks use this same envelope; no `xmlContent`, special path codec or Base64 list protocol remains.
 
 
 All communication uses `postMessage` / `onMessage` across three channels:
@@ -209,11 +209,11 @@ Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-
 ### Source and IPC boundaries
 
 - `danmaku-document.js` is loaded by main with package-local `require`. `parseDanmakuSource()` is the only XML/JSON/DDP normalization entry; invalid/empty comments are dropped there. IR includes sourceType, duration, dates, decoded text and native rendering metadata. Source fields are immutable; only `simplifiedText` is a lazy memo.
-- `danmakuCache[path]` contains a document, never encoded text. Local files are read once per video session; reselecting reuses the IR. A new video clears the session cache.
-- `projectDanmaku(doc, settings)` performs date slicing → density → optional simplification → blocking → shared dedupe, and returns formatted comments, list rows and counts. Main caches the current projection for all consumers. Do not parse or serialize source content in filters or UI code.
+- `danmakuCache[path]` contains a document, never encoded text. List selections reuse the cached IR; an explicit file-dialog selection rereads disk, preserving the old source if the refresh fails. A new video clears the session cache.
+- `projectDanmaku(doc, settings)` performs date slicing → density → optional simplification → blocking → shared dedupe, and returns formatted comments, list rows and counts. Main caches the current projection for all consumers. Skip overlay reload when the formatted projection is unchanged. Preserve owner control text (`/`, `@`, `＠` prefixes) during simplification. Do not parse or serialize source content in filters or UI code.
 - Overlay script order is `niconicomments.min.js → main.js`. Overlay consumes only `load-danmaku.comments` (formatted arrays); `input.js` has been removed.
 - OpenCC's package module is loaded while the main entry is executing. IINA's require resolver uses the current script stack, so do not call it from later native callbacks. Converter creation remains lazy. No WebView-supplied paths, persisted plugin roots or eval.
-- `pluginState` owns settings and session metadata; `commitState()` applies patches, writes preferences with `syncPreferencesSoon()`, and sends incremental settings notifications. Runtime resource handles and document/projection caches live separately. Sidebar sends one `request-state` after initializing its handlers and renders the snapshot; it has no independent preference defaults or blocklist/dedupe/position requests.
+- `pluginState` owns settings and session metadata; `commitState()` applies patches, writes preferences with `syncPreferencesSoon()`, and sends incremental settings notifications. Runtime resource handles and document/projection caches live separately. Sidebar sends one `request-state` after initializing its handlers and renders the snapshot; it has no independent preference defaults or old blocklist/dedupe/position state events. Batch related state changes and do not manually repeat commitState notifications. Keep focused font drafts/caret intact on state echoes.
 
 ### CSS Mode (niconicomments) Render Flow
 

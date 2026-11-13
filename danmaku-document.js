@@ -205,7 +205,7 @@ function projectDanmaku(doc, settings) {
   const kept = selectDensity(sliced, settings.density);
   const items = kept.map(function (c) {
     let text = c.text;
-    if (settings.forceSimplified && settings.simplify) {
+    if (settings.forceSimplified && settings.simplify && !(c.isOwner && /^[/@＠]/.test(c.text))) {
       if (c.simplifiedText === null) c.simplifiedText = settings.simplify(c.text);
       text = c.simplifiedText;
     }
