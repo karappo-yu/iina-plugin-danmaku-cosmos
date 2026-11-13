@@ -37,6 +37,51 @@ function postedAtSeconds(value) {
   return isFinite(time) ? Math.floor(time / 1000) : 0;
 }
 
+function skipXmlDoctype(text, offset) {
+  let quote = '', subset = 0;
+  for (let i = offset + 9; i < text.length; i++) {
+    let char = text[i];
+    if (quote) { if (char === quote) quote = ''; continue; }
+    let close = text.slice(i, i + 4) === '<!--' ? '-->' : text.slice(i, i + 2) === '<?' ? '?>' : null;
+    if (close) {
+      let end = text.indexOf(close, i + 2);
+      if (end < 0) break;
+      i = end + close.length - 1;
+    } else if (char === '"' || char === "'") quote = char;
+    else if (char === '[') subset++;
+    else if (char === ']') subset--;
+    else if (char === '>' && subset === 0) return i + 1;
+  }
+  throw new Error('Invalid XML declaration');
+}
+
+// Inspect only the prolog and first root tag. Comment bodies and CDATA can
+// contain literal XML-looking text and must never participate in detection.
+function detectXmlSource(text) {
+  let offset = 0;
+  while (offset < text.length) {
+    while (offset < text.length && /\s|\uFEFF/.test(text.charAt(offset))) offset++;
+    let end;
+    if (text.slice(offset, offset + 2) === '<?') {
+      end = text.indexOf('?>', offset + 2);
+      if (end < 0) break;
+      offset = end + 2;
+    } else if (text.slice(offset, offset + 4) === '<!--') {
+      end = text.indexOf('-->', offset + 4);
+      if (end < 0) break;
+      offset = end + 3;
+    } else if (text.slice(offset, offset + 9) === '<!DOCTYPE' && /\s/.test(text[offset + 9] || '')) {
+      offset = skipXmlDoctype(text, offset);
+    } else {
+      // Eight characters cover the longest supported root and its delimiter.
+      let root = /^<(packet|chat|i|d)(?=[\s/>])/.exec(text.slice(offset, offset + 8));
+      if (root) return {offset: offset, sourceType: root[1] === 'packet' || root[1] === 'chat' ? 'nico-xml' : 'bilibili-xml'};
+      break;
+    }
+  }
+  throw new Error('Unsupported danmaku source');
+}
+
 function parseDanmakuSource(rawContent, path, sourceHint) {
   let source = rawContent;
   let sourceType = sourceHint;
@@ -44,8 +89,9 @@ function parseDanmakuSource(rawContent, path, sourceHint) {
     const text = source.trim();
     if (text[0] === '[' || text[0] === '{') source = JSON.parse(text);
     else {
-      if (!/<(?:i|packet|chat|d)\b/.test(text)) throw new Error('Unsupported danmaku source');
-      sourceType = /<(?:packet|chat)\b/.test(text) ? 'nico-xml' : 'bilibili-xml';
+      const xml = detectXmlSource(text);
+      sourceType = xml.sourceType;
+      source = text.slice(xml.offset);
     }
   }
   if (source && source.source === 'dandanplay') { sourceType = 'dandanplay'; source = source.comments; }
@@ -132,7 +178,7 @@ function parseDanmakuSource(rawContent, path, sourceHint) {
       if (nico) {
         add({vpos: attrs.vpos && attrs.vpos.trim() ? Number(attrs.vpos) : NaN, text: text, commands: attrs.mail, userId: attrs.user_id,
           no: Number(attrs.no), densityOrder: Number(attrs.no), dateSec: Number(attrs.date), dateUsec: Number(attrs.date_usec), dated: true,
-          nicoru: Number(attrs.nicoru), isOwner: attrs.fork === '1' || attrs.fork === 'owner', premium: attrs.premium !== '0'});
+          nicoru: Number(attrs.nicoru), isOwner: attrs.fork === '1' || attrs.fork === 'owner', premium: attrs.premium === '1'});
       } else {
         const p = (attrs.p || '').split(','), time = Number(p[0]), mode = Number(p[1]), size = Number(p[2]);
         if (!p[0].trim() || !Number.isInteger(mode) || mode < 1 || mode > 6) continue;

@@ -402,7 +402,10 @@ function applyDanmakuOffset(offsetSec) {
 }
 
 function applyDanmakuFont(fontFamily, fontWeight) {
-  commitState({danmakuFontFamily: fontFamily || "", danmakuFontWeight: fontWeight || ""});
+  let patch = {};
+  if (fontFamily !== undefined) patch.danmakuFontFamily = fontFamily || '';
+  if (fontWeight !== undefined) patch.danmakuFontWeight = fontWeight || '';
+  commitState(patch);
 }
 
 function findDanmakuFileByPath(path) {
@@ -1428,6 +1431,19 @@ function loadDanmakuFile(path, options) {
 
   // 用户选定本地来源后,此前的后台匹配/下载不得覆盖该选择。
   if (enableDanmaku && path.indexOf('dandanplay://') !== 0) ddpResetState();
+
+  // An active or in-flight source can be reused without resetting its date
+  // slice, load acknowledgment or success notice. Explicit refreshes bypass it.
+  if (!options.reload && !options.loadedMessageKey && lastOverlayProjection &&
+      lastOverlayProjection.doc === doc && pluginState.danmakuFileList.selectedPaths[0] === path) {
+    let wasEnabled = pluginState.danmakuEnabled;
+    if (enableDanmaku) ensureDanmakuEnabled(true);
+    if (overlayReady && pluginState.danmakuEnabled) {
+      if (!sendCurrentDanmaku(false) && !wasEnabled) overlayPostMessage('toggle-danmaku', playbackSnapshot());
+      if (!timePosListenerID) setObserver(true);
+    }
+    return true;
+  }
 
   if (enableDanmaku) ensureDanmakuEnabled(true);
   danmakuCache[path] = doc;

@@ -372,3 +372,11 @@ test('an atomic preset remains deferred while hidden and applies once on enable'
   assert.equal(h.instances[1].options.scale, 1);
   assert.equal(h.instances[1].options.config.scrollSpeed, 1);
 });
+
+test('overlay keeps CA layers but disables the engine duplicate-removal pass', () => {
+  const h = harness(); load(h, [comment('test', [])]);
+  assert.equal(h.instances[0].options.keepCA, true);
+  assert.equal(h.instances[0].options.dedupeCA, false);
+  assert.equal(h.instances[0].options.config.fixedCombo, false);
+  assert.equal(h.instances[0].options.config.nakaDedupeWindow, 0);
+});

@@ -1701,3 +1701,70 @@ test('a preset chosen before readiness is included in the first source load', ()
   assert.equal(load.scrollSpeed, 0.5);
   assert.equal(load.strokeWidth, 3);
 });
+
+test('font family and weight patches preserve the other field without waiting for sidebar echoes', () => {
+  const h = createHarness(true, false, {danmakuFontFamily: 'old', danmakuFontWeight: '400'}); h.readyOverlay();
+  h.emitSidebar('set-danmaku-font', {fontWeight: '800'});
+  h.emitSidebar('set-danmaku-font', {fontFamily: 'new'});
+  assert.equal(h.preferences.get('danmakuFontWeight'), '800');
+  assert.equal(h.preferences.get('danmakuFontFamily'), 'new');
+  assert.deepEqual(h.overlayMessages.findLast(m => m.name === 'set-danmaku-font').data, {fontFamily: 'new', fontWeight: '800'});
+  h.emitSidebar('set-danmaku-font', {fontFamily: 'newer'});
+  h.emitSidebar('set-danmaku-font', {fontWeight: '600'});
+  assert.deepEqual(h.overlayMessages.findLast(m => m.name === 'set-danmaku-font').data, {fontFamily: 'newer', fontWeight: '600'});
+  h.emitSidebar('set-danmaku-font', {fontFamily: ''});
+  assert.equal(h.preferences.get('danmakuFontFamily'), '');
+  assert.equal(h.preferences.get('danmakuFontWeight'), '600');
+  const sent = h.overlayMessages.length;
+  h.emitSidebar('set-danmaku-font', {});
+  assert.equal(h.overlayMessages.length, sent);
+});
+
+test('reselecting the active source preserves filters, loaded state and pending notice without reloading', () => {
+  const h = createHarness(true); h.readyOverlay();
+  loadDateFixture(h, [{fork: 'main', comments: [
+    {body: 'first', vposMs: 1000, postedAt: '2026-01-01'}, {body: 'second', vposMs: 2000, postedAt: '2026-01-02'}
+  ]}]);
+  const day = calendarDay('2026-01-01');
+  h.emitSidebar('set-danmaku-filter', {startDay: day, endDay: day}); h.ackLoad();
+  const id = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+  const reads = h.fileReads.length, osds = h.osdMessages.length;
+  h.overlayMessages.length = 0; h.sidebarMessages.length = 0;
+  h.emitSidebar('select-danmaku-file', {path: '/videos/dates.json'});
+  assert.equal(h.overlayMessages.length, 0);
+  assert.equal(h.fileReads.length, reads);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  assert.equal(h.context.pluginState.danmakuFilterStartDay, day);
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-file-list').length, 0);
+  h.emitOverlay('danmaku-load-result', {loadId: id, success: true});
+  assert.equal(h.osdMessages.length, osds, 'no orphan success notice');
+});
+
+test('reselecting the disabled cached source enables it without resetting successful load state', () => {
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  h.toggleDanmaku(); h.overlayMessages.length = 0;
+  h.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
+  assert.equal(h.context.pluginState.danmakuEnabled, true);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  assert.deepEqual(h.overlayMessages.map(m => m.name), ['toggle-danmaku']);
+  h.emitEvent('mpv.time-pos.changed', 7);
+  assert.equal(h.overlayMessages.at(-1).data.time, 7);
+});
+
+test('reselection preserves a pending acknowledgment and reloads a changed hidden projection', () => {
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+  const loads = loadedComments(h.overlayMessages).length;
+  h.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
+  assert.equal(loadedComments(h.overlayMessages).length, loads);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.ackLoad();
+  h.toggleDanmaku();
+  h.emitSidebar('danmaku-blocklist-add', {word: 'A comment'});
+  h.emitSidebar('danmaku-blocklist-set-enabled', {enabled: true});
+  h.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
+  assert.equal(loadedComments(h.overlayMessages).length, loads + 1);
+  assert.deepEqual(h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.comments, []);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.ackLoad();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+});

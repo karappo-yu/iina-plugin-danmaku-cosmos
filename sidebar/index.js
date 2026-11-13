@@ -490,7 +490,7 @@ function submitCustomFont() {
   fontCustomEmptyChoice = false;
   if (family === pendingFontFamily || (pendingFontFamily === null && family === state.danmakuFontFamily)) return;
   pendingFontFamily = family;
-  iina.postMessage('set-danmaku-font', {fontFamily: family, fontWeight: fontWeightSlider ? fontWeightSlider.value : state.danmakuFontWeight});
+  iina.postMessage('set-danmaku-font', {fontFamily: family});
 }
 
 function updateFontUI() {
@@ -789,7 +789,7 @@ if (fontSelect) {
       fontCustomRow.style.display = "none";
       var preset = FONT_PRESETS[key] !== undefined ? FONT_PRESETS[key] : "";
       pendingFontFamily = preset !== state.danmakuFontFamily || pendingFontFamily !== null ? preset : null;
-      iina.postMessage("set-danmaku-font", { fontFamily: preset, fontWeight: state.danmakuFontWeight });
+      iina.postMessage("set-danmaku-font", { fontFamily: preset });
     }
   });
 }
@@ -819,7 +819,7 @@ if (fontWeightSlider) {
     if (fontWeightValue) fontWeightValue.textContent = fontWeightSlider.value;
   });
   fontWeightSlider.addEventListener("change", function () {
-    iina.postMessage("set-danmaku-font", { fontFamily: pendingFontFamily !== null ? pendingFontFamily : state.danmakuFontFamily, fontWeight: fontWeightSlider.value });
+    iina.postMessage("set-danmaku-font", { fontWeight: fontWeightSlider.value });
   });
 }
 

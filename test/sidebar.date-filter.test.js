@@ -383,7 +383,7 @@ test('font-weight input previews locally and change submits only the final weigh
   h.document.fire('pointerup');
   assert.equal(slider.value, '800', 'pointerup must not overwrite the draft before change');
   slider.fire('change');
-  assert.deepEqual(h.messages.filter(m => m.name === 'set-danmaku-font').map(m => [m.data.fontFamily, m.data.fontWeight]), [['Helvetica Neue', '800']]);
+  assert.deepEqual(h.messages.filter(m => m.name === 'set-danmaku-font').map(m => JSON.parse(JSON.stringify(m.data))), [{fontWeight: '800'}]);
 });
 
 test('keyboard range changes and secondary clicks do not leave drag protection active', () => {
@@ -410,4 +410,19 @@ test('WebKit element blur during a held range drag does not unlock its preview',
     h.emit('danmaku-state', {scrollSpeed: 0.4, danmakuFontWeight: '200'});
     assert.equal(String(slider.value), control.next);
   }
+});
+
+test('font controls submit only the field changed, even before prior state echoes return', () => {
+  const h = createSidebar();
+  h.emit('danmaku-state', {danmakuFontFamily: 'old', danmakuFontWeight: '400'});
+  const slider = h.elements.get('danmaku-font-weight-slider');
+  slider.value = '800'; slider.fire('change');
+  const select = h.elements.get('danmaku-font-select');
+  select.value = 'sans'; select.fire('change');
+  const patches = h.messages.filter(m => m.name === 'set-danmaku-font').map(m => JSON.parse(JSON.stringify(m.data)));
+  assert.deepEqual(patches, [{fontWeight: '800'}, {fontFamily: 'sans-serif'}]);
+  const input = h.elements.get('danmaku-font-custom');
+  select.value = 'custom'; input.value = ''; select.fire('change');
+  input.value = 'Custom Face'; input.fire('input');
+  assert.deepEqual(JSON.parse(JSON.stringify(h.messages.at(-1).data)), {fontFamily: 'Custom Face'});
 });

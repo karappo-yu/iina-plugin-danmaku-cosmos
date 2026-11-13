@@ -102,8 +102,8 @@ The sidebar sends one `set-style-preset` intent containing only the preset name.
 
 ### Font Settings
 
-- Font family: preset dropdown (Japanese/Chinese/Generic groups) or custom input → `set-danmaku-font` `{fontFamily, fontWeight}` → `applyDanmakuFont()` (main.js: persist + forward) → overlay rebuilds renderer via `initCanvasRenderer()` (instant apply, no reload)
-- Font weight: slider 100–900 (step 50); input previews locally and change submits one font update, matching speed/comment-limit controls.
+- Font family: preset dropdown (Japanese/Chinese/Generic groups) or custom input → `set-danmaku-font` `{fontFamily}` → `applyDanmakuFont()` (main.js: persist + forward) → overlay rebuilds renderer via `initCanvasRenderer()` (instant apply, no reload)
+- Font weight: slider 100–900 (step 50); input previews locally and change submits `{fontWeight}`. Font-family controls submit only `{fontFamily}`. `applyDanmakuFont()` preserves undefined fields, then main forwards a complete merged font snapshot. Never echo the other field from stale sidebar state.
 - Custom font selection is a view-only edit mode: choosing an empty Custom input does not send a preference or disappear when focus moves to weight. Submit on ordinary input and compositionend (deduplicating any trailing input), preserve pending drafts until the family echo arrives, and do not overwrite composition/caret on blur. Clearing an existing custom family still reverts to default.
 
 ### Font Scale
@@ -132,7 +132,7 @@ The sidebar previews speed on input and commits on change. Speed/weight state ec
 
 `mergeProjectedComments()` in `danmaku-document.js` is the only plugin dedupe implementation. It greedily groups from the earliest item within an inclusive window, by displayed text + normalized position + blocked state. Owners never merge. Both fixed and scrolling comments use the same static policy; the first host's style is retained and its `xN` suffix is passed as formatted metadata with a stable accent color.
 
-The sidebar and overlay consume the same merged projection. Engine `fixedCombo` and `nakaDedupeWindow` are disabled for these already-merged arrays. Do not reintroduce independent list merging or progressive fixed counts. The engine still supports those APIs for other consumers.
+The sidebar and overlay consume the same merged projection. Engine `fixedCombo`, `nakaDedupeWindow` and CA duplicate removal are disabled for these already-projected arrays. Use `keepCA: true, dedupeCA: false` so `changeCALayer()` still assigns CA layers without deleting repeated viewers or owners. The engine option defaults to true for compatibility; the plugin must explicitly disable it. Do not reintroduce independent list merging or progressive fixed counts. The engine still supports those APIs for other consumers.
 
 ## Dandanplay Network Danmaku
 
@@ -208,8 +208,8 @@ Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-
 
 ### Source and IPC boundaries
 
-- `danmaku-document.js` is loaded by main with package-local `require`. `parseDanmakuSource()` is the only XML/JSON/DDP normalization entry; invalid/empty comments are dropped there. IR includes sourceType, duration, dates, decoded text and native rendering metadata. Source fields are immutable; only `simplifiedText` is a lazy memo.
-- `danmakuCache[path]` contains a document, never encoded text. List selections reuse the cached IR; an explicit file-dialog selection rereads disk, preserving the old source if the refresh fails. A new video clears the session cache.
+- `danmaku-document.js` is loaded by main with package-local `require`. `parseDanmakuSource()` is the only XML/JSON/DDP normalization entry; invalid/empty comments are dropped there. XML format detection skips the prolog and reads only the root tag; body/CDATA text never selects the format. Only `premium="1"` marks Nico XML as premium; Bilibili/DDP still allow their supplied RGB colors. IR includes sourceType, duration, dates, decoded text and native rendering metadata. Source fields are immutable; only `simplifiedText` is a lazy memo.
+- `danmakuCache[path]` contains a document, never encoded text. List selections reuse the cached IR; an explicit file-dialog selection rereads disk, preserving the old source if the refresh fails. A new video clears the session cache. Reselecting an unchanged active/in-flight document uses a lightweight branch: preserve date selection, acknowledgment and success-notice state, resume if disabled, and send data only when the projection changed.
 - `projectDanmaku(doc, settings)` performs date slicing → density → optional simplification → blocking → shared dedupe, and returns formatted comments, list rows and counts. Main caches the current projection for all consumers. Skip overlay reload when the formatted projection is unchanged. Preserve owner control text (`/`, `@`, `＠` prefixes) during simplification. Do not parse or serialize source content in filters or UI code.
 - Disabled rendering: keep settings and pending style changes, but do not send filtered-source reloads or construct/draw hidden renderers. On enable compare the latest projection and apply it once; do not lose a pre-handshake source selection.
 - Overlay script order is `niconicomments.min.js → main.js`. Overlay consumes only `load-danmaku.comments` (formatted arrays); `input.js` has been removed.

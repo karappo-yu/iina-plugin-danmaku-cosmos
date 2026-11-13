@@ -310,6 +310,7 @@ function initCanvasRenderer(data) {
     format: 'formatted',
     mode: canvasNicoMode,
     keepCA: true,
+    dedupeCA: false, // Projection owns merging; retain CA layers without deleting comments.
     scale: canvasFontScale,
     config: {
       contextStrokeColor: strokeColor,
