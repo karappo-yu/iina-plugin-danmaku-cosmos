@@ -22,6 +22,7 @@
 - **本地文件自动加载**:打开视频时自动查找同目录下的弹幕文件(同名文件、`弹幕` / `Comments` / `コメント` 文件夹、按集数匹配),也可从侧边栏或菜单手动选择
 - **支持格式**:Niconico XML、Niconico V1 / 旧版 JSON、Bilibili XML
 - **弹弹play 网络弹幕**:自动为当前视频匹配网络弹幕(文件 hash 精确匹配 → 文件名匹配 → 手动搜索),结果缓存 24 小时,重复播放无需重新下载;可切换网络优先或本地优先
+  - 缓存目录:`~/Library/Application Support/com.colliderli.iina/plugins/.data/com.danmaku-cosmos.iina-plugin/danmaku-cache`
 
 #### 弹幕风格
 
@@ -90,6 +91,7 @@ IINA で動画を見ながらコメントを流せるプラグイン。Niconico 
 - **ローカルファイルの自動読み込み**:動画を開くと、同じフォルダ内のコメントファイルを自動で探します(同名ファイル、`弹幕` / `Comments` / `コメント` フォルダ、話数の自動判別)。サイドバーやメニューから手動で選ぶこともできます
 - **対応フォーマット**:Niconico XML、Niconico V1 / 旧版 JSON、Bilibili XML
 - **弹弹play ネットワークコメント**:今見ている動画に合うネットワークコメントを自動マッチング(ファイルハッシュによる完全一致 → ファイル名による照合 → 手動検索)。結果は 24 時間キャッシュされるので、見返すときに再ダウンロードは不要です。ネットワーク優先 / ローカル優先を切り替え可能
+  - キャッシュの保存先:`~/Library/Application Support/com.colliderli.iina/plugins/.data/com.danmaku-cosmos.iina-plugin/danmaku-cache`
 
 #### コメントスタイル
 
@@ -158,6 +160,7 @@ Display danmaku comments while watching videos in IINA: supports Niconico / Bili
 - **Auto-load local files**: when you open a video, the plugin automatically looks for danmaku files in the same folder (same-name file, `弹幕` / `Comments` / `コメント` folders, episode-number matching). You can also pick a file manually from the sidebar or menu
 - **Supported formats**: Niconico XML, Niconico V1 / legacy JSON, Bilibili XML
 - **Dandanplay network danmaku**: automatically matches network danmaku for the current video (exact file-hash match → filename match → manual search). Results are cached for 24 hours, so replays skip re-downloading. Switchable between network-first and local-first
+  - Cache folder: `~/Library/Application Support/com.colliderli.iina/plugins/.data/com.danmaku-cosmos.iina-plugin/danmaku-cache`
 
 #### Danmaku Style
 
