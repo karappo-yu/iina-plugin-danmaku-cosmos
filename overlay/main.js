@@ -518,6 +518,13 @@ onPluginMessage("set-opacity", (data) => {
   applyOpacityToDom();
 });
 
+onPluginMessage("set-danmaku-style", (data) => {
+  // Keep the current renderer entirely on its old style until the replacement
+  // can use the complete new scale/font/stroke/speed tuple in its first frame.
+  applyOverlaySettings(data);
+  if (formattedComments) scheduleCanvasRebuild();
+});
+
 onPluginMessage("set-fontscale", (data) => {
   canvasFontScale = data.scale;
   if (formattedComments) scheduleCanvasRebuild();
@@ -555,6 +562,9 @@ onPluginMessage("set-comment-limit", (data) => {
 
 onPluginMessage("set-scroll-speed", (data) => {
   scrollSpeed = data.speed;
+  // An upcoming style rebuild already consumes this value. Do not remap the
+  // old renderer's timeline while it is waiting to be replaced.
+  if (canvasRebuildPending) return;
   if (niconiComments) {
     if (niconiComments.setScrollSpeed(scrollSpeed)) {
       // Playback consumes the pending layout on its next frame. Paused video

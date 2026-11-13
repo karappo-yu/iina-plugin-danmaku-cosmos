@@ -317,3 +317,58 @@ test('a hidden load retains its data and reports success only when enabled and c
   assert.equal(h.messages.at(-1).data.loadId, 7);
   assert.equal(h.messages.at(-1).data.success, true);
 });
+
+const balancedStyle = {canvasFontScale: 0.5, danmakuFontFamily: '', danmakuFontWeight: '400', strokeWidth: 3, scrollSpeed: 0.5};
+const nicoStyle = {canvasFontScale: 1, danmakuFontFamily: '', danmakuFontWeight: '400', strokeWidth: 2.8, scrollSpeed: 1};
+for (const mode of ['css', 'default']) for (const paused of [true, false]) {
+  test(`balanced to Nico keeps the old renderer unchanged until one complete replacement (${mode}, paused=${paused})`, () => {
+    const h = harness();
+    h.send('load-danmaku', {comments: formatted([comment('test', [])]), canvasMode: mode, ...balancedStyle,
+      playback: {enabled: true, time: 20, paused, speed: 1}});
+    const old = h.instances[0];
+    h.send('set-danmaku-style', nicoStyle);
+    assert.equal(h.instances.length, 1);
+    assert.equal(old.options.scale, 0.5);
+    assert.equal(old.options.config.scrollSpeed, 0.5);
+    assert.equal(old.scrollSpeed, undefined, 'native setScrollSpeed never remaps the old renderer');
+    h.flush();
+    assert.equal(h.instances.length, 2);
+    const next = h.instances[1];
+    assert.equal(next.options.scale, 1);
+    assert.equal(next.options.config.scrollSpeed, 1);
+    assert.equal(next.options.config.contextLineWidth.html5, 2.8);
+    assert.equal(next.options.config.fonts.html5.gothic.weight, 400);
+    assert.deepEqual(next.draws, [2000]);
+  });
+}
+
+test('rapid preset changes and a speed override build only the final complete style', () => {
+  const h = harness();
+  h.send('load-danmaku', {comments: formatted([comment('test', [])]), ...balancedStyle,
+    playback: {enabled: true, time: 20, paused: true, speed: 1}});
+  h.send('set-danmaku-style', nicoStyle);
+  h.send('set-danmaku-style', {...balancedStyle, canvasFontScale: 0.35, danmakuFontWeight: '200'});
+  h.send('set-scroll-speed', {speed: 0.75});
+  assert.equal(h.instances[0].scrollSpeed, undefined);
+  h.flush();
+  assert.equal(h.instances.length, 2);
+  assert.equal(h.instances[1].options.scale, 0.35);
+  assert.equal(h.instances[1].options.config.scrollSpeed, 0.75);
+  assert.equal(h.instances[1].options.config.fonts.html5.gothic.weight, 200);
+});
+
+test('an atomic preset remains deferred while hidden and applies once on enable', () => {
+  const h = harness();
+  h.send('load-danmaku', {comments: formatted([comment('test', [])]), ...balancedStyle,
+    playback: {enabled: true, time: 20, paused: true, speed: 1}});
+  h.send('toggle-danmaku', {enabled: false, time: 20, paused: true, speed: 1});
+  h.send('set-danmaku-style', nicoStyle);
+  h.flush();
+  assert.equal(h.instances.length, 1);
+  assert.equal(h.instances[0].scrollSpeed, undefined);
+  h.send('toggle-danmaku', {enabled: true, time: 20, paused: true, speed: 1});
+  h.flush();
+  assert.equal(h.instances.length, 2);
+  assert.equal(h.instances[1].options.scale, 1);
+  assert.equal(h.instances[1].options.config.scrollSpeed, 1);
+});

@@ -271,6 +271,14 @@ function stateSnapshot() {
   });
 }
 
+// Presets are one state transaction, including their motion/layout settings.
+const STYLE_PRESETS = {
+  nico: {canvasFontScale: 1, danmakuFontWeight: '400', strokeWidth: 2.8, scrollSpeed: 1},
+  balanced: {canvasFontScale: 0.5, danmakuFontWeight: '400', strokeWidth: 3, scrollSpeed: 0.5},
+  bilibili: {canvasFontScale: 0.35, danmakuFontWeight: '200', strokeWidth: 2.5, scrollSpeed: 0.4},
+};
+const stylePresetFields = ['canvasFontScale', 'danmakuFontFamily', 'danmakuFontWeight', 'strokeWidth', 'scrollSpeed'];
+
 const overlayStateBindings = {
   canvasOpacity: ['set-opacity', 'opacity'], canvasFontScale: ['set-fontscale', 'scale'],
   currentCanvasMode: ['set-canvas-mode', 'mode'], strokeOpacity: ['set-stroke-opacity', 'opacity'],
@@ -293,14 +301,22 @@ function commitState(patch, notify) {
   });
   if (persist) syncPreferencesSoon();
   if (overlayReady) {
+    let atomicStyle = Object.prototype.hasOwnProperty.call(patch, 'stylePreset') &&
+      stylePresetFields.some(function (key) { return Object.prototype.hasOwnProperty.call(changed, key); });
+    if (atomicStyle) {
+      let style = {};
+      stylePresetFields.forEach(function (key) { style[key] = pluginState[key]; });
+      overlayPostMessage('set-danmaku-style', style);
+    }
     Object.keys(changed).forEach(function (key) {
+      if (atomicStyle && stylePresetFields.indexOf(key) !== -1) return;
       let binding = overlayStateBindings[key];
       if (!binding) return;
       let payload = {};
       payload[binding[1]] = pluginState[key];
       overlayPostMessage(binding[0], payload);
     });
-    if ('danmakuFontFamily' in changed || 'danmakuFontWeight' in changed) overlayPostMessage('set-danmaku-font', {
+    if (!atomicStyle && ('danmakuFontFamily' in changed || 'danmakuFontWeight' in changed)) overlayPostMessage('set-danmaku-font', {
       fontFamily: pluginState.danmakuFontFamily, fontWeight: pluginState.danmakuFontWeight
     });
   }
@@ -1592,8 +1608,8 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("set-style-preset", function (data) {
-    commitState({stylePreset: data.preset || "nico"});
-
+    if (!data || !Object.prototype.hasOwnProperty.call(STYLE_PRESETS, data.preset)) return;
+    commitState(Object.assign({}, STYLE_PRESETS[data.preset], {stylePreset: data.preset}));
   });
 
   sidebarOnMessage("set-danmaku-filter", function (data) {

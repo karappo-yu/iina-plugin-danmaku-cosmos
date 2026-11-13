@@ -322,3 +322,10 @@ test('pending rendering does not hide date controls for a selected parsed source
   h.emit('danmaku-file-list', {xmlFiles: [], jsonFiles: [], selectedPaths: []});
   assert.equal(h.elements.get('danmaku-filter-section').style.display, 'none');
 });
+
+test('a preset click sends one named intent, without separate appearance messages', () => {
+  const h = createSidebar();
+  const preset = {dataset: {preset: 'nico'}};
+  h.elements.get('style-preset-segmented').fire('click', {target: {closest() {return preset;}}});
+  assert.deepEqual(h.messages.filter(m => m.name.startsWith('set-')).map(m => [m.name, m.data.preset]), [['set-style-preset', 'nico']]);
+});

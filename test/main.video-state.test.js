@@ -1653,3 +1653,51 @@ test('WebView navigation invalidates old render acknowledgments before the next 
   h.ackLoad();
   assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
 });
+
+test('presets commit and transmit complete appearance tuples atomically', () => {
+  const h = createHarness(true, false, {danmakuFontFamily: 'Helvetica Neue'});
+  h.readyOverlay();
+  for (const [preset, scale, weight, strokeWidth, speed] of [
+    ['balanced', 0.5, '400', 3, 0.5], ['nico', 1, '400', 2.8, 1], ['bilibili', 0.35, '200', 2.5, 0.4]
+  ]) {
+    h.overlayMessages.length = 0; h.sidebarMessages.length = 0;
+    h.emitSidebar('set-style-preset', {preset});
+    assert.deepEqual(h.overlayMessages.map(m => m.name), ['set-danmaku-style']);
+    assert.deepEqual(h.overlayMessages[0].data, {
+      canvasFontScale: scale, danmakuFontFamily: 'Helvetica Neue', danmakuFontWeight: weight, strokeWidth, scrollSpeed: speed
+    });
+    assert.deepEqual(h.sidebarMessages.map(m => m.name), ['danmaku-state']);
+    assert.equal(h.sidebarMessages[0].data.stylePreset, preset);
+    assert.equal(h.preferences.get('stylePreset'), preset);
+    assert.equal(h.preferences.get('niconicommentsFontScale'), scale);
+    assert.equal(h.preferences.get('danmakuFontWeight'), weight);
+    assert.equal(h.preferences.get('strokeWidth'), strokeWidth);
+    assert.equal(h.preferences.get('scrollSpeed'), speed);
+  }
+});
+
+test('reapplying a preset restores manual tweaks, and rejects unknown preset names', () => {
+  const h = createHarness(true); h.readyOverlay();
+  h.emitSidebar('set-fontscale', {scale: 0.35});
+  h.emitSidebar('set-scroll-speed', {speed: 0.25});
+  h.overlayMessages.length = 0;
+  h.emitSidebar('set-style-preset', {preset: 'nico'});
+  assert.equal(h.overlayMessages.length, 1);
+  assert.equal(h.overlayMessages[0].name, 'set-danmaku-style');
+  assert.equal(h.overlayMessages[0].data.canvasFontScale, 1);
+  assert.equal(h.overlayMessages[0].data.scrollSpeed, 1);
+  h.emitSidebar('set-style-preset', {preset: 'nico'});
+  for (const preset of ['missing', '__proto__', 'constructor']) h.emitSidebar('set-style-preset', {preset});
+  assert.equal(h.overlayMessages.length, 1, 'unchanged and invalid choices do not rebuild');
+});
+
+test('a preset chosen before readiness is included in the first source load', () => {
+  const h = createHarness(true); h.setVideo('file:///videos/A.mp4');
+  h.emitSidebar('set-style-preset', {preset: 'balanced'});
+  assert.equal(h.overlayMessages.length, 0);
+  h.readyOverlay();
+  const load = h.overlayMessages.find(m => m.name === 'load-danmaku').data;
+  assert.equal(load.canvasFontScale, 0.5);
+  assert.equal(load.scrollSpeed, 0.5);
+  assert.equal(load.strokeWidth, 3);
+});

@@ -486,25 +486,6 @@ function updateFontUI() {
   }
 }
 
-var STYLE_PRESETS = {
-  nico: { fontScale: 1.0, fontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },
-  balanced: { fontScale: 0.5, fontWeight: "400", strokeWidth: 3, scrollSpeed: 0.5 },
-  bilibili: { fontScale: 0.35, fontWeight: "200", strokeWidth: 2.5, scrollSpeed: 0.4 }
-};
-
-function applyStylePreset(p) {
-  fontsizeSlider.value = Math.round(p.fontScale * 100);
-  fontsizeValue.textContent = Math.round(p.fontScale * 100) + "%";
-  iina.postMessage("set-fontscale", { scale: p.fontScale });
-  iina.postMessage("set-danmaku-font", { fontFamily: state.danmakuFontFamily, fontWeight: p.fontWeight });
-  strokeWidthSlider.value = p.strokeWidth;
-  strokeWidthValue.textContent = String(p.strokeWidth) + 'px';
-  iina.postMessage("set-stroke-width", { width: p.strokeWidth });
-  speedSlider.value = Math.round(p.scrollSpeed * 100);
-  speedValue.textContent = Math.round(p.scrollSpeed * 100) + '%';
-  iina.postMessage("set-scroll-speed", { speed: p.scrollSpeed });
-}
-
 function updateUI() {
   if (state.enabled === undefined) return;
   var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0;
@@ -826,9 +807,7 @@ if (stylePresetSegmented) {
     var item = e.target && e.target.closest ? e.target.closest(".seg-item") : null;
     if (!item) return;
     var presetName = item.dataset.preset;
-    var preset = STYLE_PRESETS[presetName];
-    if (!preset) return;
-    applyStylePreset(preset);
+    if (!presetName) return;
     iina.postMessage("set-style-preset", { preset: presetName });
   });
 }

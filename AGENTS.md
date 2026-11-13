@@ -36,7 +36,7 @@ Danmaku Cosmos/
 ├── sidebar/                  # IINA sidebar control panel
 │   ├── index.html            # Layout (general settings incl. Style Preset; advanced settings)
 │   ├── index.css
-│   └── index.js              # UI logic, STYLE_PRESETS, i18n dict (en/ja/zh, ja/zh as \uXXXX escapes); main.js has its own PLUGIN_I18N dict for OSD/menu strings
+│   └── index.js              # UI logic and preset intents, i18n dict (en/ja/zh, ja/zh as \uXXXX escapes); main.js has its own PLUGIN_I18N dict for OSD/menu strings
 ├── png/                      # README screenshots (excluded from release package by release.yml)
 └── .github/workflows/        # Release packaging
     └── release.yml
@@ -88,17 +88,17 @@ All controls live in the sidebar. General settings (top): Style Preset. Advanced
 
 ### Style Presets
 
-`STYLE_PRESETS` in `sidebar/index.js` — one-click apply of a parameter bundle (add new presets by extending this map):
+`STYLE_PRESETS` in `main.js` — one-click apply of a parameter bundle (add new presets by extending this map):
 
 ```js
 var STYLE_PRESETS = {
-  nico:     { fontScale: 1.0, fontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },  // defaults
-  balanced: { fontScale: 0.5, fontWeight: "400", strokeWidth: 3, scrollSpeed: 0.5 },
-  bilibili: { fontScale: 0.35, fontWeight: "200", strokeWidth: 2.5, scrollSpeed: 0.4 },
+  nico:     { canvasFontScale: 1.0, danmakuFontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },  // defaults
+  balanced: { canvasFontScale: 0.5, danmakuFontWeight: "400", strokeWidth: 3, scrollSpeed: 0.5 },
+  bilibili: { canvasFontScale: 0.35, danmakuFontWeight: "200", strokeWidth: 2.5, scrollSpeed: 0.4 },
 };
 ```
 
-`applyStylePreset()` sets state + slider UI and fires 4 messages: `set-fontscale`, `set-danmaku-font`, `set-stroke-width`, `set-scroll-speed`. Overlay rebuilds are debounced for 80 ms, so the four setting messages result in one renderer rebuild. The selected preset is persisted via `set-style-preset` → `preferences.set("stylePreset")` and restored on startup through `request-state`, so the segmented selection matches the saved preset after restart. Manual slider tweaks do NOT rewrite the preset selection (deliberate simplification).
+The sidebar sends one `set-style-preset` intent containing only the preset name. Main validates the name and commits its complete parameter bundle plus selection in one `commitState()` call. It forwards one `set-danmaku-style` message containing scale, family/weight, stroke and speed; the current font family is preserved. Overlay applies the full tuple to its next debounced rebuild (80 ms), keeping the old renderer entirely unchanged until then. Do not split preset parameters across separate IPC messages or mutate the old renderer's speed while a style rebuild is pending: that exposes an intermediate large-font/slow-speed frame with too many comments. Reapplying the selected preset restores manual tweaks; manual tweaks still leave the preset selection unchanged. Preferences and the lazy sidebar snapshot restore the complete state after restart.
 
 ### Font Settings
 
@@ -192,7 +192,7 @@ All communication uses `postMessage` / `onMessage` across three channels:
 | `overlay → main.js` | One-way | Jump commands, seek state |
 | `sidebar → main.js` | One-way | Toggle, param changes, file operations |
 
-Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-stroke-width`, `set-stroke-opacity`, `set-stroke-color`, `set-stroke-inversion-color`, `set-comment-limit`, `set-scroll-speed` (multiplier 0.25–1.0), `set-danmaku-offset`, `set-danmaku-font`, `set-style-preset` (persisted in main.js only, not forwarded).
+Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-stroke-width`, `set-stroke-opacity`, `set-stroke-color`, `set-stroke-inversion-color`, `set-comment-limit`, `set-scroll-speed` (multiplier 0.25–1.0), `set-danmaku-offset`, `set-danmaku-font`, `set-style-preset` (a named intent expanded atomically by main into `set-danmaku-style`).
 
 **Important**: overlay and sidebar do **NOT** communicate directly — all traffic goes through `main.js`.
 
