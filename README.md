@@ -213,4 +213,4 @@ Comment art (CA):
 
 ## License
 
-MIT License. Based on [niconicomments](https://github.com/xpadev-net/niconicomments) (MIT) and [opencc-js](https://github.com/nk2028/opencc-js) (MIT).
+MIT License. Based on [niconicomments](https://github.com/xpadev-net/niconicomments) (MIT, forked as [niconicomments-dom](https://github.com/karappo-yu/niconicomments-dom)) and [opencc-js](https://github.com/nk2028/opencc-js) (MIT).
