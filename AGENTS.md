@@ -88,17 +88,14 @@ All controls live in the sidebar. General settings (top): Style Preset. Advanced
 
 ### Style Presets
 
-`STYLE_PRESETS` in `main.js` — one-click apply of a parameter bundle (add new presets by extending this map):
+`STYLE_PRESETS` in `main.js` applies complete appearance bundles. `NICO_STYLE` defines the adjusted C preview: native default fonts (Hiragino Sans for ordinary HTML5 comments), weight 500, stroke width 0, centered glyph shadow blur 2, edge opacity 1, black/white edge colors, scale 1 and speed 1. These are also new-install defaults; saved manual settings are not migrated automatically.
 
 ```js
-var STYLE_PRESETS = {
-  nico:     { canvasFontScale: 1.0, danmakuFontWeight: "400", strokeWidth: 2.8, scrollSpeed: 1.0 },  // defaults
-  balanced: { canvasFontScale: 0.5, danmakuFontWeight: "400", strokeWidth: 3, scrollSpeed: 0.5 },
-  bilibili: { canvasFontScale: 0.35, danmakuFontWeight: "200", strokeWidth: 2.5, scrollSpeed: 0.4 },
-};
+// Balanced must differ from Nico in exactly these two fields.
+balanced: Object.assign({}, NICO_STYLE, {canvasFontScale: 0.5, scrollSpeed: 0.5})
 ```
 
-The sidebar sends one `set-style-preset` intent containing only the preset name. Main validates the name and commits its complete parameter bundle plus selection in one `commitState()` call. It forwards one `set-danmaku-style` message containing scale, family/weight, stroke and speed; the current font family is preserved. Overlay applies the full tuple to its next debounced rebuild (80 ms), keeping the old renderer entirely unchanged until then. Do not split preset parameters across separate IPC messages or mutate the old renderer's speed while a style rebuild is pending: that exposes an intermediate large-font/slow-speed frame with too many comments. Reapplying the selected preset restores manual tweaks; manual tweaks still leave the preset selection unchanged. Preferences and the lazy sidebar snapshot restore the complete state after restart.
+The sidebar sends one `set-style-preset` intent containing only the preset name. Main validates the name and commits its complete parameter bundle plus selection in one `commitState()` call. It forwards one `set-danmaku-style` message containing scale, family/weight, stroke width/color/inversion/opacity, shadow blur and speed; presets restore the default font family. Bilibili restores its thin font and hard outline with shadow disabled. Overlay applies the full tuple to its next debounced rebuild (80 ms), keeping the old renderer entirely unchanged until then. Do not split preset parameters across separate IPC messages or mutate the old renderer's speed while a style rebuild is pending: that exposes an intermediate large-font/slow-speed frame with too many comments. Even a shadow-only preset reset must use the atomic path. Reapplying the selected preset restores manual tweaks; manual tweaks still leave the preset selection unchanged. Preferences and the lazy sidebar snapshot restore the complete state after restart.
 
 ### Font Settings
 
@@ -112,9 +109,9 @@ Slider 25%–100% (step 5) → `set-fontscale` → `canvasFontScale`. CSS mode k
 
 ### CSS Text Shadow Blur
 
-Advanced settings exposes `cssTextShadowBlur` (0–10 px, step 0.5, default 0/off). `set-css-text-shadow-blur` sends `{blur}` through main's validated, persisted `commitState()` path; load payloads and lazy sidebar snapshots include the value. Hide the entire control in Canvas mode without resetting its value. The label is simply "Shadow blur" (localized), without a CSS suffix or explanatory hint. It is independent of style presets.
+Advanced settings exposes `cssTextShadowBlur` (0–10 px, step 0.5, default/Nico/Balanced 2; 0 disables it). `set-css-text-shadow-blur` sends `{blur}` through main's validated, persisted `commitState()` path; load payloads and lazy sidebar snapshots include the value. Hide the entire control in Canvas mode without resetting its value. The label is simply "Shadow blur" (localized), without a CSS suffix or explanatory hint. Presets include this value atomically.
 
-The engine config `cssTextShadowBlur` uses the same pre-scale units as stroke width, follows the resolved stroke color/opacity, and only applies when stroke width is positive. HTML5 applies comment/display scaling on the outer element; Flash applies the unscaled blur on its transformed glyph layer. Canvas ignores this option. Overlay coalesces CSS edits through the existing 80 ms rebuild, also refreshing repeated-emoji tiles, and defers hidden rendering work until enable. Canvas-only sessions store the value without rebuilding for this setting.
+The engine config `cssTextShadowBlur` uses the same pre-scale units as stroke width and follows the resolved stroke color/opacity independently of stroke width. The stroke slider accepts 0–8. At zero width, CSS uses normal paint order so WebKit paints the glyph's fill shadow; positive widths retain `stroke fill` and round joins. HTML5 applies comment/display scaling on the outer element; Flash applies the unscaled blur and paint order on its transformed glyph layer. Canvas ignores this option (zero width means fill only there). Overlay coalesces CSS edits through the existing 80 ms rebuild, also refreshing repeated-emoji tiles, and defers hidden rendering work until enable. Canvas-only sessions store the value without rebuilding for this setting.
 
 ### Scroll Speed (native engine motion)
 
@@ -264,7 +261,7 @@ Based on the `niconicomments` third-party library. All sources arrive as the sam
 - **IPC**: never sanitize business text or encode paths; use the shared lossless envelope.
 - **Preferences sync**: Use `syncPreferencesSoon()` (debounced) instead of calling `preferences.sync()` directly.
 - **i18n**: Two dictionaries, both with three languages (`en` plain, `ja`/`zh` as `\uXXXX` escapes). Sidebar UI strings live in `sidebar/index.js` `i18n` dict (language from `navigator.language`, applied via `data-i18n` / `data-i18n-placeholder` attributes and `t(key)`). OSD, menu items, and file-dialog titles live in `main.js` `PLUGIN_I18N` dict (language from `iina.utils.preferredLocalizations()`, accessed via `t(key, vars)` — supports `{name}` interpolation). New strings must be added to all three languages of the relevant dict. Never hardcode UI strings in either language. Japanese terminology follows niconico official usage: use コメント (not 弾幕) except when matching literal folder names.
-- **Style presets**: New presets = one entry in `STYLE_PRESETS` + a segmented button (`data-preset`) in `sidebar/index.html`. Parameters must fit existing slider ranges (fontScale 25–100%, weight 100–900 step 50, strokeWidth 1–8, scrollSpeed 0.25–1.0).
+- **Style presets**: New presets = one entry in `STYLE_PRESETS` + a segmented button (`data-preset`) in `sidebar/index.html`. Parameters must fit existing slider ranges (fontScale 25–100%, weight 100–900 step 50, strokeWidth 0–8, shadow blur 0–10 step 0.5, scrollSpeed 0.25–1.0).
 
 ### Logging Conventions
 

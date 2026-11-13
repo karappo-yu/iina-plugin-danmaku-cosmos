@@ -348,8 +348,9 @@ test('a hidden load retains its data and reports success only when enabled and c
   assert.equal(h.messages.at(-1).data.success, true);
 });
 
-const balancedStyle = {canvasFontScale: 0.5, danmakuFontFamily: '', danmakuFontWeight: '400', strokeWidth: 3, scrollSpeed: 0.5};
-const nicoStyle = {canvasFontScale: 1, danmakuFontFamily: '', danmakuFontWeight: '400', strokeWidth: 2.8, scrollSpeed: 1};
+const nicoStyle = {canvasFontScale: 1, danmakuFontFamily: '', danmakuFontWeight: '500', strokeWidth: 0, scrollSpeed: 1,
+  strokeOpacity: 1, strokeColor: '#000000', strokeInversionColor: '#ffffff', cssTextShadowBlur: 2};
+const balancedStyle = {...nicoStyle, canvasFontScale: 0.5, scrollSpeed: 0.5};
 for (const mode of ['css', 'default']) for (const paused of [true, false]) {
   test(`balanced to Nico keeps the old renderer unchanged until one complete replacement (${mode}, paused=${paused})`, () => {
     const h = harness();
@@ -366,8 +367,10 @@ for (const mode of ['css', 'default']) for (const paused of [true, false]) {
     const next = h.instances[1];
     assert.equal(next.options.scale, 1);
     assert.equal(next.options.config.scrollSpeed, 1);
-    assert.equal(next.options.config.contextLineWidth.html5, 2.8);
-    assert.equal(next.options.config.fonts.html5.gothic.weight, 400);
+    assert.equal(next.options.config.contextLineWidth.html5, 0);
+    assert.equal(next.options.config.cssTextShadowBlur, 2);
+    assert.equal(next.options.config.contextStrokeOpacity, 1);
+    assert.equal(next.options.config.fonts.html5.defont.weight, 500);
     assert.deepEqual(next.draws, [2000]);
   });
 }

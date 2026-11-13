@@ -210,9 +210,9 @@ var i18n = {
     danmaku_font_custom: "Custom Font",
     danmaku_font_weight: "Weight",
     comment_limit: "Max on Screen",
-    stroke_color: "Stroke Color",
+    stroke_color: "Stroke / Shadow Color",
     stroke_inversion: "Invert Color",
-    stroke_opacity: "Opacity",
+    stroke_opacity: "Stroke / Shadow Opacity",
     stroke_width: "Width",
     css_text_shadow_blur: "Shadow blur",
     scroll_speed: "Scroll Speed",
@@ -276,9 +276,9 @@ var i18n = {
     danmaku_font_custom: "\u30ab\u30b9\u30bf\u30e0\u30d5\u30a9\u30f3\u30c8",
     danmaku_font_weight: "\u592a\u3055",
     comment_limit: "\u540c\u6642\u8868\u793a\u4e0a\u9650",
-    stroke_color: "\u7e01\u53d6\u308a\u306e\u8272",
+    stroke_color: "\u7e01\u53d6\u308a\u30fb\u5f71\u306e\u8272",
     stroke_inversion: "\u9006\u7e01\u53d6\u308a\u8272",
-    stroke_opacity: "\u7e01\u53d6\u308a\u900f\u660e\u5ea6",
+    stroke_opacity: "\u7e01\u53d6\u308a\u30fb\u5f71\u306e\u4e0d\u900f\u660e\u5ea6",
     stroke_width: "\u7e01\u53d6\u308a\u306e\u592a\u3055",
     css_text_shadow_blur: "\u5f71\u306e\u307c\u304b\u3057",
     scroll_speed: "\u30b9\u30af\u30ed\u30fc\u30eb\u901f\u5ea6",
@@ -342,9 +342,9 @@ var i18n = {
     danmaku_font_custom: "\u81ea\u5b9a\u4e49\u5b57\u4f53",
     danmaku_font_weight: "\u7c97\u7ec6",
     comment_limit: "\u540c\u5c4f\u4e0a\u9650",
-    stroke_color: "\u63cf\u8fb9\u989c\u8272",
+    stroke_color: "\u63cf\u8fb9 / \u9634\u5f71\u989c\u8272",
     stroke_inversion: "\u53cd\u8272\u63cf\u8fb9",
-    stroke_opacity: "\u63cf\u8fb9\u900f\u660e\u5ea6",
+    stroke_opacity: "\u63cf\u8fb9 / \u9634\u5f71\u4e0d\u900f\u660e\u5ea6",
     stroke_width: "\u63cf\u8fb9\u7c97\u7ec6",
     css_text_shadow_blur: "\u9634\u5f71\u6a21\u7cca",
     scroll_speed: "\u6eda\u52a8\u901f\u5ea6",
@@ -514,10 +514,10 @@ function updateFontUI() {
     }
   }
   if (fontWeightSlider && !fontWeightSliderDrag.active) {
-    fontWeightSlider.value = state.danmakuFontWeight || "400";
+    fontWeightSlider.value = state.danmakuFontWeight || "500";
   }
   if (fontWeightValue) {
-    fontWeightValue.textContent = fontWeightSlider ? fontWeightSlider.value : "400";
+    fontWeightValue.textContent = fontWeightSlider ? fontWeightSlider.value : "500";
   }
 }
 

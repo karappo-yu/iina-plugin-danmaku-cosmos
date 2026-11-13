@@ -33,23 +33,25 @@ IINA 弹幕插件，基于 [niconicomments](https://github.com/xpadev-net/niconi
 - **弹幕过滤面板**：「过滤」tab 提供弹幕时间轴浏览、屏蔽词、顶部／底部固定弹幕屏蔽、去重合并和点击跳转
 - **快捷键**：`Shift + D` 显示/隐藏弹幕
 - **弹幕字体设置**：在高级设置中可选择字体预设（日文/中文字体）或自定义字体，并可调节粗细，用于调整弹幕的显示效果
-- **CSS 阴影模糊**：高级设置中可调节描边阴影的模糊半径（0–10 px，步长 0.5；默认 0 关闭）。阴影使用描边颜色和透明度，随字体及显示比例缩放；Canvas 模式下隐藏该项并保留数值。
+- **CSS 阴影模糊**：高级设置中可调节居中字形阴影（0–10 px，步长 0.5；Nico 默认 2，0 为关闭）。阴影与描边共享颜色和不透明度，在描边宽度为 0 时也能显示，并随字体及显示比例缩放；Canvas 模式下隐藏该项并保留数值。
 - **滚动速度控制**：在高级设置中可调节滚动弹幕的速度（25%~100%，仅调慢），固定弹幕不受影响
 
 ### 风格调节
 
 弹幕外观可通过自定义选项自由组合：
 
-- **niconico 原生风格**（引擎默认）：字号大、滚动快、字重较粗
+- **Nico 风格**：保留原生字号和速度，使用中等字重与柔和字形阴影
 - **中文弹幕常见风格**：字体小、滚动慢、字重较细
 
 普通设置顶部的「风格预设」可一键切换：
 
-- **Nico**：恢复这四项参数的默认值（字体缩放 100%、粗细 400、描边 2.8px、滚动速度 100%）
-- **平衡（Balanced）**：字体缩放 50%、粗细 400、描边 3px、滚动速度 50%
-- **Bilibili**：字体缩放 35%、粗细 200、描边 2.5px、滚动速度 40%
+- **Nico**：默认字体（普通评论为 Hiragino Sans）、字重 500、无硬描边、居中阴影模糊 2、不透明度 100%；字体缩放和滚动速度均为 100%
+- **平衡（Balanced）**：完全沿用 Nico 外观，只将字体缩放和滚动速度设为 50%
+- **Bilibili**：字体缩放 35%、粗细 200、描边 2.5px、不透明度 40%、关闭阴影、滚动速度 40%
 
 也可通过「字体缩放」「滚动速度」「字体粗细」等选项手动微调。
+
+预设会一并恢复默认字体及黑／白边缘颜色，完整参数一次生效。已保存的手动设置仍会在重启后恢复；更新后点一次 Nico 或平衡即可应用新预设。柔和阴影需要 CSS 模式，Canvas 忽略该选项；描边为 0 时 Canvas 只显示文字填充。
 
 ### 截图
 
@@ -171,23 +173,25 @@ Nico JSON（V1／旧版）还可以在「基础」tab 按**投稿日期**切片�
 - **コメントフィルタパネル**：「フィルター」タブでコメントタイムライン表示、NGワード、上部／下部固定コメントのブロック、重複マージ、クリックでジャンプ
 - **ショートカット**：`Shift + D` でコメントの表示/非表示を切り替え
 - **コメントフォント設定**：詳細設定でフォント（日本語・中国語フォントのプリセットやカスタム）と太さを選択でき、コメントの表示効果を調整できます
-- **CSS の影のぼかし**：詳細設定で縁取りと同じ色・透明度の影を調整できます（0〜10 px、0.5 刻み、既定の 0 は無効）。文字と表示の倍率に応じて拡縮します。Canvas 描画ではこの項目を非表示にし、設定値は保持します。
+- **CSS の影のぼかし**：詳細設定で文字の中央から広がる影を調整できます（0〜10 px、0.5 刻み、Nico の既定は 2、0 は無効）。縁取りと色・不透明度を共有し、縁取り幅 0 でも表示できます。文字と表示の倍率に応じて拡縮します。Canvas 描画ではこの項目を非表示にし、設定値は保持します。
 - **スクロール速度調整**：詳細設定でスクロールコメントの速度を調整できます（25%〜100%、減速のみ）。固定コメントには影響しません
 
 ### スタイル調整
 
 コメントの外観はカスタムオプションで自由に組み合わせられます：
 
-- **niconico ネイティブスタイル**（エンジン既定）：フォントが大きく、スクロールが速く、字が太い
+- **Nico スタイル**：元の文字サイズと速度を保ち、中程度の太さと柔らかい文字の影を使用
 - **中国語コメントによくあるスタイル**：フォントが小さく、スクロールが遅く、字が細い
 
 通常設定の上部にある「スタイルプリセット」でワンクリック切り替え：
 
-- **Nico**：次の4項目を既定値に戻す（フォント倍率 100%、太さ 400、縁取り 2.8px、スクロール速度 100%）
-- **バランス**：フォント倍率 50%、太さ 400、縁取り 3px、スクロール速度 50%
-- **Bilibili**：フォント倍率 35%、太さ 200、縁取り 2.5px、スクロール速度 40%
+- **Nico**：既定フォント（通常のコメントは Hiragino Sans）、太さ 500、縁取り幅 0、中央の影のぼかし 2、不透明度 100%。フォント倍率とスクロール速度は 100%
+- **バランス**：Nico と同じ外観で、フォント倍率とスクロール速度だけを 50% に変更
+- **Bilibili**：フォント倍率 35%、太さ 200、縁取り 2.5px、不透明度 40%、影なし、スクロール速度 40%
 
 「フォント倍率」「スクロール速度」「フォントの太さ」などのオプションで手動微調整も可能です。
+
+プリセットは既定フォントと黒／白の縁取り・影の色も復元し、まとめて適用します。保存済みの手動設定は再起動後も保持します。更新後に Nico またはバランスを選び直すと新しい設定になります。影は CSS 描画専用です。Canvas で縁取り幅 0 の場合は文字の塗りだけを表示します。
 
 ### コメントフィルター
 
@@ -266,23 +270,25 @@ Nico JSON（V1／旧版）还可以在「基础」tab 按**投稿日期**切片�
 - **Danmaku filter panel**: The **Filter** tab provides a danmaku timeline browser, blocklist, top/bottom fixed-comment blocking, dedupe merging, and click-to-seek
 - **Shortcut**: Press `Shift + D` to show/hide danmaku
 - **Danmaku font settings**: Choose a font (Japanese/Chinese presets or custom) and weight in Advanced settings to adjust the danmaku appearance
-- **CSS shadow blur**: Adjust the stroke shadow in Advanced settings (0–10 px in 0.5 steps; the default 0 disables it). It follows the stroke color/opacity and font/display scaling. Canvas mode hides the control while retaining its value.
+- **CSS shadow blur**: Adjust a centered glyph shadow in Advanced settings (0–10 px in 0.5 steps; Nico defaults to 2, and 0 disables it). It shares the stroke color/opacity, works with zero stroke width, and follows font/display scaling. Canvas mode hides the control while retaining its value.
 - **Scroll speed control**: Adjust the scrolling danmaku speed in Advanced settings (25%–100%, slow-down only); fixed comments are unaffected
 
 ### Style Adjustment
 
 Danmaku appearance can be freely combined via the customization options:
 
-- **Native niconico style** (engine default): large font, fast scrolling, bold weight
+- **Nico style**: native font size and scrolling speed, medium weight and soft glyph shadows
 - **Common Chinese danmaku style**: small font, slow scrolling, thin weight
 
 The **Style Preset** selector at the top of the general settings applies presets in one click:
 
-- **Nico**: restores these four defaults (Font Scale 100%, Weight 400, Stroke Width 2.8px, Scroll Speed 100%)
-- **Balanced**: Font Scale 50%, Weight 400, Stroke Width 3px, Scroll Speed 50%
-- **Bilibili**: Font Scale 35%, Weight 200, Stroke Width 2.5px, Scroll Speed 40%
+- **Nico**: default fonts (Hiragino Sans for ordinary comments), Weight 500, Stroke Width 0, centered Shadow Blur 2 and edge opacity 100%; Font Scale and Scroll Speed 100%
+- **Balanced**: the same appearance as Nico, with only Font Scale and Scroll Speed changed to 50%
+- **Bilibili**: Font Scale 35%, Weight 200, Stroke Width 2.5px, edge opacity 40%, Shadow Blur 0, Scroll Speed 40%
 
 Manual fine-tuning is also available via **Font Scale**, **Scroll Speed**, and **Weight**.
+
+Presets also restore default fonts and black/white edge colors, applying the complete appearance together. Saved manual settings remain intact after restart; reselect Nico or Balanced after updating to apply the new preset. Soft shadows require CSS mode. Canvas ignores the shadow option and renders only the text fill at zero stroke width.
 
 ### Network Danmaku
 

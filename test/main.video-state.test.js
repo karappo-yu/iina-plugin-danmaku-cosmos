@@ -385,16 +385,15 @@ test('CSS shadow blur persists, restores to lazy views, and rejects invalid valu
   const h = createHarness(true);
   h.readyOverlay();
   h.emitSidebar('request-state');
-  assert.equal(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.cssTextShadowBlur, 0);
+  assert.equal(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.cssTextShadowBlur, 2);
   h.emitSidebar('set-css-text-shadow-blur', {blur: 3.5});
   assert.equal(h.preferences.get('cssTextShadowBlur'), 3.5);
   assert.equal(h.overlayMessages.findLast(m => m.name === 'set-css-text-shadow-blur').data.blur, 3.5);
   assert.equal(h.context.buildLoadDanmakuPayload([], 'nico-json').cssTextShadowBlur, 3.5);
   for (const blur of [-1, 10.5, NaN, Infinity, '2', null]) h.emitSidebar('set-css-text-shadow-blur', {blur});
   assert.equal(h.preferences.get('cssTextShadowBlur'), 3.5);
-  h.emitSidebar('set-style-preset', {preset: 'bilibili'});
   h.emitSidebar('set-canvas-mode', {mode: 'default'});
-  assert.equal(h.preferences.get('cssTextShadowBlur'), 3.5, 'presets and Canvas keep the CSS-only preference');
+  assert.equal(h.preferences.get('cssTextShadowBlur'), 3.5, 'Canvas keeps the CSS-only preference');
   const restored = createHarness(true, false, Object.fromEntries(h.preferences));
   restored.emitSidebar('request-state');
   assert.equal(restored.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.cssTextShadowBlur, 3.5);
@@ -402,7 +401,7 @@ test('CSS shadow blur persists, restores to lazy views, and rejects invalid valu
   restored.emitSidebar('set-css-text-shadow-blur', {blur: 0});
   assert.equal(restored.preferences.get('cssTextShadowBlur'), 0);
   const invalid = createHarness(true, false, {cssTextShadowBlur: -1});
-  assert.equal(invalid.context.buildLoadDanmakuPayload([], 'nico-json').cssTextShadowBlur, 0);
+  assert.equal(invalid.context.buildLoadDanmakuPayload([], 'nico-json').cssTextShadowBlur, 2);
 });
 
 test('position settings default off, persist independently and restore through lazy sidebar snapshots', () => {
@@ -1681,14 +1680,16 @@ test('WebView navigation invalidates old render acknowledgments before the next 
 test('presets commit and transmit complete appearance tuples atomically', () => {
   const h = createHarness(true, false, {danmakuFontFamily: 'Helvetica Neue'});
   h.readyOverlay();
-  for (const [preset, scale, weight, strokeWidth, speed] of [
-    ['balanced', 0.5, '400', 3, 0.5], ['nico', 1, '400', 2.8, 1], ['bilibili', 0.35, '200', 2.5, 0.4]
+  for (const [preset, scale, weight, strokeWidth, speed, blur, opacity] of [
+    ['balanced', 0.5, '500', 0, 0.5, 2, 1], ['nico', 1, '500', 0, 1, 2, 1],
+    ['bilibili', 0.35, '200', 2.5, 0.4, 0, 0.4]
   ]) {
     h.overlayMessages.length = 0; h.sidebarMessages.length = 0;
     h.emitSidebar('set-style-preset', {preset});
     assert.deepEqual(h.overlayMessages.map(m => m.name), ['set-danmaku-style']);
     assert.deepEqual(h.overlayMessages[0].data, {
-      canvasFontScale: scale, danmakuFontFamily: 'Helvetica Neue', danmakuFontWeight: weight, strokeWidth, scrollSpeed: speed
+      canvasFontScale: scale, danmakuFontFamily: '', danmakuFontWeight: weight, strokeWidth, scrollSpeed: speed,
+      cssTextShadowBlur: blur, strokeOpacity: opacity, strokeColor: '#000000', strokeInversionColor: '#ffffff'
     });
     assert.deepEqual(h.sidebarMessages.map(m => m.name), ['danmaku-state']);
     assert.equal(h.sidebarMessages[0].data.stylePreset, preset);
@@ -1697,6 +1698,26 @@ test('presets commit and transmit complete appearance tuples atomically', () => 
     assert.equal(h.preferences.get('danmakuFontWeight'), weight);
     assert.equal(h.preferences.get('strokeWidth'), strokeWidth);
     assert.equal(h.preferences.get('scrollSpeed'), speed);
+    assert.equal(h.context.pluginState.cssTextShadowBlur, blur);
+    assert.equal(h.context.pluginState.strokeOpacity, opacity);
+  }
+});
+
+test('Balanced differs from Nico only in scale and speed, including after restart', () => {
+  const h = createHarness(true, false, {danmakuFontFamily: 'custom', strokeColor: '#123456', cssTextShadowBlur: 8});
+  h.emitSidebar('set-style-preset', {preset: 'nico'});
+  const nico = h.context.buildLoadDanmakuPayload([], 'nico-json');
+  h.emitSidebar('set-style-preset', {preset: 'balanced'});
+  const balanced = h.context.buildLoadDanmakuPayload([], 'nico-json');
+  assert.equal(balanced.canvasFontScale, nico.canvasFontScale / 2);
+  assert.equal(balanced.scrollSpeed, nico.scrollSpeed / 2);
+  assert.deepEqual({...balanced, loadId: nico.loadId,
+    canvasFontScale: nico.canvasFontScale, scrollSpeed: nico.scrollSpeed}, {...nico});
+  const restored = createHarness(true, false, Object.fromEntries(h.preferences));
+  const reload = restored.context.buildLoadDanmakuPayload([], 'nico-json');
+  for (const key of ['canvasFontScale', 'scrollSpeed', 'danmakuFontFamily', 'danmakuFontWeight',
+    'strokeWidth', 'strokeOpacity', 'strokeColor', 'strokeInversionColor', 'cssTextShadowBlur']) {
+    assert.equal(reload[key], balanced[key], key);
   }
 });
 
@@ -1713,6 +1734,11 @@ test('reapplying a preset restores manual tweaks, and rejects unknown preset nam
   h.emitSidebar('set-style-preset', {preset: 'nico'});
   for (const preset of ['missing', '__proto__', 'constructor']) h.emitSidebar('set-style-preset', {preset});
   assert.equal(h.overlayMessages.length, 1, 'unchanged and invalid choices do not rebuild');
+  h.emitSidebar('set-css-text-shadow-blur', {blur: 7});
+  h.overlayMessages.length = 0;
+  h.emitSidebar('set-style-preset', {preset: 'nico'});
+  assert.deepEqual(h.overlayMessages.map(m => m.name), ['set-danmaku-style'], 'a shadow-only reset is still atomic');
+  assert.equal(h.overlayMessages[0].data.cssTextShadowBlur, 2);
 });
 
 test('a preset chosen before readiness is included in the first source load', () => {
@@ -1723,7 +1749,9 @@ test('a preset chosen before readiness is included in the first source load', ()
   const load = h.overlayMessages.find(m => m.name === 'load-danmaku').data;
   assert.equal(load.canvasFontScale, 0.5);
   assert.equal(load.scrollSpeed, 0.5);
-  assert.equal(load.strokeWidth, 3);
+  assert.equal(load.strokeWidth, 0);
+  assert.equal(load.cssTextShadowBlur, 2);
+  assert.equal(load.strokeOpacity, 1);
 });
 
 test('font family and weight patches preserve the other field without waiting for sidebar echoes', () => {

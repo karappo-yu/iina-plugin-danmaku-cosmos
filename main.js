@@ -45,16 +45,16 @@ if (!isFinite(pluginState.danmakuDedupeWindow) || pluginState.danmakuDedupeWindo
 pluginState.canvasOpacity = preferences.get("danmakuCanvasOpacity") !== undefined ? preferences.get("danmakuCanvasOpacity") : 0.8;
 pluginState.canvasFontScale = preferences.get("niconicommentsFontScale") || 1.0;
 pluginState.currentCanvasMode = preferences.get("canvasMode") || 'css';
-pluginState.strokeOpacity = preferences.get("strokeOpacity") !== undefined ? preferences.get("strokeOpacity") : 0.4;
-pluginState.strokeWidth = preferences.get("strokeWidth") !== undefined ? preferences.get("strokeWidth") : 2.8;
-pluginState.cssTextShadowBlur = isValidCssTextShadowBlur(preferences.get("cssTextShadowBlur")) ? preferences.get("cssTextShadowBlur") : 0;
+pluginState.strokeOpacity = preferences.get("strokeOpacity") !== undefined ? preferences.get("strokeOpacity") : 1;
+pluginState.strokeWidth = preferences.get("strokeWidth") !== undefined ? preferences.get("strokeWidth") : 0;
+pluginState.cssTextShadowBlur = isValidCssTextShadowBlur(preferences.get("cssTextShadowBlur")) ? preferences.get("cssTextShadowBlur") : 2;
 pluginState.strokeColor = preferences.get("strokeColor") || '#000000';
 pluginState.strokeInversionColor = preferences.get("strokeInversionColor") || '#ffffff';
 pluginState.commentLimit = preferences.get("commentLimit") !== undefined ? preferences.get("commentLimit") : 0;
 pluginState.scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get("scrollSpeed") : 1.0;
 pluginState.danmakuTimeOffsetSec = 0; // 弹幕偏移不做持久化: 偏移量因视频/弹幕文件而异,每个会话从 0 开始
 pluginState.danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
-pluginState.danmakuFontWeight = preferences.get("danmakuFontWeight") || "400";
+pluginState.danmakuFontWeight = preferences.get("danmakuFontWeight") || "500";
 pluginState.stylePreset = preferences.get("stylePreset") || "nico";
 var overlayReady = false;
 let overlayLoadId = 0;
@@ -273,12 +273,22 @@ function stateSnapshot() {
 }
 
 // Presets are one state transaction, including their motion/layout settings.
-const STYLE_PRESETS = {
-  nico: {canvasFontScale: 1, danmakuFontWeight: '400', strokeWidth: 2.8, scrollSpeed: 1},
-  balanced: {canvasFontScale: 0.5, danmakuFontWeight: '400', strokeWidth: 3, scrollSpeed: 0.5},
-  bilibili: {canvasFontScale: 0.35, danmakuFontWeight: '200', strokeWidth: 2.5, scrollSpeed: 0.4},
+// Soft Nico appearance: native Hiragino default, weight 500, centered glyph
+// shadow without a hard outline. 2 engine units is ~4.3 px at 58 px text.
+const NICO_STYLE = {
+  canvasFontScale: 1, danmakuFontFamily: '', danmakuFontWeight: '500',
+  strokeWidth: 0, strokeOpacity: 1, strokeColor: '#000000', strokeInversionColor: '#ffffff',
+  cssTextShadowBlur: 2, scrollSpeed: 1,
 };
-const stylePresetFields = ['canvasFontScale', 'danmakuFontFamily', 'danmakuFontWeight', 'strokeWidth', 'scrollSpeed'];
+const STYLE_PRESETS = {
+  nico: NICO_STYLE,
+  balanced: Object.assign({}, NICO_STYLE, {canvasFontScale: 0.5, scrollSpeed: 0.5}),
+  bilibili: {canvasFontScale: 0.35, danmakuFontFamily: '', danmakuFontWeight: '200',
+    strokeWidth: 2.5, strokeOpacity: 0.4, strokeColor: '#000000', strokeInversionColor: '#ffffff',
+    cssTextShadowBlur: 0, scrollSpeed: 0.4},
+};
+const stylePresetFields = ['canvasFontScale', 'danmakuFontFamily', 'danmakuFontWeight', 'strokeWidth', 'scrollSpeed',
+  'strokeOpacity', 'strokeColor', 'strokeInversionColor', 'cssTextShadowBlur'];
 
 const overlayStateBindings = {
   canvasOpacity: ['set-opacity', 'opacity'], canvasFontScale: ['set-fontscale', 'scale'],

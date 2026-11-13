@@ -17,9 +17,9 @@ let canvasFontScale = 1.0;
 let canvasNicoMode = 'css';
 let strokeColor = '#000000';
 let strokeInversionColor = '#ffffff';
-let strokeOpacity = 0.4;
-let strokeWidth = 2.8;
-let cssTextShadowBlur = 0;
+let strokeOpacity = 1;
+let strokeWidth = 0;
+let cssTextShadowBlur = 2;
 let commentLimit = 0;
 let scrollSpeed = 1.0;
 let danmakuTimeOffsetSec = 0;
@@ -206,8 +206,8 @@ var DEFAULT_DANMAKU_FONT_STACKS = {
 };
 
 function buildDanmakuFontConfig() {
-  var weight = danmakuFontWeight ? parseInt(danmakuFontWeight, 10) : 400;
-  if (isNaN(weight) || weight < 100 || weight > 900) weight = 400;
+  var weight = danmakuFontWeight ? parseInt(danmakuFontWeight, 10) : 500;
+  if (isNaN(weight) || weight < 100 || weight > 900) weight = 500;
   var mk = function (type) {
     var def = DEFAULT_DANMAKU_FONT_STACKS[type];
     return {
