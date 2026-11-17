@@ -1116,7 +1116,7 @@ test('XML attributes, CDATA and numeric entities have the same text in filters a
   const items = Array.from(h.context.buildDanmakuBrowserList());
   assert.equal(items.length, 1);
   assert.equal(items[0].text, '&lt; 草 &lt; ');
-  h.emitSidebar('danmaku-blocklist-add', {word: '^&lt; 草'});
+  h.emitSidebar('danmaku-blocklist-add', {word: '/^&lt; 草/'});
   h.emitSidebar('danmaku-blocklist-set-enabled', {enabled: true});
   assert.equal(h.context.getEffectiveContent(p).length, 0);
 });
@@ -1145,7 +1145,7 @@ test('real legacy JSON density and blocking preserve owners and match the bundle
   const parsed = N.internal.inputParser.default(filtered, 'formatted');
   assert.deepEqual(parsed.map(c => c.content).sort(), ['c4', 'owner']);
   assert.deepEqual(Array.from(h.context.buildDanmakuBrowserList(), c => c.text).sort(), ['c4', 'owner']);
-  h.emitSidebar('danmaku-blocklist-add', {word: 'owner|c4'});
+  h.emitSidebar('danmaku-blocklist-add', {word: '/owner|c4/'});
   h.emitSidebar('danmaku-blocklist-set-enabled', {enabled: true});
   const final = h.context.getEffectiveContent(p);
   assert.deepEqual(N.internal.inputParser.default(final, 'formatted').map(c => c.content), ['owner']);
@@ -1841,4 +1841,124 @@ test('reselection preserves a pending acknowledgment and reloads a changed hidde
   assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
   h.ackLoad();
   assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+});
+
+test('blocklist treats normal entries as case-insensitive literals and compiles /.../ regexes safely', () => {
+  const h = createHarness(true);
+  const items = [
+    {t: 100, text: '2024.01 ok', _commands: []},
+    {t: 200, text: '2024X01 should stay', _commands: []},
+    {t: 300, text: '(笑) lol', _commands: []},
+    {t: 400, text: '笑 should stay', _commands: []},
+    {t: 500, text: 'C++ note', _commands: []},
+    {t: 600, text: 'ccc should stay', _commands: []},
+    {t: 700, text: 'regex-99', _commands: []},
+  ];
+  const p = setPositionSource(h, 'dandanplay', items);
+  h.emitSidebar('danmaku-blocklist-add', {word: '2024.01'});
+  h.emitSidebar('danmaku-blocklist-add', {word: '(笑)'});
+  h.emitSidebar('danmaku-blocklist-add', {word: 'c+'});
+  h.emitSidebar('danmaku-blocklist-add', {word: '/^regex-\\d+$/'});
+  h.emitSidebar('danmaku-blocklist-add', {word: '/[unclosed/'});
+  h.emitSidebar('danmaku-blocklist-add', {word: '/' + 'a'.repeat(250) + '/'});
+  h.emitSidebar('danmaku-blocklist-set-enabled', {enabled: true});
+  const remaining = h.context.getEffectiveContent(p).map(c => c.content);
+  assert.deepEqual(remaining, ['2024X01 should stay', '笑 should stay', 'ccc should stay']);
+});
+
+test('extractNumberFromName prioritizes explicit episode markers over codec/season/resolution numbers', () => {
+  const h = createHarness(true);
+  const cases = [
+    ['Title H.264 第05话', 5],
+    ['[SubGroup] Anime 2nd Season [1080p][x265][10bit] 第05话', 5],
+    ['[SubGroup] Anime 05話 [1080p][x265]', 5],
+    ['Show.S02E12.1080p.H.264', 12],
+    ['Show [x264][10bit] EP08', 8],
+    ['[Sub] Show [07][1080p]', 7],
+    ['Show - 03 - 720p', 3],
+    ['EP1', 1],
+    ['EP10', 10],
+  ];
+  for (const [name, expected] of cases) {
+    assert.equal(h.context.extractNumberFromName(name), expected, name);
+  }
+});
+
+test('manual preset tweaks reset stylePreset to custom and persist across restart', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  h.emitSidebar('set-style-preset', {preset: 'nico'});
+  assert.equal(h.context.pluginState.stylePreset, 'nico');
+  h.sidebarMessages.length = 0;
+  h.emitSidebar('set-fontscale', {scale: 0.5});
+  assert.equal(h.context.pluginState.stylePreset, 'custom');
+  assert.equal(h.preferences.get('stylePreset'), 'custom');
+  assert.equal(h.sidebarMessages[0].data.stylePreset, 'custom');
+
+  const restored = createHarness(true, false, Object.fromEntries(h.preferences));
+  assert.equal(restored.context.pluginState.stylePreset, 'custom');
+  restored.emitSidebar('request-state');
+  assert.equal(restored.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.stylePreset, 'custom');
+
+  restored.emitSidebar('set-style-preset', {preset: 'balanced'});
+  assert.equal(restored.context.pluginState.stylePreset, 'balanced');
+  restored.emitSidebar('set-css-text-shadow-blur', {blur: 5});
+  assert.equal(restored.context.pluginState.stylePreset, 'custom');
+});
+
+test('applyDanmakuOffset clamps values within [-30, 30]', () => {
+  const h = createHarness(true);
+  h.emitSidebar('set-danmaku-offset', {offset: 45});
+  assert.equal(h.context.pluginState.danmakuTimeOffsetSec, 30);
+  h.emitSidebar('set-danmaku-offset', {offset: -99});
+  assert.equal(h.context.pluginState.danmakuTimeOffsetSec, -30);
+});
+
+test('DDP disk cache eviction removes expired (>7d) and excess (>100) cache entries', async () => {
+  const h = createHarness(true);
+  const now = Date.now();
+  const expiredFile = '@data/danmaku-cache/expired.json';
+  h.setFile(expiredFile, JSON.stringify({episodeId: 1, cachedAt: now - 8 * 24 * 60 * 60 * 1000, comments: []}));
+  for (let i = 0; i < 102; i++) {
+    h.setFile(`@data/danmaku-cache/item-${i}.json`, JSON.stringify({episodeId: i + 10, cachedAt: now - (102 - i) * 1000, comments: []}));
+  }
+  const removed = [];
+  h.setExec((command, args) => {
+    if (command === '/bin/mkdir') return Promise.resolve({status: 0});
+    if (command === '/bin/rm') {
+      removed.push(...args.slice(1));
+      return Promise.resolve({status: 0});
+    }
+    return Promise.resolve({status: 0});
+  });
+  const ok = await h.context.ddpSaveVideoCache('file:///videos/New.mp4', 999, 'Anime', '1', []);
+  assert.equal(ok, true);
+  assert.ok(removed.includes(expiredFile));
+  assert.ok(removed.includes('@data/danmaku-cache/item-0.json'));
+  assert.ok(removed.includes('@data/danmaku-cache/item-1.json'));
+  assert.ok(removed.includes('@data/danmaku-cache/item-2.json'));
+  assert.equal(removed.includes(h.context.ddpCacheFile('file:///videos/New.mp4')), false);
+  assert.equal(removed.length, 4);
+});
+
+test('non-2xx HTTP status codes are propagated in DDP error messages', async () => {
+  const h = createHarness(true, true);
+  h.readyOverlay();
+  h.setVideo('file:///videos/A.mp4');
+  await flushMicrotasks();
+  h.resolveNextHttp({statusCode: 502, text: 'Bad Gateway'});
+  await flushMicrotasks();
+  assert.match(h.context.pluginState.dandanplayState.error, /502/);
+
+  h.emitSidebar('dandanplay-search', {keyword: 'test', searchId: 11});
+  h.resolveNextHttp({statusCode: 429, text: 'Too Many Requests'});
+  await flushMicrotasks();
+  const searchReply = h.sidebarMessages.findLast(m => m.name === 'dandanplay-search-result');
+  assert.match(searchReply.data.error, /429/);
+
+  h.emitSidebar('dandanplay-get-bangumi', {bangumiId: 42, searchId: 11});
+  h.resolveNextHttp({statusCode: 503, text: 'Service Unavailable'});
+  await flushMicrotasks();
+  const bangumiReply = h.sidebarMessages.findLast(m => m.name === 'dandanplay-bangumi-result');
+  assert.match(bangumiReply.data.error, /503/);
 });

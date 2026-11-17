@@ -2,7 +2,7 @@ var pluginState = {};
 let danmakuDocument = require('./danmaku-document.js');
 // IINA resolves require against the executing script stack. Load the package
 // module here; callbacks only construct/use its converter, never call require.
-let openccLibrary = require('./overlay/lib/opencc.min.js') || globalThis.OpenCC;
+let openccLibrary = require('./lib/opencc.min.js') || globalThis.OpenCC;
 let parseDanmakuSource = danmakuDocument.parseDanmakuSource;
 let projectDanmaku = danmakuDocument.projectDanmaku;
 
@@ -56,7 +56,8 @@ pluginState.scrollSpeed = preferences.get("scrollSpeed") !== undefined ? prefere
 pluginState.danmakuTimeOffsetSec = 0; // 弹幕偏移不做持久化: 偏移量因视频/弹幕文件而异,每个会话从 0 开始
 pluginState.danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
 pluginState.danmakuFontWeight = preferences.get("danmakuFontWeight") || "500";
-pluginState.stylePreset = preferences.get("stylePreset") || "nico";
+var savedStylePreset = preferences.get("stylePreset");
+pluginState.stylePreset = (savedStylePreset !== undefined && savedStylePreset !== null) ? String(savedStylePreset) : "nico";
 var overlayReady = false;
 let overlayLoadId = 0;
 var preferencesSyncTimer = null;
@@ -312,6 +313,16 @@ function commitState(patch, notify) {
       persist = true;
     }
   });
+  if (!Object.prototype.hasOwnProperty.call(patch, 'stylePreset') &&
+      stylePresetFields.some(function (key) { return Object.prototype.hasOwnProperty.call(changed, key); }) &&
+      pluginState.stylePreset !== 'custom') {
+    pluginState.stylePreset = 'custom';
+    changed.stylePreset = 'custom';
+    if (statePreferenceKeys.stylePreset) {
+      preferences.set(statePreferenceKeys.stylePreset, 'custom');
+      persist = true;
+    }
+  }
   if (persist) syncPreferencesSoon();
   if (overlayReady) {
     let atomicStyle = Object.prototype.hasOwnProperty.call(patch, 'stylePreset') &&
@@ -407,9 +418,17 @@ function overlayPostMessage(key, data) {
   postSafeMessage(overlay, key, data);
 }
 
+var DANMAKU_OFFSET_MIN = -30;
+var DANMAKU_OFFSET_MAX = 30;
+function clampDanmakuOffset(value) {
+  var rounded = Math.round(value * 1000) / 1000;
+  return Math.max(DANMAKU_OFFSET_MIN, Math.min(DANMAKU_OFFSET_MAX, rounded));
+}
+
 function applyDanmakuOffset(offsetSec) {
   var nextOffset = parseFloat(offsetSec);
   if (!isFinite(nextOffset)) return;
+  nextOffset = clampDanmakuOffset(nextOffset);
   commitState({danmakuTimeOffsetSec: nextOffset});
   if (danmakuBrowserWatch) pushBrowserTime(mpv.getNumber("time-pos"), true);
 }
@@ -601,7 +620,7 @@ function applyDanmakuFilterDensity(density) {
 
 // IINA's package-local CommonJS loader owns initialization; no WebView path
 // messages, persisted absolute paths, or eval are involved.
-function ensureBrowserSimplifier() {
+function ensureSimplifier() {
   if (openccSimplifier) return true;
   if (!pluginState.danmakuForceSimplified) return false;
   try {
@@ -613,25 +632,41 @@ function ensureBrowserSimplifier() {
   }
 }
 
-// ── 屏蔽词过滤(正则支持) ─────────────────────────────────────────────
-// 每个词优先按正则编译;非法正则退化为转义后的普通文本匹配。
+// ── 屏蔽词过滤(默认字面量匹配;/.../ 包裹时编译为正则) ──────────────────────
+// 普通词按大小写不敏感纯文本匹配,避免 ".", "+", "()" 等触发误匹配或 ReDoS;
+// 仅当词条以 /.../ (可选 i/m/s/u 修饰符) 包裹时才作为正则编译并限制最大长度。
+var BLOCK_REGEX_MAX_LENGTH = 200;
+
+function escapeBlockLiteral(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function compileBlockEntry(entry) {
+  if (!entry) return null;
+  var regexMatch = /^\/([\s\S]+)\/([imsu]*)$/.exec(entry);
+  if (regexMatch) {
+    var pattern = regexMatch[1];
+    var rawFlags = regexMatch[2];
+    if (pattern.length <= BLOCK_REGEX_MAX_LENGTH) {
+      var flags = rawFlags.indexOf('i') === -1 ? rawFlags + 'i' : rawFlags;
+      try {
+        return new RegExp(pattern, flags);
+      } catch (e) {}
+    }
+  }
+  var lower = entry.toLowerCase();
+  return {
+    test: function (text) {
+      return String(text).toLowerCase().indexOf(lower) !== -1;
+    }
+  };
+}
 
 function rebuildBlockRegexes() {
   blockRegexes = [];
   for (var i = 0; i < pluginState.danmakuBlocklist.length; i++) {
-    var w = pluginState.danmakuBlocklist[i];
-    if (!w) continue;
-    var re;
-    try {
-      re = new RegExp(w, 'i');
-    } catch (e) {
-      try {
-        re = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      } catch (e2) {
-        continue;
-      }
-    }
-    blockRegexes.push(re);
+    var matcher = compileBlockEntry(pluginState.danmakuBlocklist[i]);
+    if (matcher) blockRegexes.push(matcher);
   }
 }
 
@@ -661,7 +696,7 @@ function getCurrentProjection() {
   let settings = {
     startDay: pluginState.danmakuFilterStartDay, endDay: pluginState.danmakuFilterEndDay,
     density: pluginState.danmakuFilterDensity, forceSimplified: pluginState.danmakuForceSimplified,
-    simplify: pluginState.danmakuForceSimplified && ensureBrowserSimplifier() ? openccSimplifier : null,
+    simplify: pluginState.danmakuForceSimplified && ensureSimplifier() ? openccSimplifier : null,
     dedupeWindow: pluginState.danmakuDedupeEnabled ? pluginState.danmakuDedupeWindow * 100 : 0,
     blockTop: pluginState.danmakuBlockTopEnabled, blockBottom: pluginState.danmakuBlockBottomEnabled,
     blockEnabled: pluginState.danmakuBlocklistEnabled, regexes: blockRegexes,
@@ -757,6 +792,14 @@ function resendDanmakuToOverlay() {
 
 function extractNumberFromName(name) {
   var match;
+  // High-certainty explicit markers take precedence over bare heuristics
+  // (avoids false positives like H.264, x265, 10bit, 2nd Season).
+  match = name.match(/S\d{1,2}E(\d{1,3})/i);
+  if (match) return parseInt(match[1], 10);
+  match = name.match(/(?:第|話|话|Episode|Ep\.?|Vol\.?)\s*(\d{1,3})/i);
+  if (match) return parseInt(match[1], 10);
+  match = name.match(/(\d{1,3})\s*(?:話|话)/);
+  if (match) return parseInt(match[1], 10);
   match = name.match(/\[(\d{1,3})\](?!.*\[)/);
   if (match) return parseInt(match[1], 10);
   match = name.match(/\[\d{1,3}\]/g);
@@ -764,15 +807,9 @@ function extractNumberFromName(name) {
     match = match[match.length - 1].match(/\[(\d{1,3})\]/);
     if (match) return parseInt(match[1], 10);
   }
-  match = name.match(/S\d{1,2}E(\d{1,3})/i);
-  if (match) return parseInt(match[1], 10);
-  match = name.match(/(?:EP|Vol\.?)\s*(\d{1,3})/i);
-  if (match) return parseInt(match[1], 10);
   match = name.match(/(?:^|[_\-.\s])(\d{1,3})(?:_|\-|\.|\s|$)/);
   if (match) return parseInt(match[1], 10);
   match = name.match(/(?:^|[\[\]_\-.\s])(1?\d)(?:_|\.|\s|$)/i);
-  if (match) return parseInt(match[1], 10);
-  match = name.match(/(?:第|話|话|Episode|Ep\.?)\s*(\d{1,3})/i);
   if (match) return parseInt(match[1], 10);
   return null;
 }
@@ -995,9 +1032,21 @@ function ddpErrStr(err) {
   try { return JSON.stringify(err); } catch (e) { return String(err); }
 }
 
+function ddpHttpError(res) {
+  var base = t('ddp_api_error');
+  if (res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300)) {
+    return base + ' (' + res.statusCode + ')';
+  }
+  return base;
+}
+
 function ddpConvertComments(comments) {
   return parseDanmakuSource(comments, '', 'dandanplay');
 }
+
+var DDP_CACHE_DIR_PATH = '@data/danmaku-cache';
+var DDP_CACHE_MAX_FILES = 100;
+var DDP_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 let ddpCacheDirPromise = null;
 let cacheWriteQueue = Promise.resolve();
@@ -1038,8 +1087,79 @@ function ddpCacheFile(videoPath) {
   return '@data/danmaku-cache/' + ddpPathHash(videoPath) + '.json';
 }
 
+function ddpReadCacheTimestamp(filePath) {
+  try {
+    var content = file.read(filePath);
+    if (!content) return 0;
+    var match = /"cachedAt"\s*:\s*(\d+(?:\.\d+)?)/.exec(content);
+    if (match) return Number(match[1]) || 0;
+    var data = JSON.parse(content);
+    return data && data.cachedAt ? Number(data.cachedAt) || 0 : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function ddpCleanupCache(excludeFile) {
+  try {
+    var entries;
+    try { entries = file.list(DDP_CACHE_DIR_PATH, { includeSubDir: false }); } catch (e) { return Promise.resolve(0); }
+    if (!entries || !entries.length) return Promise.resolve(0);
+    var now = Date.now();
+    var valid = [];
+    var toDelete = [];
+    for (var i = 0; i < entries.length; i++) {
+      var item = entries[i];
+      if (!item || item.isDir || !/\.json$/i.test(item.filename)) continue;
+      var filePath = DDP_CACHE_DIR_PATH + '/' + item.filename;
+      if (excludeFile && filePath === excludeFile) {
+        valid.push({ filePath: filePath, cachedAt: now, isCurrent: true });
+        continue;
+      }
+      var cachedAt = ddpReadCacheTimestamp(filePath);
+      if (!isFinite(cachedAt) || cachedAt <= 0 || now - cachedAt > DDP_CACHE_MAX_AGE_MS) {
+        toDelete.push(filePath);
+      } else {
+        valid.push({ filePath: filePath, cachedAt: cachedAt, isCurrent: false });
+      }
+    }
+    if (valid.length > DDP_CACHE_MAX_FILES) {
+      valid.sort(function (a, b) {
+        if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+        return b.cachedAt - a.cachedAt;
+      });
+      for (var k = DDP_CACHE_MAX_FILES; k < valid.length; k++) {
+        toDelete.push(valid[k].filePath);
+      }
+    }
+    if (toDelete.length === 0) return Promise.resolve(0);
+    if (typeof file.delete === 'function') {
+      for (var d = 0; d < toDelete.length; d++) {
+        try { file.delete(toDelete[d]); } catch (e) {}
+      }
+      return Promise.resolve(toDelete.length);
+    }
+    var resolved = [];
+    for (var r = 0; r < toDelete.length; r++) {
+      try {
+        var p = iina.utils.resolvePath(toDelete[r]);
+        if (p) resolved.push(p);
+      } catch (e) {}
+    }
+    if (resolved.length === 0) return Promise.resolve(0);
+    return Promise.resolve(iina.utils.exec('/bin/rm', ['-f'].concat(resolved))).then(function () {
+      return resolved.length;
+    }).catch(function () {
+      return 0;
+    });
+  } catch (e) {
+    return Promise.resolve(0);
+  }
+}
+
 function ddpSaveVideoCache(videoPath, episodeId, animeTitle, episodeTitle, comments) {
   if (!videoPath || !episodeId) return Promise.resolve(false);
+  var targetFile = ddpCacheFile(videoPath);
   let content = JSON.stringify({
     videoPath: videoPath,
     episodeId: episodeId,
@@ -1051,8 +1171,8 @@ function ddpSaveVideoCache(videoPath, episodeId, animeTitle, episodeTitle, comme
   });
   cacheWriteQueue = cacheWriteQueue.then(ensureCacheDir).then(function (dir) {
     if (!dir) return false;
-    if (file.write(ddpCacheFile(videoPath), content) === false) throw new Error('Cache write failed');
-    return true;
+    if (file.write(targetFile, content) === false) throw new Error('Cache write failed');
+    return ddpCleanupCache(targetFile).then(function () { return true; });
   }).catch(function (e) {
     console.log('[ddp] saveVideoCache error: ' + e);
     return false;
@@ -1168,20 +1288,24 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
     if (url !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
     if (!isManual && !pluginState.danmakuEnabled) { ddpResetState(); return; }
     var data = ddpParseBody(res);
-    if (res.statusCode === 403) {
+    var isHttpError = res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300);
+    if (res && res.statusCode === 403) {
       commitDdpState({status: 'error', error: t('ddp_auth_error')});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
     }
-    if (!data) {
-      commitDdpState({status: 'error', error: t('ddp_api_error')});
+    if (!data || isHttpError) {
+      var matchErr = (data && data.errorMessage)
+        ? (isHttpError ? data.errorMessage + ' (' + res.statusCode + ')' : data.errorMessage)
+        : ddpHttpError(res);
+      commitDdpState({status: 'error', error: matchErr});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
     }
     if (data.success === false) {
-      commitDdpState({status: 'error', error: data.errorMessage || t('ddp_api_error')});
+      commitDdpState({status: 'error', error: data.errorMessage || ddpHttpError(res)});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
@@ -1254,17 +1378,21 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
     if (videoUrl !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
     if (!pluginState.danmakuEnabled && !isManual) { ddpResetState(); return; }
     if (!isManual && !pluginState.dandanplayAutoNetwork) forceLoad = false;
-    if (res.statusCode === 403) {
+    if (res && res.statusCode === 403) {
       commitDdpState({status: 'error', error: t('ddp_auth_error')});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
     }
     var data = ddpParseBody(res);
-    if (!data) {
-      commitDdpState({status: 'error', error: t('ddp_api_error')});
+    var isHttpError = res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300);
+    if (!data || isHttpError) {
+      var commentErr = (data && data.errorMessage)
+        ? (isHttpError ? data.errorMessage + ' (' + res.statusCode + ')' : data.errorMessage)
+        : ddpHttpError(res);
+      commitDdpState({status: 'error', error: commentErr});
       ddpSyncState();
-      core.osd(t('ddp_api_error'));
+      core.osd(commentErr);
       ddpFallbackToLocal(true);
       return;
     }
@@ -1780,6 +1908,14 @@ function registerSidebarHandlers() {
     if (!keyword) return;
     ddpSearchAnime(keyword).then(function(res) {
       if (generation !== ddpSearchGeneration) return;
+      if (res && res.statusCode === 403) {
+        sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: [], error: t('ddp_auth_error') });
+        return;
+      }
+      if (res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300)) {
+        sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: [], error: ddpHttpError(res) });
+        return;
+      }
       var result = ddpParseBody(res);
       if (!result || !result.animes || result.animes.length === 0) {
         sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: [], error: t('ddp_no_results') });
@@ -1800,9 +1936,14 @@ function registerSidebarHandlers() {
     var animeTitle = data.animeTitle;
     ddpGetBangumi(bangumiId).then(function(res) {
       if (generation !== ddpBangumiGeneration || searchGeneration !== ddpSearchGeneration) return;
+      if (res && res.statusCode === 403) {
+        sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: [], error: t('ddp_auth_error') });
+        return;
+      }
       var result = ddpParseBody(res);
-      if (!result || !result.bangumi) {
-        sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: [], error: t('ddp_api_error') });
+      var isHttpError = res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300);
+      if (!result || !result.bangumi || isHttpError) {
+        sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: [], error: ddpHttpError(res) });
         return;
       }
       var episodes = result.bangumi.episodes || [];
@@ -1970,5 +2111,11 @@ menu.addItem(
 menu.addItem(
   menu.item(t('menu_hide_overlay'), function () { overlay.hide(); })
 );
+
+setTimeout(function () {
+  cacheWriteQueue = cacheWriteQueue.then(function () {
+    return ddpCleanupCache();
+  });
+}, 5000);
 
 console.log("danmaku-cosmos plugin initialized");

@@ -26,13 +26,14 @@ Danmaku Cosmos/
 ├── Info.json                 # Plugin metadata & preference defaults
 ├── main.js                   # State, I/O boundaries, IPC, IINA/DDP integration
 ├── danmaku-document.js       # Canonical parser and shared projection pipeline
+├── lib/                      # Third-party runtime libraries for main.js
+│   └── opencc.min.js         # opencc-js v1.4.1 UMD bundle; loaded once from main through package-local require, converter constructed lazily; conversion memoized on IR nodes for all source formats
 ├── overlay/                  # Danmaku render layer (WebView container)
 │   ├── index.html            # Entry point
 │   ├── index.css             # Render styles
 │   ├── main.js               # Engine entry: message handling, render mode, state mgmt
 │   └── lib/                  # Third-party libs (read-only, do not modify)
-│       ├── niconicomments.min.js  # Forked niconicomments with CSSRenderer
-│       └── opencc.min.js          # opencc-js v1.4.1 UMD bundle; loaded once from main through package-local require, converter constructed lazily; conversion memoized on IR nodes for all source formats
+│       └── niconicomments.min.js  # Forked niconicomments with CSSRenderer
 ├── sidebar/                  # IINA sidebar control panel
 │   ├── index.html            # Layout (general settings incl. Style Preset; advanced settings)
 │   ├── index.css
@@ -95,7 +96,7 @@ All controls live in the sidebar. General settings (top): Style Preset. Advanced
 balanced: Object.assign({}, NICO_STYLE, {canvasFontScale: 0.5, scrollSpeed: 0.5})
 ```
 
-The sidebar sends one `set-style-preset` intent containing only the preset name. Main validates the name and commits its complete parameter bundle plus selection in one `commitState()` call. It forwards one `set-danmaku-style` message containing scale, family/weight, stroke width/color/inversion/opacity, shadow blur and speed; presets restore the default font family. Bilibili restores its thin font and hard outline with shadow disabled. Overlay applies the full tuple to its next debounced rebuild (80 ms), keeping the old renderer entirely unchanged until then. Do not split preset parameters across separate IPC messages or mutate the old renderer's speed while a style rebuild is pending: that exposes an intermediate large-font/slow-speed frame with too many comments. Even a shadow-only preset reset must use the atomic path. Reapplying the selected preset restores manual tweaks; manual tweaks still leave the preset selection unchanged. Preferences and the lazy sidebar snapshot restore the complete state after restart.
+The sidebar sends one `set-style-preset` intent containing only the preset name. Main validates the name and commits its complete parameter bundle plus selection in one `commitState()` call. It forwards one `set-danmaku-style` message containing scale, family/weight, stroke width/color/inversion/opacity, shadow blur and speed; presets restore the default font family. Bilibili restores its thin font and hard outline with shadow disabled. Overlay applies the full tuple to its next debounced rebuild (80 ms), keeping the old renderer entirely unchanged until then. Do not split preset parameters across separate IPC messages or mutate the old renderer's speed while a style rebuild is pending: that exposes an intermediate large-font/slow-speed frame with too many comments. Even a shadow-only preset reset must use the atomic path. Reapplying the selected preset restores manual tweaks; when any preset field is modified manually without selecting a preset, `stylePreset` transitions to `'custom'` so the UI unhighlights the preset buttons accurately. Preferences and the lazy sidebar snapshot restore the complete state after restart.
 
 ### Font Settings
 
@@ -121,7 +122,7 @@ The sidebar previews speed on input and commits on change. Speed/weight state ec
 
 ### Time Offset
 
-`set-danmaku-offset` → `applyDanmakuOffset()` (session-only; not persisted). The offset resets to zero on each video load, then forwards to overlay and sidebar. Overlay keeps `getVideoTimeSec()` offset-free and adds `danmakuTimeOffsetSec` only when passing vpos to the renderer. `syncVideoAnchor()` always receives pure video time. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; step = |current offset|, fallback 1 — quirky but works); both send `set-danmaku-offset`.
+`set-danmaku-offset` → `applyDanmakuOffset()` (session-only; not persisted). The offset resets to zero on each video load, then forwards to overlay and sidebar. Overlay keeps `getVideoTimeSec()` offset-free and adds `danmakuTimeOffsetSec` only when passing vpos to the renderer. `syncVideoAnchor()` always receives pure video time. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; fixed step = 0.5s, clamped to [-30, 30] in both sidebar and main); both send `set-danmaku-offset`.
 
 ### Nico JSON Date Slice
 
@@ -279,11 +280,10 @@ Based on the `niconicomments` third-party library. All sources arrive as the sam
 ## Known Limitations
 
 - Video aspect uses centered contain layout; custom video zoom/pan and sidebars moving the video off-center are not reflected by aspect metadata alone
-- Filenames containing `[` or `]` may cause auto-load to fail (regex matching in `extractNumberFromName`, `[n]`-style only; special formats like `第3话` often fail)
+- Filenames with completely unbracketed bare episode numbers mixed with codecs may rely on fallback matching in `extractNumberFromName` when explicit episode markers (`S01E05`, `第05话`, `EP05`, `[05]`) are absent
 - Canvas mode receives the same filtered source content as CSS mode, but does not support CSS-specific animation/layout behavior.
 - CSS mode (niconicomments) Comment Art vertical positioning may differ slightly from Canvas mode
-- DDP cache only stores the last loaded episode per video (hash overwrite)
-- Style preset dropdown is not rewritten when sliders are manually tweaked (deliberate simplification; preset value persists independently)
+- DDP cache only stores the last loaded episode per video (hash overwrite) and retains at most 100 entries / 7 days on disk
 
 ## Avoid
 

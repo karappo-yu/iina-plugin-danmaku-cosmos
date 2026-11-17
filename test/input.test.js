@@ -34,7 +34,7 @@ test('IINA package modules initialize without Node exports, WebView paths, or ca
   const load = file => vm.runInContext('(function () { const module = {};\n' + fs.readFileSync(path.join(__dirname, '..', file), 'utf8') + '\nreturn module.exports; })()', native);
   const parser = load('danmaku-document.js');
   assert.equal(parser.parseDanmakuSource('<packet><chat vpos="1">&AMP;</chat></packet>').comments[0].text, '&');
-  const exported = load('overlay/lib/opencc.min.js');
+  const exported = load('lib/opencc.min.js');
   const opencc = exported || native.OpenCC;
   assert.equal(opencc.Converter({from: 'hk', to: 'cn'})('繁體'), '繁体');
 });
