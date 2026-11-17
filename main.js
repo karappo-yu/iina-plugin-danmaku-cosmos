@@ -37,6 +37,9 @@ pluginState.danmakuBlocklistEnabled = !!preferences.get("danmakuBlocklistEnabled
 pluginState.danmakuBlockTopEnabled = !!preferences.get("danmakuBlockTopEnabled");
 pluginState.danmakuBlockBottomEnabled = !!preferences.get("danmakuBlockBottomEnabled");
 var blockRegexes = []; // 编译缓存(列表变化时重建)
+// 正则长度上限必须在启动重建之前赋值: 函数声明会提升, var 赋值不会,
+// 否则启动时已保存的 /.../ 词条会因 undefined 比较退化为字面量匹配。
+var BLOCK_REGEX_MAX_LENGTH = 200;
 rebuildBlockRegexes();
 // 弹幕去重: 开关 + 区间(秒,1-5)。滚动弹幕在投影内静态合并为 "原文xN"(时间取组内最早);
 // 固定弹幕(顶部/底部)不在投影合并,由引擎 fixedCombo 在屏上渐进接续(计数 x2→x3,宿主生命周期延长)。
@@ -500,8 +503,9 @@ function runDurationCompare(danmakuDuration) {
   setNicoJsonDurationDiff(diff);
   var offset = Math.round(-diff * 10) / 10;
   if (pluginState.danmakuAutoOffset) {
-    applyDanmakuOffset(offset);
-    core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
+    var applied = clampDanmakuOffset(offset);
+    applyDanmakuOffset(applied);
+    core.osd(t('duration_mismatch', { offset: formatSecondsShort(applied) }));
   } else {
     core.osd(t('duration_mismatch_no_offset'));
   }
@@ -634,8 +638,7 @@ function ensureSimplifier() {
 
 // ── 屏蔽词过滤(默认字面量匹配;/.../ 包裹时编译为正则) ──────────────────────
 // 普通词按大小写不敏感纯文本匹配,避免 ".", "+", "()" 等触发误匹配或 ReDoS;
-// 仅当词条以 /.../ (可选 i/m/s/u 修饰符) 包裹时才作为正则编译并限制最大长度。
-var BLOCK_REGEX_MAX_LENGTH = 200;
+// 仅当词条以 /.../ (可选 i/m/s/u 修饰符) 包裹时才作为正则编译并限制最大长度(BLOCK_REGEX_MAX_LENGTH 在文件头部初始化)。
 
 function escapeBlockLiteral(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -796,7 +799,7 @@ function extractNumberFromName(name) {
   // (avoids false positives like H.264, x265, 10bit, 2nd Season).
   match = name.match(/S\d{1,2}E(\d{1,3})/i);
   if (match) return parseInt(match[1], 10);
-  match = name.match(/(?:第|話|话|Episode|Ep\.?|Vol\.?)\s*(\d{1,3})/i);
+  match = name.match(/(?:第|話|话|Episode|Ep\.?)\s*(\d{1,3})/i);
   if (match) return parseInt(match[1], 10);
   match = name.match(/(\d{1,3})\s*(?:話|话)/);
   if (match) return parseInt(match[1], 10);
@@ -807,6 +810,9 @@ function extractNumberFromName(name) {
     match = match[match.length - 1].match(/\[(\d{1,3})\]/);
     if (match) return parseInt(match[1], 10);
   }
+  // Vol. 通常指卷/碟号, 优先级低于明确的集数标记和方括号集数 ("Show Vol.2 [05]" 应为第 5 集)。
+  match = name.match(/Vol\.?\s*(\d{1,3})/i);
+  if (match) return parseInt(match[1], 10);
   match = name.match(/(?:^|[_\-.\s])(\d{1,3})(?:_|\-|\.|\s|$)/);
   if (match) return parseInt(match[1], 10);
   match = name.match(/(?:^|[\[\]_\-.\s])(1?\d)(?:_|\.|\s|$)/i);

@@ -1866,6 +1866,29 @@ test('blocklist treats normal entries as case-insensitive literals and compiles 
   assert.deepEqual(remaining, ['2024X01 should stay', '笑 should stay', 'ccc should stay']);
 });
 
+test('saved /.../ blocklist regexes still block after a restart', () => {
+  const h = createHarness(true, false, {
+    danmakuBlocklist: '["/owner|c4/"]',
+    danmakuBlocklistEnabled: true,
+  });
+  const items = [
+    {t: 100, text: 'owner comment', _commands: []},
+    {t: 200, text: 'c4 lab', _commands: []},
+    {t: 300, text: 'ordinary should stay', _commands: []},
+  ];
+  const p = setPositionSource(h, 'dandanplay', items);
+  assert.deepEqual(h.context.getEffectiveContent(p).map(c => c.content), ['ordinary should stay']);
+});
+
+test('auto offset notice reports the clamped offset', () => {
+  const h = createHarness(true, false, {danmakuAutoOffset: true});
+  h.setMpv('duration', 720);
+  h.context.runDurationCompare(600);
+  assert.equal(h.context.pluginState.danmakuTimeOffsetSec, -30);
+  assert.ok(h.osdMessages.some(m => m.includes('-30')), h.osdMessages.join('|'));
+  assert.ok(!h.osdMessages.some(m => m.includes('-120')), h.osdMessages.join('|'));
+});
+
 test('extractNumberFromName prioritizes explicit episode markers over codec/season/resolution numbers', () => {
   const h = createHarness(true);
   const cases = [
@@ -1878,6 +1901,8 @@ test('extractNumberFromName prioritizes explicit episode markers over codec/seas
     ['Show - 03 - 720p', 3],
     ['EP1', 1],
     ['EP10', 10],
+    ['Show Vol.2 [05]', 5],
+    ['Show Vol.2 1080p', 2],
   ];
   for (const [name, expected] of cases) {
     assert.equal(h.context.extractNumberFromName(name), expected, name);
