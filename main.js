@@ -1056,6 +1056,7 @@ var DDP_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 let ddpCacheDirPromise = null;
 let cacheWriteQueue = Promise.resolve();
+var ddpStartupCleanupDone = false;
 function ensureCacheDir() {
   if (ddpCacheDirPromise) return ddpCacheDirPromise;
   try {
@@ -2023,6 +2024,14 @@ event.on("iina.file-loaded", function (url) {
   applyDanmakuOffset(0);
   // 无论弹幕开关状态都重置视频相关状态,避免旧 renderer/弹幕残留到新视频。
   loadDanmakuForVideo(url);
+  // 首次打开视频时清理过期 DDP 缓存。不能放在启动 setTimeout 里: IINA 的
+  // polyfill 定时器(target: self)会与 polyfill 形成引用环,插件实例被重建
+  // (安装/更新插件时)后定时器仍会触发,此时 pluginInstance 已失效,
+  // file.list 的 @data 解析会在 IINA 内部触发 Swift 崩溃。
+  if (!ddpStartupCleanupDone) {
+    ddpStartupCleanupDone = true;
+    cacheWriteQueue = cacheWriteQueue.then(function () { return ddpCleanupCache(); });
+  }
 });
 
 event.on("mpv.seeking.changed", function (seeking) {
@@ -2117,11 +2126,5 @@ menu.addItem(
 menu.addItem(
   menu.item(t('menu_hide_overlay'), function () { overlay.hide(); })
 );
-
-setTimeout(function () {
-  cacheWriteQueue = cacheWriteQueue.then(function () {
-    return ddpCleanupCache();
-  });
-}, 5000);
 
 console.log("danmaku-cosmos plugin initialized");

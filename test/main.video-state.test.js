@@ -1448,6 +1448,21 @@ test('only the ready handshake can flush the latest pending IR source', async ()
   assert.deepEqual(load.comments.map(c => c.content), ['B comment']);
 });
 
+test('cache cleanup runs once on the first video load, never from a startup timer', async () => {
+  const h = createHarness(true);
+  const cacheDir = '@data/danmaku-cache';
+  const cacheDirReads = () => h.directoryReads.filter((dir) => dir === cacheDir).length;
+  h.runTimers(5000);
+  await flushMicrotasks();
+  assert.equal(cacheDirReads(), 0, 'startup must not schedule cache cleanup');
+  h.setVideo('file:///videos/A.mp4');
+  await flushMicrotasks();
+  assert.equal(cacheDirReads(), 1);
+  h.setVideo('file:///videos/B.mp4');
+  await flushMicrotasks();
+  assert.equal(cacheDirReads(), 1, 'cleanup runs at most once per session');
+});
+
 test('bangumi responses cannot replace a newer selection or search', async () => {
   const h = createHarness(true);
   h.emitSidebar('dandanplay-get-bangumi', {bangumiId: 1, searchId: 1});
