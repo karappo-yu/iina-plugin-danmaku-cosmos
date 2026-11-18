@@ -534,7 +534,7 @@ function checkNicoJsonDuration(doc) {
 function osdAfterDanmakuLoad(loadedName, loadedMessageKey) {
   if (pluginState.nicoJsonDurationDiff !== null) {
     if (pluginState.danmakuAutoOffset) {
-      var offset = Math.round(-pluginState.nicoJsonDurationDiff * 10) / 10;
+      var offset = pluginState.danmakuTimeOffsetSec;
       core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
     } else {
       core.osd(t('duration_mismatch_no_offset'));

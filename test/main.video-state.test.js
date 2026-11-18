@@ -1917,6 +1917,8 @@ test('auto offset notice reports the clamped offset', () => {
   h.context.runDurationCompare(600);
   assert.equal(h.context.pluginState.danmakuTimeOffsetSec, -30);
   assert.ok(h.osdMessages.some(m => m.includes('-30')), h.osdMessages.join('|'));
+  h.context.osdAfterDanmakuLoad('demo');
+  assert.equal(h.osdMessages.at(-1), 'Duration mismatch with danmaku file: offset set to -30s');
   assert.ok(!h.osdMessages.some(m => m.includes('-120')), h.osdMessages.join('|'));
 });
 
