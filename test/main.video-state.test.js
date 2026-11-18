@@ -1918,6 +1918,8 @@ test('extractNumberFromName prioritizes explicit episode markers over codec/seas
     ['EP10', 10],
     ['Show Vol.2 [05]', 5],
     ['Show Vol.2 1080p', 2],
+    ['Show 05話 720p', 5],
+    ['Show 第05話 720p', 5],
   ];
   for (const [name, expected] of cases) {
     assert.equal(h.context.extractNumberFromName(name), expected, name);

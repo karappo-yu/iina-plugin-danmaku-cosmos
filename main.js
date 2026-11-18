@@ -799,9 +799,11 @@ function extractNumberFromName(name) {
   // (avoids false positives like H.264, x265, 10bit, 2nd Season).
   match = name.match(/S\d{1,2}E(\d{1,3})/i);
   if (match) return parseInt(match[1], 10);
-  match = name.match(/(?:第|話|话|Episode|Ep\.?)\s*(\d{1,3})/i);
-  if (match) return parseInt(match[1], 10);
+  // Numbered 話/话 suffix (05話) must beat the loose 話/话 prefix form,
+  // otherwise "Show 05話 720p" would take "話 720" as the episode.
   match = name.match(/(\d{1,3})\s*(?:話|话)/);
+  if (match) return parseInt(match[1], 10);
+  match = name.match(/(?:第|Episode|Ep\.?)\s*(\d{1,3})/i);
   if (match) return parseInt(match[1], 10);
   match = name.match(/\[(\d{1,3})\](?!.*\[)/);
   if (match) return parseInt(match[1], 10);
