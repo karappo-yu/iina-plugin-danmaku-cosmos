@@ -53,6 +53,7 @@ When `mode: "css"` is passed to NiconiComments, a `CSSRenderer` is created inste
 - Flash DOM uses `fontSize` / `scale` / `scaleX`, per-run fonts and measured advances, compatibility spacers, and Flash baseline/line offsets. Keep this path separate from HTML5 `charSize`; Flash's `charSize` is zero. The outer element owns animation and the measured collision box; an inner layer resolves fonts at their original size before applying Flash and display scales, preserving WebKit's color-emoji advances.
 
 - Creates a container (`[data-dm-css-container]`) matching the canvas's visible video rectangle, relative to its parent
+- Uses `CSSMeasurementRenderer` with a detached 1×1 Canvas 2D surface instead of creating WebGL or a full-size helper. Overlay passes `viewportSize: {width, height}` at construction so the initial logical viewport and timeline are correct while the display canvas stays 1×1. CSS resizing updates logical dimensions without allocating full-size pixel buffers.
 - Uses `--dm-unit` = displayed video height / 1080 for uniform coordinate mapping; 4:3 retains full-height text rather than shrinking into a 16:9 box
 - Renders each danmaku as a `div[data-dm-comment]` with `will-change: transform, opacity; contain: layout style`
 - Scroll danmaku: CSS `@keyframes dm-scroll` driven by JS-computed duration (inline `animation` style), matching `getPosX()` formula
@@ -97,6 +98,8 @@ balanced: Object.assign({}, NICO_STYLE, {canvasFontScale: 0.5, scrollSpeed: 0.5}
 ```
 
 The sidebar sends one `set-style-preset` intent containing only the preset name. Main validates the name and commits its complete parameter bundle plus selection in one `commitState()` call. It forwards one `set-danmaku-style` message containing scale, family/weight, stroke width/color/inversion/opacity, shadow blur and speed; presets restore the default font family. Bilibili restores its thin font and hard outline with shadow disabled. Overlay applies the full tuple to its next debounced rebuild (80 ms), keeping the old renderer entirely unchanged until then. Do not split preset parameters across separate IPC messages or mutate the old renderer's speed while a style rebuild is pending: that exposes an intermediate large-font/slow-speed frame with too many comments. Even a shadow-only preset reset must use the atomic path. Reapplying the selected preset restores manual tweaks; when any preset field is modified manually without selecting a preset, `stylePreset` transitions to `'custom'` so the UI unhighlights the preset buttons accurately. Preferences and the lazy sidebar snapshot restore the complete state after restart.
+
+Saved preset names are limited to `nico`, `balanced`, `bilibili`, and `custom`. Missing values use Nico; invalid or empty saved names become `custom` while retaining the saved appearance parameters, avoiding an inaccurate Nico highlight.
 
 ### Font Settings
 
@@ -298,4 +301,5 @@ Based on the `niconicomments` third-party library. All sources arrive as the sam
 
 ## Related Repository
 
-- **niconicomments (forked)**: https://github.com/karappo-yu/niconicomments — The fork adds `CSSRenderer` (`src/renderer/css.ts`) and `mode: "css"` support. Changes are on the `develop` branch.
+- **niconicomments-dom (forked)**: https://github.com/karappo-yu/niconicomments-dom — The fork adds `CSSRenderer` (`src/renderer/css.ts`) and `mode: "css"` support. Changes are on the `develop` branch.
+- The bundled CSS measurement implementation was built from engine commit `7d6692989eb9329d09c843c7244955345703ada6`; source tests and WebKit regression tests pass before the artifact is synced.

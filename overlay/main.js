@@ -301,15 +301,15 @@ function updateCanvasViewport() {
   const canvasWidth = Math.max(1, Math.round(1080 * outputAspect * sizeScale));
   const canvasHeight = Math.max(1, Math.round(1080 * sizeScale));
   if (niconiComments) {
-    const resized = niconiComments.resize(canvasWidth, canvasHeight);
+    niconiComments.resize(canvasWidth, canvasHeight);
     if (canvasNicoMode === 'css') {
       canvas.width = 1;
       canvas.height = 1;
     }
-    return resized;
+    return {width: canvasWidth, height: canvasHeight};
   }
-  // CSS mode keeps the hidden backing canvas at 1x1 so WebKit/WebGL does not
-  // allocate unused 1080p/ultrawide pixel buffers; switching to Canvas restores size.
+  // CSS mode uses a tiny measurement surface in the engine. The hidden DOM
+  // canvas stays 1x1; its logical viewport travels separately as viewportSize.
   if (canvasNicoMode === 'css') {
     canvas.width = 1;
     canvas.height = 1;
@@ -317,7 +317,7 @@ function updateCanvasViewport() {
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
   }
-  return true;
+  return {width: canvasWidth, height: canvasHeight};
 }
 
 function refreshCanvasViewport() {
@@ -347,10 +347,11 @@ function initCanvasRenderer(data) {
   canvas.style.opacity = useCssMode ? 0 : canvasOpacity;
   canvas.style.display = danmakuVisible ? '' : 'none';
   disposeCanvasRenderer();
-  updateCanvasViewport();
+  const viewportSize = updateCanvasViewport();
   niconiComments = new NiconiComments(canvas, data, {
     format: 'formatted',
     mode: canvasNicoMode,
+    viewportSize: useCssMode && viewportSize ? viewportSize : undefined,
     keepCA: true,
     dedupeCA: false, // Projection owns merging; retain CA layers without deleting comments.
     scale: canvasFontScale,

@@ -60,7 +60,9 @@ pluginState.danmakuTimeOffsetSec = 0; // 弹幕偏移不做持久化: 偏移量�
 pluginState.danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
 pluginState.danmakuFontWeight = preferences.get("danmakuFontWeight") || "500";
 var savedStylePreset = preferences.get("stylePreset");
-pluginState.stylePreset = (savedStylePreset !== undefined && savedStylePreset !== null) ? String(savedStylePreset) : "nico";
+pluginState.stylePreset = savedStylePreset === undefined || savedStylePreset === null
+  ? 'nico'
+  : (['nico', 'balanced', 'bilibili', 'custom'].indexOf(savedStylePreset) !== -1 ? savedStylePreset : 'custom');
 var overlayReady = false;
 let overlayLoadId = 0;
 var preferencesSyncTimer = null;
@@ -640,10 +642,6 @@ function ensureSimplifier() {
 // 普通词按大小写不敏感纯文本匹配,避免 ".", "+", "()" 等触发误匹配或 ReDoS;
 // 仅当词条以 /.../ (可选 i/m/s/u 修饰符) 包裹时才作为正则编译并限制最大长度(BLOCK_REGEX_MAX_LENGTH 在文件头部初始化)。
 
-function escapeBlockLiteral(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function compileBlockEntry(entry) {
   if (!entry) return null;
   var regexMatch = /^\/([\s\S]+)\/([imsu]*)$/.exec(entry);
@@ -797,13 +795,19 @@ function extractNumberFromName(name) {
   var match;
   // High-certainty explicit markers take precedence over bare heuristics
   // (avoids false positives like H.264, x265, 10bit, 2nd Season).
-  match = name.match(/S\d{1,2}E(\d{1,3})/i);
+  match = name.match(/S\d{1,2}E(\d{1,3})(?!\d|p\b|bit\b)/i);
   if (match) return parseInt(match[1], 10);
-  // Numbered 話/话 suffix (05話) must beat the loose 話/话 prefix form,
-  // otherwise "Show 05話 720p" would take "話 720" as the episode.
-  match = name.match(/(\d{1,3})\s*(?:話|话)/);
-  if (match) return parseInt(match[1], 10);
-  match = name.match(/(?:第|Episode|Ep\.?)\s*(\d{1,3})/i);
+  // Numbered episode suffixes take precedence over volume/season numbers.
+  var suffix = /(\d{1,3})\s*(?:話|话|集)/g;
+  while ((match = suffix.exec(name)) !== null) {
+    var prefix = name.slice(0, match.index);
+    // 全12话/共 12集 describe the series length, not this file's episode.
+    if (/\d$/.test(prefix) || /(?:全|共)\s*$/.test(prefix)) continue;
+    return parseInt(match[1], 10);
+  }
+  // A bare 第 also occurs in season labels (第2季/第2期). Only full
+  // numbered suffixes above count; English markers must start a token.
+  match = name.match(/(?:^|[^a-z])(?:Episode|Ep\.?)\s*(\d{1,3})(?!\d|p\b|bit\b)/i);
   if (match) return parseInt(match[1], 10);
   match = name.match(/\[(\d{1,3})\](?!.*\[)/);
   if (match) return parseInt(match[1], 10);
@@ -813,7 +817,7 @@ function extractNumberFromName(name) {
     if (match) return parseInt(match[1], 10);
   }
   // Vol. 通常指卷/碟号, 优先级低于明确的集数标记和方括号集数 ("Show Vol.2 [05]" 应为第 5 集)。
-  match = name.match(/Vol\.?\s*(\d{1,3})/i);
+  match = name.match(/(?:^|[^a-z])Vol\.?\s*(\d{1,3})(?!\d|p\b|bit\b)/i);
   if (match) return parseInt(match[1], 10);
   match = name.match(/(?:^|[_\-.\s])(\d{1,3})(?:_|\-|\.|\s|$)/);
   if (match) return parseInt(match[1], 10);
@@ -1040,8 +1044,9 @@ function ddpErrStr(err) {
   try { return JSON.stringify(err); } catch (e) { return String(err); }
 }
 
-function ddpHttpError(res) {
-  var base = t('ddp_api_error');
+function ddpHttpError(res, data) {
+  var base = data && typeof data.errorMessage === 'string' && data.errorMessage
+    ? data.errorMessage : t('ddp_api_error');
   if (res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300)) {
     return base + ' (' + res.statusCode + ')';
   }
@@ -1229,16 +1234,14 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
       return;
     }
     if (!data || isHttpError) {
-      var matchErr = (data && data.errorMessage)
-        ? (isHttpError ? data.errorMessage + ' (' + res.statusCode + ')' : data.errorMessage)
-        : ddpHttpError(res);
+      var matchErr = ddpHttpError(res, data);
       commitDdpState({status: 'error', error: matchErr});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
     }
     if (data.success === false) {
-      commitDdpState({status: 'error', error: data.errorMessage || ddpHttpError(res)});
+      commitDdpState({status: 'error', error: ddpHttpError(res, data)});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
@@ -1320,9 +1323,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
     var data = ddpParseBody(res);
     var isHttpError = res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300);
     if (!data || isHttpError) {
-      var commentErr = (data && data.errorMessage)
-        ? (isHttpError ? data.errorMessage + ' (' + res.statusCode + ')' : data.errorMessage)
-        : ddpHttpError(res);
+      var commentErr = ddpHttpError(res, data);
       commitDdpState({status: 'error', error: commentErr});
       ddpSyncState();
       core.osd(commentErr);
@@ -1845,11 +1846,11 @@ function registerSidebarHandlers() {
         sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: [], error: t('ddp_auth_error') });
         return;
       }
+      var result = ddpParseBody(res);
       if (res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300)) {
-        sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: [], error: ddpHttpError(res) });
+        sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: [], error: ddpHttpError(res, result) });
         return;
       }
-      var result = ddpParseBody(res);
       if (!result || !result.animes || result.animes.length === 0) {
         sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: [], error: t('ddp_no_results') });
         return;
@@ -1876,7 +1877,7 @@ function registerSidebarHandlers() {
       var result = ddpParseBody(res);
       var isHttpError = res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300);
       if (!result || !result.bangumi || isHttpError) {
-        sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: [], error: ddpHttpError(res) });
+        sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: [], error: ddpHttpError(res, result) });
         return;
       }
       var episodes = result.bangumi.episodes || [];

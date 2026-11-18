@@ -14,7 +14,7 @@ function harness() {
   let id = 0, now = 1000;
   const canvas = {style: {}}, viewport = {style: {}};
   class Renderer {
-    constructor(canvas, data, options) { this.data = data; this.options = options; this.draws = []; instances.push(this); }
+    constructor(canvas, data, options) { this.data = data; this.options = options; this.size = options.viewportSize; this.draws = []; instances.push(this); }
     addEventListener() {} removeEventListener() {} clear() {this.clears = (this.clears || 0) + 1;} destroy() {}
     pauseCSS() {} resumeCSS() {} setPlaybackSpeed() {} setScrollSpeed(speed) {if (this.scrollSpeed === speed) return false; this.scrollSpeed = speed; return true;}
     drawCanvas(vpos) { this.draws.push(vpos); }
@@ -36,6 +36,38 @@ function harness() {
 
 const comment = (text, commands, owner = false, user = 'u') => ({t: 100, text, _commands: commands, _isOwner: owner, _dateSec: 1767196800, _userId: user});
 const load = (h, data) => h.send('load-danmaku', {danmakuType: 'dandanplay', comments: formatted(data), canvasMode: 'css'});
+
+test('bundled CSS measurement renderer keeps pixels small while resizing its logical viewport', () => {
+  const previousDocument = global.document;
+  const canvases = [];
+  global.document = {
+    createElement() {
+      const canvas = {
+        width: 300, height: 150,
+        getContext() { return {scale() {}, measureText(text) { return {width: text.length * 10}; }}; },
+      };
+      canvases.push(canvas);
+      return canvas;
+    },
+  };
+  try {
+    const renderer = new Engine.internal.renderer.CSSMeasurementRenderer({width: 2520, height: 1080});
+    assert.deepEqual(renderer.getSize(), {width: 2520, height: 1080});
+    for (const width of [1440, 1920, 2520]) {
+      renderer.setSize(width, 1080);
+      assert.deepEqual(renderer.getSize(), {width, height: 1080});
+      assert.equal(renderer.canvas.width, 1);
+      assert.equal(renderer.canvas.height, 1);
+    }
+    assert.equal(canvases.length, 1);
+    renderer.destroy();
+    assert.equal(renderer.canvas.width, 0);
+    assert.equal(renderer.canvas.height, 0);
+  } finally {
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
 
 test('repeated emoji tiles preserve whole graphemes and leave mixed text and text presentation alone', () => {
   const h = harness();
@@ -168,6 +200,7 @@ test('4:3 video uses full height and keeps hidden CSS canvas at 1x1 while alloca
   h.send('load-danmaku', {loadId: 1, danmakuType: 'dandanplay', comments: formatted([comment('test', [])]), videoAspectRatio: 4 / 3});
   assert.equal(h.canvas.width, 1);
   assert.equal(h.canvas.height, 1);
+  assert.deepEqual({...h.instances[0].options.viewportSize}, {width: 1440, height: 1080});
   assert.deepEqual(h.instances[0].size, {width: 1440, height: 1080});
   assert.deepEqual(h.viewport.style, {left: '160px', top: '0px', width: '960px', height: '720px'});
   h.context.window.innerWidth = 960;

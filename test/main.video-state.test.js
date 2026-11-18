@@ -1936,9 +1936,50 @@ test('extractNumberFromName prioritizes explicit episode markers over codec/seas
     ['Show Vol.2 1080p', 2],
     ['Show 05話 720p', 5],
     ['Show 第05話 720p', 5],
+    ['Step 2 [05].mp4', 5],
+    ['Keep 10 [03].mp4', 3],
+    ['Deep 1 [12].mp4', 12],
+    ['Step2 [05].mp4', 5],
+    ['Anime 第2季 [05].mkv', 5],
+    ['Anime 第2期 [05] [1080p].mkv', 5],
+    ['Anime 第2季 05.mkv', 5],
+    ['Show 全12话 [05]', 5],
+    ['Show 共 12集 第05集', 5],
+    ['Show 全 12話 EP05', 5],
+    ['Show 第05集 1080p', 5],
+    ['Show Episode 05', 5],
+    ['Show Ep.05v2', 5],
+    ['Revolve 2 [05]', 5],
+    ['Revol2', null],
+    ['Show Ep 1080p', null],
+    ['Show EP720p [05]', 5],
+    ['Show Ep 10bit', null],
+    ['Show S01E1080p [05]', 5],
+    ['Show Vol.1080p', null],
   ];
   for (const [name, expected] of cases) {
     assert.equal(h.context.extractNumberFromName(name), expected, name);
+  }
+});
+
+test('saved preset names are validated without relabeling custom values as Nico', () => {
+  for (const preset of ['nico', 'balanced', 'bilibili', 'custom']) {
+    const h = createHarness(true, false, {stylePreset: preset});
+    assert.equal(h.context.pluginState.stylePreset, preset);
+  }
+  for (const preset of ['', 'unknown', false, 0]) {
+    const h = createHarness(true, false, {
+      stylePreset: preset, danmakuFontFamily: 'Manual Font', scrollSpeed: 0.5,
+    });
+    assert.equal(h.context.pluginState.stylePreset, 'custom');
+    assert.equal(h.context.pluginState.danmakuFontFamily, 'Manual Font');
+    assert.equal(h.context.pluginState.scrollSpeed, 0.5);
+    h.emitSidebar('request-state');
+    assert.equal(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.stylePreset, 'custom');
+  }
+  for (const preset of [undefined, null]) {
+    const h = createHarness(true, false, {stylePreset: preset});
+    assert.equal(h.context.pluginState.stylePreset, 'nico');
   }
 });
 
@@ -1992,4 +2033,30 @@ test('non-2xx HTTP status codes are propagated in DDP error messages', async () 
   await flushMicrotasks();
   const bangumiReply = h.sidebarMessages.findLast(m => m.name === 'dandanplay-bangumi-result');
   assert.match(bangumiReply.data.error, /503/);
+});
+
+test('all DDP endpoints include the server error message and HTTP status', async () => {
+  const h = createHarness(true, true);
+  h.readyOverlay();
+  h.setVideo('file:///videos/A.mp4');
+  await flushMicrotasks();
+  h.resolveNextHttp({statusCode: 502, text: JSON.stringify({errorMessage: 'Match unavailable'})});
+  await flushMicrotasks();
+  assert.equal(h.context.pluginState.dandanplayState.error, 'Match unavailable (502)');
+
+  h.context.ddpLoadComments(42, 'Anime', '1', true);
+  h.resolveNextHttp({statusCode: 503, text: JSON.stringify({errorMessage: 'Comments unavailable'})});
+  await flushMicrotasks();
+  assert.equal(h.context.pluginState.dandanplayState.error, 'Comments unavailable (503)');
+  assert.equal(h.fileWrites.length, 0);
+
+  h.emitSidebar('dandanplay-search', {keyword: 'test', searchId: 11});
+  h.resolveNextHttp({statusCode: 429, text: JSON.stringify({errorMessage: 'Search throttled'})});
+  await flushMicrotasks();
+  assert.equal(h.sidebarMessages.findLast(m => m.name === 'dandanplay-search-result').data.error, 'Search throttled (429)');
+
+  h.emitSidebar('dandanplay-get-bangumi', {bangumiId: 42, searchId: 11});
+  h.resolveNextHttp({statusCode: 503, text: JSON.stringify({errorMessage: 'Bangumi unavailable'})});
+  await flushMicrotasks();
+  assert.equal(h.sidebarMessages.findLast(m => m.name === 'dandanplay-bangumi-result').data.error, 'Bangumi unavailable (503)');
 });
