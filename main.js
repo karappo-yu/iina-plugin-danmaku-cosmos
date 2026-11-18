@@ -1052,13 +1052,8 @@ function ddpConvertComments(comments) {
   return parseDanmakuSource(comments, '', 'dandanplay');
 }
 
-var DDP_CACHE_DIR_PATH = '@data/danmaku-cache';
-var DDP_CACHE_MAX_FILES = 100;
-var DDP_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
 let ddpCacheDirPromise = null;
 let cacheWriteQueue = Promise.resolve();
-var ddpStartupCleanupDone = false;
 function ensureCacheDir() {
   if (ddpCacheDirPromise) return ddpCacheDirPromise;
   try {
@@ -1096,79 +1091,8 @@ function ddpCacheFile(videoPath) {
   return '@data/danmaku-cache/' + ddpPathHash(videoPath) + '.json';
 }
 
-function ddpReadCacheTimestamp(filePath) {
-  try {
-    var content = file.read(filePath);
-    if (!content) return 0;
-    var match = /"cachedAt"\s*:\s*(\d+(?:\.\d+)?)/.exec(content);
-    if (match) return Number(match[1]) || 0;
-    var data = JSON.parse(content);
-    return data && data.cachedAt ? Number(data.cachedAt) || 0 : 0;
-  } catch (e) {
-    return 0;
-  }
-}
-
-function ddpCleanupCache(excludeFile) {
-  try {
-    var entries;
-    try { entries = file.list(DDP_CACHE_DIR_PATH, { includeSubDir: false }); } catch (e) { return Promise.resolve(0); }
-    if (!entries || !entries.length) return Promise.resolve(0);
-    var now = Date.now();
-    var valid = [];
-    var toDelete = [];
-    for (var i = 0; i < entries.length; i++) {
-      var item = entries[i];
-      if (!item || item.isDir || !/\.json$/i.test(item.filename)) continue;
-      var filePath = DDP_CACHE_DIR_PATH + '/' + item.filename;
-      if (excludeFile && filePath === excludeFile) {
-        valid.push({ filePath: filePath, cachedAt: now, isCurrent: true });
-        continue;
-      }
-      var cachedAt = ddpReadCacheTimestamp(filePath);
-      if (!isFinite(cachedAt) || cachedAt <= 0 || now - cachedAt > DDP_CACHE_MAX_AGE_MS) {
-        toDelete.push(filePath);
-      } else {
-        valid.push({ filePath: filePath, cachedAt: cachedAt, isCurrent: false });
-      }
-    }
-    if (valid.length > DDP_CACHE_MAX_FILES) {
-      valid.sort(function (a, b) {
-        if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
-        return b.cachedAt - a.cachedAt;
-      });
-      for (var k = DDP_CACHE_MAX_FILES; k < valid.length; k++) {
-        toDelete.push(valid[k].filePath);
-      }
-    }
-    if (toDelete.length === 0) return Promise.resolve(0);
-    if (typeof file.delete === 'function') {
-      for (var d = 0; d < toDelete.length; d++) {
-        try { file.delete(toDelete[d]); } catch (e) {}
-      }
-      return Promise.resolve(toDelete.length);
-    }
-    var resolved = [];
-    for (var r = 0; r < toDelete.length; r++) {
-      try {
-        var p = iina.utils.resolvePath(toDelete[r]);
-        if (p) resolved.push(p);
-      } catch (e) {}
-    }
-    if (resolved.length === 0) return Promise.resolve(0);
-    return Promise.resolve(iina.utils.exec('/bin/rm', ['-f'].concat(resolved))).then(function () {
-      return resolved.length;
-    }).catch(function () {
-      return 0;
-    });
-  } catch (e) {
-    return Promise.resolve(0);
-  }
-}
-
 function ddpSaveVideoCache(videoPath, episodeId, animeTitle, episodeTitle, comments) {
   if (!videoPath || !episodeId) return Promise.resolve(false);
-  var targetFile = ddpCacheFile(videoPath);
   let content = JSON.stringify({
     videoPath: videoPath,
     episodeId: episodeId,
@@ -1180,8 +1104,8 @@ function ddpSaveVideoCache(videoPath, episodeId, animeTitle, episodeTitle, comme
   });
   cacheWriteQueue = cacheWriteQueue.then(ensureCacheDir).then(function (dir) {
     if (!dir) return false;
-    if (file.write(targetFile, content) === false) throw new Error('Cache write failed');
-    return ddpCleanupCache(targetFile).then(function () { return true; });
+    if (file.write(ddpCacheFile(videoPath), content) === false) throw new Error('Cache write failed');
+    return true;
   }).catch(function (e) {
     console.log('[ddp] saveVideoCache error: ' + e);
     return false;
@@ -2026,14 +1950,6 @@ event.on("iina.file-loaded", function (url) {
   applyDanmakuOffset(0);
   // 无论弹幕开关状态都重置视频相关状态,避免旧 renderer/弹幕残留到新视频。
   loadDanmakuForVideo(url);
-  // 首次打开视频时清理过期 DDP 缓存。不能放在启动 setTimeout 里: IINA 的
-  // polyfill 定时器(target: self)会与 polyfill 形成引用环,插件实例被重建
-  // (安装/更新插件时)后定时器仍会触发,此时 pluginInstance 已失效,
-  // file.list 的 @data 解析会在 IINA 内部触发 Swift 崩溃。
-  if (!ddpStartupCleanupDone) {
-    ddpStartupCleanupDone = true;
-    cacheWriteQueue = cacheWriteQueue.then(function () { return ddpCleanupCache(); });
-  }
 });
 
 event.on("mpv.seeking.changed", function (seeking) {

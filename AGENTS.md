@@ -156,6 +156,7 @@ Engine `nakaDedupeWindow` stays 0 (the projection owns scrolling merges), and CA
 - Cache writes await directory creation; reads do not create directories. New entries also store `videoPath` to detect hash collisions.
 - Single hash-keyed cache file per video: `@data/danmaku-cache/{pathHash}.json`
 - Contains `{schemaVersion: 2, videoPath, episodeId, animeTitle, episodeTitle, cachedAt, comments}` (canonical comments); the read boundary also accepts old converted caches. Writes are serialized through `cacheWriteQueue`.
+- Cache maintenance is manual; startup, video loads, and cache writes must not scan or prune the cache directory. README documents its location.
 - 24h TTL; each new DDP load overwrites previous cache for same video path (same filename, so expired data is replaced on refresh, never deleted explicitly)
 - **Expired cache is NOT deleted on read** — `ddpReadVideoCache()` marks it `stale: true` and keeps the file as a download-failure fallback (`ddpFallbackToLocal()` loads stale cache when no local files exist). It appears in the file list with a `(旧)` suffix but is never auto-loaded, so refresh still happens after TTL expiry; a successful refresh overwrites the file and the suffix is removed (`ddpAddToFileListAndLoad(..., fresh=true)`)
 - **Fresh cache (within TTL) fully skips background auto-match** — no hash recompute, no API call (honors the README "replay within 24h skips re-download" promise). Refresh only happens after TTL expiry, or when the user manually triggers matching via the 网络弹幕 panel (`dandanplay-trigger-match`)
@@ -283,7 +284,7 @@ Based on the `niconicomments` third-party library. All sources arrive as the sam
 - Filenames with completely unbracketed bare episode numbers mixed with codecs may rely on fallback matching in `extractNumberFromName` when explicit episode markers (`S01E05`, `第05话`, `EP05`, `[05]`) are absent
 - Canvas mode receives the same filtered source content as CSS mode, but does not support CSS-specific animation/layout behavior.
 - CSS mode (niconicomments) Comment Art vertical positioning may differ slightly from Canvas mode
-- DDP cache only stores the last loaded episode per video (hash overwrite) and retains at most 100 entries / 7 days on disk
+- DDP cache only stores the last loaded episode per video (hash overwrite)
 
 ## Avoid
 

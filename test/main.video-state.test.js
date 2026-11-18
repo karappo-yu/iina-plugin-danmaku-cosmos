@@ -1448,19 +1448,35 @@ test('only the ready handshake can flush the latest pending IR source', async ()
   assert.deepEqual(load.comments.map(c => c.content), ['B comment']);
 });
 
-test('cache cleanup runs once on the first video load, never from a startup timer', async () => {
+test('startup, video loads, and DDP cache writes do not scan or evict disk caches', async () => {
   const h = createHarness(true);
   const cacheDir = '@data/danmaku-cache';
   const cacheDirReads = () => h.directoryReads.filter((dir) => dir === cacheDir).length;
+  const expiredFile = cacheDir + '/expired.json';
+  h.setFile(expiredFile, JSON.stringify({episodeId: 1, cachedAt: Date.now() - 8 * 24 * 60 * 60 * 1000, comments: []}));
+  const removed = [];
+  h.context.iina.file.delete = filePath => removed.push(filePath);
+  const commands = [];
+  h.setExec(command => {
+    commands.push(command);
+    return Promise.resolve({status: 0});
+  });
   h.runTimers(5000);
   await flushMicrotasks();
-  assert.equal(cacheDirReads(), 0, 'startup must not schedule cache cleanup');
+  assert.equal(cacheDirReads(), 0);
   h.setVideo('file:///videos/A.mp4');
   await flushMicrotasks();
-  assert.equal(cacheDirReads(), 1);
+  assert.equal(cacheDirReads(), 0);
   h.setVideo('file:///videos/B.mp4');
   await flushMicrotasks();
-  assert.equal(cacheDirReads(), 1, 'cleanup runs at most once per session');
+  assert.equal(cacheDirReads(), 0);
+  const videoUrl = 'file:///videos/New.mp4';
+  assert.equal(await h.context.ddpSaveVideoCache(videoUrl, 999, 'Anime', '1', []), true);
+  assert.equal(cacheDirReads(), 0);
+  assert.equal(h.fileReads.includes(expiredFile), false);
+  assert.deepEqual(removed, []);
+  assert.equal(commands.includes('/bin/rm'), false);
+  assert.deepEqual(h.fileWrites.map(write => write.filePath), [h.context.ddpCacheFile(videoUrl)]);
 });
 
 test('bangumi responses cannot replace a newer selection or search', async () => {
@@ -1954,33 +1970,6 @@ test('applyDanmakuOffset clamps values within [-30, 30]', () => {
   assert.equal(h.context.pluginState.danmakuTimeOffsetSec, 30);
   h.emitSidebar('set-danmaku-offset', {offset: -99});
   assert.equal(h.context.pluginState.danmakuTimeOffsetSec, -30);
-});
-
-test('DDP disk cache eviction removes expired (>7d) and excess (>100) cache entries', async () => {
-  const h = createHarness(true);
-  const now = Date.now();
-  const expiredFile = '@data/danmaku-cache/expired.json';
-  h.setFile(expiredFile, JSON.stringify({episodeId: 1, cachedAt: now - 8 * 24 * 60 * 60 * 1000, comments: []}));
-  for (let i = 0; i < 102; i++) {
-    h.setFile(`@data/danmaku-cache/item-${i}.json`, JSON.stringify({episodeId: i + 10, cachedAt: now - (102 - i) * 1000, comments: []}));
-  }
-  const removed = [];
-  h.setExec((command, args) => {
-    if (command === '/bin/mkdir') return Promise.resolve({status: 0});
-    if (command === '/bin/rm') {
-      removed.push(...args.slice(1));
-      return Promise.resolve({status: 0});
-    }
-    return Promise.resolve({status: 0});
-  });
-  const ok = await h.context.ddpSaveVideoCache('file:///videos/New.mp4', 999, 'Anime', '1', []);
-  assert.equal(ok, true);
-  assert.ok(removed.includes(expiredFile));
-  assert.ok(removed.includes('@data/danmaku-cache/item-0.json'));
-  assert.ok(removed.includes('@data/danmaku-cache/item-1.json'));
-  assert.ok(removed.includes('@data/danmaku-cache/item-2.json'));
-  assert.equal(removed.includes(h.context.ddpCacheFile('file:///videos/New.mp4')), false);
-  assert.equal(removed.length, 4);
 });
 
 test('non-2xx HTTP status codes are propagated in DDP error messages', async () => {
