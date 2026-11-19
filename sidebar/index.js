@@ -239,7 +239,7 @@ var i18n = {
     filter_back_live: "Back to Live",
     blocklist_title: "Block Words",
     blocklist_add: "Add",
-    blocklist_placeholder: "word or regex...",
+    blocklist_placeholder: "word or /regex/...",
     blocklist_remove: "Remove",
     block_top: "Block Top Danmaku",
     block_bottom: "Block Bottom Danmaku",
@@ -305,7 +305,7 @@ var i18n = {
     filter_back_live: "\u6700\u65b0\u3078",
     blocklist_title: "\u30d6\u30ed\u30c3\u30af\u8a9e",
     blocklist_add: "\u8ffd\u52a0",
-    blocklist_placeholder: "\u5358\u8a9e\u307e\u305f\u306f\u6b63\u898f\u8868\u73fe...",
+    blocklist_placeholder: "\u5358\u8a9e\u307e\u305f\u306f /\u6b63\u898f\u8868\u73fe/...",
     blocklist_remove: "\u524a\u9664",
     block_top: "\u4e0a\u90e8\u30b3\u30e1\u30f3\u30c8\u3092\u30d6\u30ed\u30c3\u30af",
     block_bottom: "\u4e0b\u90e8\u30b3\u30e1\u30f3\u30c8\u3092\u30d6\u30ed\u30c3\u30af",
@@ -371,7 +371,7 @@ var i18n = {
     filter_back_live: "\u56de\u5230\u5b9e\u65f6",
     blocklist_title: "\u5c4f\u853d\u8bcd",
     blocklist_add: "\u6dfb\u52a0",
-    blocklist_placeholder: "\u5c4f\u853d\u8bcd\u6216\u6b63\u5219...",
+    blocklist_placeholder: "\u5c4f\u853d\u8bcd\u6216 /\u6b63\u5219/...",
     blocklist_remove: "\u5220\u9664",
     block_top: "\u5c4f\u853d\u9876\u90e8\u5f39\u5e55",
     block_bottom: "\u5c4f\u853d\u5e95\u90e8\u5f39\u5e55",
@@ -793,10 +793,19 @@ commentLimitSlider.addEventListener("change", function () {
   iina.postMessage("set-comment-limit", { limit: limit });
 });
 
+var DANMAKU_OFFSET_MIN = -30;
+var DANMAKU_OFFSET_MAX = 30;
+function clampDanmakuOffset(value) {
+  var rounded = Math.round(value * 1000) / 1000;
+  return Math.max(DANMAKU_OFFSET_MIN, Math.min(DANMAKU_OFFSET_MAX, rounded));
+}
+
 if (offsetInput) {
   offsetInput.addEventListener("change", function () {
     var val = parseFloat(offsetInput.value);
     if (isNaN(val)) val = 0;
+    val = clampDanmakuOffset(val);
+    offsetInput.value = val;
     iina.postMessage("set-danmaku-offset", { offset: val });
   });
 }
@@ -959,10 +968,10 @@ document.addEventListener("keydown", function (e) {
   // must not also adjust the time offset.
   if ((key === 'a' || key === 'd') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
     e.preventDefault();
-    var current = parseFloat(offsetInput.value) || 0;
-    var delta = Math.abs(current) || 1;
-    var offset = current + (key === 'a' ? -delta : delta);
-    offsetInput.value = offset;
+    var current = parseFloat(offsetInput && offsetInput.value) || 0;
+    var step = (offsetInput && parseFloat(offsetInput.step)) || 0.5;
+    var offset = clampDanmakuOffset(current + (key === 'a' ? -step : step));
+    if (offsetInput) offsetInput.value = offset;
     iina.postMessage("set-danmaku-offset", { offset: offset });
   }
 });
@@ -1380,8 +1389,6 @@ var browserList = {
 browserList.spacerEl = browserList.el.querySelector(".danmaku-browser-spacer");
 browserList.emptyEl = browserList.el.querySelector(".danmaku-browser-empty");
 
-// sidebar 自身的 file:// 根目录,上报给 main 用于读 overlay/lib/opencc.min.js
-
 function browserFmtTime(vpos) {
   var sec = Math.floor((vpos || 0) / 100);
   var h = Math.floor(sec / 3600);
@@ -1408,10 +1415,13 @@ function browserRenderTextWithLinks(text, container) {
   var re = /(\d{1,2}):(\d{2})(?::(\d{2}))?/g;
   var last = 0, m;
   while ((m = re.exec(text)) !== null) {
+    var hasHours = m[3] !== undefined;
+    var hours = hasHours ? parseInt(m[1], 10) : 0;
+    var mins = hasHours ? parseInt(m[2], 10) : parseInt(m[1], 10);
+    var secs = hasHours ? parseInt(m[3], 10) : parseInt(m[2], 10);
+    if (mins >= 60 || secs >= 60) continue;
     if (m.index > last) container.appendChild(document.createTextNode(text.slice(last, m.index)));
-    var sec = m[3] !== undefined
-      ? parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10)
-      : parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    var sec = hours * 3600 + mins * 60 + secs;
     var link = document.createElement("span");
     link.className = "danmaku-time-link";
     link.textContent = m[0];
@@ -1424,8 +1434,8 @@ function browserRenderTextWithLinks(text, container) {
     container.appendChild(link);
     last = m.index + m[0].length;
   }
-  if (last < text.length) container.appendChild(document.createTextNode(text.slice(last)));
-  if (last === 0 && container.childNodes.length === 0) container.textContent = text;
+  if (last === 0) container.textContent = text;
+  else if (last < text.length) container.appendChild(document.createTextNode(text.slice(last)));
 }
 
 // 渲染一个列表容器的可视窗口(虚拟滚动)。容器滚动位置自洽:

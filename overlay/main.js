@@ -80,9 +80,14 @@ function createDomEmojiRenderer(container) {
     const ratio = rasterFontSize / fontSize;
     const strokeWidth = parseFloat(style.webkitTextStrokeWidth) || 0;
     const shadow = style.textShadow.match(/(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px/);
+    const shadowOffsetY = shadow ? Number(shadow[2]) : 0;
+    const shadowBlur = shadow ? Number(shadow[3]) : 0;
+    const rawPadY = Math.ceil(strokeWidth * ratio + (shadow ? (Math.abs(shadowOffsetY) + shadowBlur) * ratio : 0));
+    const maxPadY = Math.max(0, Math.floor((1024 / density - lineHeight * rasterFontSize) / 2));
+    const padY = Math.min(rawPadY, maxPadY);
     const key = JSON.stringify([glyph, style.fontFamily, style.fontWeight, rasterFontSize,
       lineHeight, style.color, strokeWidth * ratio, style.webkitTextStrokeColor,
-      shadow ? shadow.slice(1).map(function (n) { return Number(n) * ratio; }) : null]);
+      shadow ? shadow.slice(1).map(function (n) { return Number(n) * ratio; }) : null, padY]);
     if (tiles.has(key)) return tiles.get(key);
 
     const canvas = document.createElement('canvas');
@@ -91,7 +96,7 @@ function createDomEmojiRenderer(container) {
     const font = style.fontWeight + ' ' + rasterFontSize + 'px ' + style.fontFamily;
     ctx.font = font;
     const width = Math.ceil(ctx.measureText(glyph).width * density);
-    const height = Math.ceil(lineHeight * rasterFontSize * density);
+    const height = Math.ceil((lineHeight * rasterFontSize + padY * 2) * density);
     if (width <= 0 || height <= 0 || width > 1024 || height > 1024) return null;
     canvas.width = width;
     canvas.height = height;
@@ -100,7 +105,7 @@ function createDomEmojiRenderer(container) {
     const metrics = ctx.measureText('Ag');
     const ascent = metrics.fontBoundingBoxAscent === undefined ? rasterFontSize * 0.9 : metrics.fontBoundingBoxAscent;
     const descent = metrics.fontBoundingBoxDescent === undefined ? rasterFontSize * 0.1 : metrics.fontBoundingBoxDescent;
-    const baseline = (lineHeight * rasterFontSize - ascent - descent) / 2 + ascent;
+    const baseline = padY + (lineHeight * rasterFontSize - ascent - descent) / 2 + ascent;
     ctx.fillStyle = style.color;
     ctx.strokeStyle = style.webkitTextStrokeColor;
     ctx.lineWidth = strokeWidth * ratio;
@@ -112,7 +117,13 @@ function createDomEmojiRenderer(container) {
     }
     if (strokeWidth > 0) ctx.strokeText(glyph, 0, baseline);
     ctx.fillText(glyph, 0, baseline);
-    const tile = { image: 'url("' + canvas.toDataURL() + '")', lineHeight: lineHeight };
+    const padEm = padY / rasterFontSize;
+    const tile = {
+      image: 'url("' + canvas.toDataURL() + '")',
+      lineHeight: lineHeight,
+      padEm: padEm,
+      tileHeightEm: lineHeight + padEm * 2,
+    };
     canvas.width = canvas.height = 0;
     if (tiles.size >= 32) tiles.delete(tiles.keys().next().value);
     tiles.set(key, tile);
@@ -145,7 +156,15 @@ function createDomEmojiRenderer(container) {
       span.textContent = node.textContent;
       span.style.backgroundImage = tile.image;
       // Match the original run's actual advance, including WebKit rounding.
-      span.style.backgroundSize = (100 / repeated.count) + '% ' + tile.lineHeight + 'em';
+      span.style.backgroundSize = (100 / repeated.count) + '% ' + tile.tileHeightEm + 'em';
+      if (tile.padEm > 0) {
+        const padCss = tile.padEm + 'em';
+        const negPadCss = '-' + padCss;
+        span.style.paddingTop = padCss;
+        span.style.paddingBottom = padCss;
+        span.style.marginTop = negPadCss;
+        span.style.marginBottom = negPadCss;
+      }
       parent.replaceChild(span, node);
     }
   });
@@ -195,11 +214,16 @@ function disposeCanvasRenderer() {
     domEmojiRenderer.destroy();
     domEmojiRenderer = null;
   }
-  if (!niconiComments) return;
-  unbindCanvasEvents(niconiComments);
-  niconiComments.clear();
-  niconiComments.destroy();
-  niconiComments = null;
+  if (niconiComments) {
+    unbindCanvasEvents(niconiComments);
+    niconiComments.clear();
+    niconiComments.destroy();
+    niconiComments = null;
+  }
+  if (canvasNicoMode === 'css') {
+    const canvas = document.getElementById('niconicomments-canvas');
+    if (canvas) { canvas.width = 1; canvas.height = 1; }
+  }
 }
 
 var DEFAULT_DANMAKU_FONT_STACKS = {
@@ -276,10 +300,24 @@ function updateCanvasViewport() {
   const sizeScale = Math.min(1, 8192 / (1080 * outputAspect));
   const canvasWidth = Math.max(1, Math.round(1080 * outputAspect * sizeScale));
   const canvasHeight = Math.max(1, Math.round(1080 * sizeScale));
-  if (niconiComments) return niconiComments.resize(canvasWidth, canvasHeight);
-  canvas.width = canvasWidth;
-  canvas.height = canvasHeight;
-  return true;
+  if (niconiComments) {
+    niconiComments.resize(canvasWidth, canvasHeight);
+    if (canvasNicoMode === 'css') {
+      canvas.width = 1;
+      canvas.height = 1;
+    }
+    return {width: canvasWidth, height: canvasHeight};
+  }
+  // CSS mode uses a tiny measurement surface in the engine. The hidden DOM
+  // canvas stays 1x1; its logical viewport travels separately as viewportSize.
+  if (canvasNicoMode === 'css') {
+    canvas.width = 1;
+    canvas.height = 1;
+  } else {
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+  }
+  return {width: canvasWidth, height: canvasHeight};
 }
 
 function refreshCanvasViewport() {
@@ -309,10 +347,11 @@ function initCanvasRenderer(data) {
   canvas.style.opacity = useCssMode ? 0 : canvasOpacity;
   canvas.style.display = danmakuVisible ? '' : 'none';
   disposeCanvasRenderer();
-  updateCanvasViewport();
+  const viewportSize = updateCanvasViewport();
   niconiComments = new NiconiComments(canvas, data, {
     format: 'formatted',
     mode: canvasNicoMode,
+    viewportSize: useCssMode && viewportSize ? viewportSize : undefined,
     keepCA: true,
     dedupeCA: false, // Projection owns merging; retain CA layers without deleting comments.
     scale: canvasFontScale,
@@ -331,6 +370,7 @@ function initCanvasRenderer(data) {
   });
   formattedComments = data;
   if (useCssMode) {
+    updateCanvasViewport();
     domEmojiRenderer = createDomEmojiRenderer(document.querySelector('[data-dm-css-container]'));
   }
   // 初始化时同步当前播放速度(CSS 模式滚动动画时长按倍率缩放)

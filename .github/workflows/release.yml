@@ -37,6 +37,7 @@ jobs:
             Info.json \
             main.js \
             danmaku-document.js \
+            lib \
             overlay \
             sidebar \
             -x "*.DS_Store" \

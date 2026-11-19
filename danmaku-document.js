@@ -182,6 +182,7 @@ function parseDanmakuSource(rawContent, path, sourceHint) {
       } else {
         const p = (attrs.p || '').split(','), time = Number(p[0]), mode = Number(p[1]), size = Number(p[2]);
         if (!p[0].trim() || !Number.isInteger(mode) || mode < 1 || mode > 6) continue;
+        // niconicomments (read-only) only supports global @逆 NicoScript reversal, not per-comment reverse commands; map mode 6 to naka.
         const commands = [mode === 4 ? 'shita' : mode === 5 ? 'ue' : 'naka'];
         if (size >= 36) commands.push('big'); else if (size > 0 && size <= 15) commands.push('small');
         const color = Number.isFinite(Number(p[3])) ? (Number(p[3]) >>> 0) & 0xFFFFFF : 0xFFFFFF;

@@ -14,7 +14,7 @@ function harness() {
   let id = 0, now = 1000;
   const canvas = {style: {}}, viewport = {style: {}};
   class Renderer {
-    constructor(canvas, data, options) { this.data = data; this.options = options; this.draws = []; instances.push(this); }
+    constructor(canvas, data, options) { this.data = data; this.options = options; this.size = options.viewportSize; this.draws = []; instances.push(this); }
     addEventListener() {} removeEventListener() {} clear() {this.clears = (this.clears || 0) + 1;} destroy() {}
     pauseCSS() {} resumeCSS() {} setPlaybackSpeed() {} setScrollSpeed(speed) {if (this.scrollSpeed === speed) return false; this.scrollSpeed = speed; return true;}
     drawCanvas(vpos) { this.draws.push(vpos); }
@@ -36,6 +36,38 @@ function harness() {
 
 const comment = (text, commands, owner = false, user = 'u') => ({t: 100, text, _commands: commands, _isOwner: owner, _dateSec: 1767196800, _userId: user});
 const load = (h, data) => h.send('load-danmaku', {danmakuType: 'dandanplay', comments: formatted(data), canvasMode: 'css'});
+
+test('bundled CSS measurement renderer keeps pixels small while resizing its logical viewport', () => {
+  const previousDocument = global.document;
+  const canvases = [];
+  global.document = {
+    createElement() {
+      const canvas = {
+        width: 300, height: 150,
+        getContext() { return {scale() {}, measureText(text) { return {width: text.length * 10}; }}; },
+      };
+      canvases.push(canvas);
+      return canvas;
+    },
+  };
+  try {
+    const renderer = new Engine.internal.renderer.CSSMeasurementRenderer({width: 2520, height: 1080});
+    assert.deepEqual(renderer.getSize(), {width: 2520, height: 1080});
+    for (const width of [1440, 1920, 2520]) {
+      renderer.setSize(width, 1080);
+      assert.deepEqual(renderer.getSize(), {width, height: 1080});
+      assert.equal(renderer.canvas.width, 1);
+      assert.equal(renderer.canvas.height, 1);
+    }
+    assert.equal(canvases.length, 1);
+    renderer.destroy();
+    assert.equal(renderer.canvas.width, 0);
+    assert.equal(renderer.canvas.height, 0);
+  } finally {
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
 
 test('repeated emoji tiles preserve whole graphemes and leave mixed text and text presentation alone', () => {
   const h = harness();
@@ -163,17 +195,33 @@ test('invalid formatted input reports a correlated load error instead of escapin
   assert.equal(result.success,false);
 });
 
-test('4:3 video uses full height and keeps its bounds in a wide window', () => {
+test('4:3 video uses full height and keeps hidden CSS canvas at 1x1 while allocating Canvas mode buffer', () => {
   const h = harness();
   h.send('load-danmaku', {loadId: 1, danmakuType: 'dandanplay', comments: formatted([comment('test', [])]), videoAspectRatio: 4 / 3});
-  assert.equal(h.canvas.width, 1440);
-  assert.equal(h.canvas.height, 1080);
+  assert.equal(h.canvas.width, 1);
+  assert.equal(h.canvas.height, 1);
+  assert.deepEqual({...h.instances[0].options.viewportSize}, {width: 1440, height: 1080});
+  assert.deepEqual(h.instances[0].size, {width: 1440, height: 1080});
   assert.deepEqual(h.viewport.style, {left: '160px', top: '0px', width: '960px', height: '720px'});
   h.context.window.innerWidth = 960;
   h.send('resize', {});
   assert.equal(h.viewport.style.left, '0px');
   assert.equal(h.viewport.style.height, '720px');
+  assert.equal(h.canvas.width, 1);
+  assert.equal(h.canvas.height, 1);
   assert.equal(h.instances.length, 1, 'window resizing does not parse/rebuild CA');
+  h.send('set-canvas-mode', {mode: 'default'});
+  h.flush();
+  assert.equal(h.canvas.width, 1440);
+  assert.equal(h.canvas.height, 1080);
+  h.context.window.innerWidth = 1280;
+  h.send('set-video-aspect', {aspect: 4 / 3});
+  assert.deepEqual(h.instances[1].size, {width: 1440, height: 1080});
+  h.send('set-canvas-mode', {mode: 'css'});
+  h.flush();
+  assert.equal(h.canvas.width, 1);
+  assert.equal(h.canvas.height, 1);
+  assert.deepEqual(h.instances[2].size, {width: 1440, height: 1080});
 });
 
 test('video aspect changes resize the existing renderer while paused', () => {
@@ -214,10 +262,12 @@ test('fullscreen expands 4:3 output across pillarboxes without changing video he
 test('fullscreen startup and resize use the full width, including ultrawide displays', () => {
   const h = harness();
   h.send('load-danmaku', {danmakuType: 'dandanplay', comments: formatted([comment('test', [])]), videoAspectRatio: 4 / 3, fullscreen: true});
-  assert.equal(h.canvas.width, 1920);
+  assert.equal(h.canvas.width, 1);
+  assert.deepEqual(h.instances[0].size, {width: 1920, height: 1080});
   h.context.window.innerWidth = 1680;
   h.send('resize', {});
   assert.deepEqual(h.instances[0].size, {width: 2520, height: 1080});
+  assert.equal(h.canvas.width, 1);
   assert.equal(h.viewport.style.width, '1680px');
   assert.equal(h.viewport.style.height, '720px');
   h.send('set-video-aspect', {aspect: 21 / 9});
@@ -414,4 +464,77 @@ test('overlay keeps CA layers and passes the fixedCombo flag through to the engi
   assert.equal(h.instances[0].options.config.nakaDedupeWindow, 0);
   h.send('load-danmaku', {danmakuType: 'dandanplay', comments: formatted([comment('fixed', ['ue'])]), canvasMode: 'css', fixedCombo: true});
   assert.equal(h.instances[1].options.config.fixedCombo, true);
+});
+
+test('repeated-emoji tiles add vertical padding for stroke and shadow without altering layout height', () => {
+  let observerCb = null;
+  const tileCanvases = [];
+  const replaced = [];
+  const textNode = {nodeType: 3, textContent: '🌀'.repeat(8)};
+  const commentEl = {
+    nodeType: 1,
+    closest(sel) { return sel === '[data-dm-comment]' ? this : null; },
+    replaceChild(next, prev) { replaced.push({next, prev}); },
+  };
+  textNode.parentElement = commentEl;
+  const container = {
+    contains(el) { return el === commentEl; },
+  };
+  const ctxCalls = [];
+  const sandbox = vm.createContext({
+    iina: {onMessage() {}, postMessage() {}},
+    document: {
+      getElementById() { return {style: {}}; },
+      querySelector() { return null; },
+      createElement(tag) {
+        if (tag === 'canvas') {
+          const c = {
+            width: 0, height: 0,
+            getContext() {
+              return {
+                scale() {},
+                measureText(s) { return s === 'Ag' ? {fontBoundingBoxAscent: 90, fontBoundingBoxDescent: 10} : {width: 100}; },
+                strokeText(text, x, y) { ctxCalls.push({op: 'stroke', y, h: c.height}); },
+                fillText(text, x, y) { ctxCalls.push({op: 'fill', y, h: c.height}); },
+              };
+            },
+            toDataURL() { return 'data:image/png;base64,test'; },
+          };
+          tileCanvases.push(c);
+          return c;
+        }
+        return {attrs: {}, style: {}, setAttribute(k, v) { this.attrs[k] = v; }};
+      },
+    },
+    window: {location: {href: 'file:///plugin/overlay/index.html'}, innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1},
+    MutationObserver: class { constructor(cb) { observerCb = cb; } observe() {} disconnect() {} },
+    getComputedStyle() {
+      return {
+        fontSize: '50px',
+        lineHeight: '60px',
+        fontFamily: 'sans-serif',
+        fontWeight: '500',
+        color: '#ffffff',
+        webkitTextStrokeWidth: '3px',
+        webkitTextStrokeColor: '#000000',
+        textShadow: '0px 1px 4px rgb(0, 0, 0)',
+      };
+    },
+    URL, console, performance: {now() {return 1000;}}, setTimeout, clearTimeout, requestAnimationFrame() {return 1;}, cancelAnimationFrame() {},
+  });
+  vm.runInContext(source, sandbox);
+  const renderer = sandbox.createDomEmojiRenderer(container);
+  assert.ok(renderer);
+  observerCb([{addedNodes: [textNode]}]);
+  assert.equal(replaced.length, 1);
+  const span = replaced[0].next;
+  // ratio = 100 / 50 = 2; padY = ceil(3*2 + (|1| + 4)*2) = 16 -> padEm = 0.16
+  assert.equal(span.style.paddingTop, '0.16em');
+  assert.equal(span.style.paddingBottom, '0.16em');
+  assert.equal(span.style.marginTop, '-0.16em');
+  assert.equal(span.style.marginBottom, '-0.16em');
+  assert.equal(span.style.backgroundSize, '12.5% 1.52em');
+  assert.equal(ctxCalls[0].op, 'stroke');
+  assert.equal(ctxCalls[0].h, 152);
+  assert.equal(ctxCalls[0].y, 116);
 });

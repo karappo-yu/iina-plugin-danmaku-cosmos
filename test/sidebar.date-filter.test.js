@@ -21,8 +21,18 @@ function createSidebar() {
     const classes = new Set((attributes.class || '').split(' '));
     const node = {
       children: [], parentNode: null,
+      get childNodes() { return this.children; },
       tagName, attributes, style: {}, dataset: {}, value: attributes.value || '', textContent: '',
-      classList: { contains: name => classes.has(name), add: name => classes.add(name), remove: name => classes.delete(name), toggle() {} },
+      classList: {
+        contains: name => classes.has(name),
+        add: name => classes.add(name),
+        remove: name => classes.delete(name),
+        toggle(name, force) {
+          const on = force === undefined ? !classes.has(name) : !!force;
+          if (on) classes.add(name); else classes.delete(name);
+          return on;
+        },
+      },
       closest() { return this; }, querySelectorAll() { return []; }, querySelector(selector) { return this.children.find(child => child.tagName.toLowerCase() === selector) || null; },
       appendChild(child) { this.children.push(child); child.parentNode = this; return child; },
       remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this); this.parentNode = null; },
@@ -44,14 +54,39 @@ function createSidebar() {
     }});
     return node;
   }
-  for (const match of html.matchAll(/<([a-z]+)\b([^>]*\bid="[^"]+"[^>]*)>/gi)) {
-    const attrs = Object.fromEntries(Array.from(match[2].matchAll(/([\w-]+)="([^"]*)"/g), m => [m[1], m[2]]));
-    elements.set(attrs.id, element(match[1].toUpperCase(), attrs));
+  function queryAll(root, pred, out = []) {
+    for (const child of root.children) {
+      if (pred(child)) out.push(child);
+      queryAll(child, pred, out);
+    }
+    return out;
+  }
+  const rootStack = [];
+  for (const token of html.matchAll(/<(\/?)([a-z]+)\b([^>]*)>/gi)) {
+    const [, closing, tag, attrText] = token;
+    if (closing) {
+      if (rootStack.length) rootStack.pop();
+      continue;
+    }
+    const attrs = Object.fromEntries(Array.from(attrText.matchAll(/([\w-]+)="([^"]*)"/g), m => [m[1], m[2]]));
+    const el = element(tag.toUpperCase(), attrs);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k.startsWith('data-')) el.dataset[k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = v;
+    }
+    if (rootStack.length) rootStack.at(-1).appendChild(el);
+    if (attrs.id) elements.set(attrs.id, el);
+    if (!/\/\s*$/.test(attrText) && !/^(input|meta|link|br|hr)$/i.test(tag)) rootStack.push(el);
+  }
+  const segmented = elements.get('style-preset-segmented');
+  if (segmented) {
+    segmented.querySelectorAll = selector => selector === '.seg-item'
+      ? queryAll(segmented, n => n.classList.contains('seg-item')) : [];
   }
   const document = Object.assign(element(), {
     documentElement: element('HTML'),
     getElementById: id => elements.get(id) || null,
     createElement: tag => element(tag.toUpperCase()),
+    createTextNode: text => ({ nodeType: 3, textContent: String(text), remove() {} }),
     querySelectorAll(selector) {
       const attr = /^\[([\w-]+)\]$/.exec(selector);
       return attr ? [...elements.values()].filter(el => Object.hasOwn(el.attributes, attr[1])) : [];
@@ -77,7 +112,7 @@ function createSidebar() {
   emit('danmaku-state', { enabled: true, danmakuLoaded: true, danmakuFileType: 'nico-json' });
   filterInfo();
   return {
-    elements, document, window, messages, emit, filterInfo,
+    elements, context, document, window, messages, emit, filterInfo,
     flush() { for (const [id, callback] of Array.from(timers)) { timers.delete(id); callback(); } },
     filterMessages() { return messages.filter(message => message.name === 'set-danmaku-filter'); },
   };
@@ -457,4 +492,66 @@ test('font controls submit only the field changed, even before prior state echoe
   select.value = 'custom'; input.value = ''; select.fire('change');
   input.value = 'Custom Face'; input.fire('input');
   assert.deepEqual(JSON.parse(JSON.stringify(h.messages.at(-1).data)), {fontFamily: 'Custom Face'});
+});
+
+test('A/D shortcuts adjust offset by fixed 0.5s steps, clamp within [-30, 30], and ignore Shift+D or inputs', () => {
+  const h = createSidebar();
+  const offsetInput = h.elements.get('danmaku-offset-input');
+  h.emit('danmaku-state', {danmakuTimeOffsetSec: 0});
+  for (const expected of [0.5, 1, 1.5, 2]) {
+    h.document.fire('keydown', {key: 'd'});
+    assert.equal(offsetInput.value, expected);
+    assert.equal(h.messages.findLast(m => m.name === 'set-danmaku-offset').data.offset, expected);
+  }
+  for (const expected of [1.5, 1, 0.5, 0, -0.5]) {
+    h.document.fire('keydown', {key: 'a'});
+    assert.equal(offsetInput.value, expected);
+    assert.equal(h.messages.findLast(m => m.name === 'set-danmaku-offset').data.offset, expected);
+  }
+  const before = h.messages.filter(m => m.name === 'set-danmaku-offset').length;
+  h.document.fire('keydown', {key: 'D', shiftKey: true});
+  h.document.fire('keydown', {key: 'd', ctrlKey: true});
+  h.document.fire('keydown', {key: 'a', target: {tagName: 'INPUT'}});
+  assert.equal(h.messages.filter(m => m.name === 'set-danmaku-offset').length, before);
+  assert.equal(offsetInput.value, -0.5);
+
+  offsetInput.value = 30;
+  h.document.fire('keydown', {key: 'd'});
+  assert.equal(offsetInput.value, 30);
+  offsetInput.value = -30;
+  h.document.fire('keydown', {key: 'a'});
+  assert.equal(offsetInput.value, -30);
+
+  offsetInput.value = '99';
+  offsetInput.fire('change');
+  assert.equal(offsetInput.value, 30);
+  assert.equal(h.messages.findLast(m => m.name === 'set-danmaku-offset').data.offset, 30);
+});
+
+test('browserRenderTextWithLinks validates minute/second bounds (< 60) and ignores score-like numbers', () => {
+  const h = createSidebar();
+  const container = h.document.createElement('SPAN');
+  h.context.browserRenderTextWithLinks('比分 12:99 和 60:00 以及 1:75:00 不是时间', container);
+  assert.equal(container.children.length, 0);
+  assert.equal(container.textContent, '比分 12:99 和 60:00 以及 1:75:00 不是时间');
+
+  const mixed = h.document.createElement('SPAN');
+  h.context.browserRenderTextWithLinks('99:88 前跳 12:34 和 1:05:59', mixed);
+  const links = mixed.children.filter(c => c.className === 'danmaku-time-link');
+  assert.deepEqual(links.map(l => l.textContent), ['12:34', '1:05:59']);
+  assert.equal(mixed.children[0].textContent, '99:88 前跳 ');
+  links[0].fire('click');
+  assert.equal(h.messages.findLast(m => m.name === 'danmaku-seek').data.vpos, (12 * 60 + 34) * 100);
+  links[1].fire('click');
+  assert.equal(h.messages.findLast(m => m.name === 'danmaku-seek').data.vpos, (3600 + 5 * 60 + 59) * 100);
+});
+
+test('style preset buttons unhighlight when stylePreset becomes custom', () => {
+  const h = createSidebar();
+  const items = h.elements.get('style-preset-segmented').querySelectorAll('.seg-item');
+  assert.equal(items.length, 3);
+  h.emit('danmaku-state', {stylePreset: 'nico'});
+  assert.deepEqual(items.map(i => i.classList.contains('active')), [true, false, false]);
+  h.emit('danmaku-state', {stylePreset: 'custom'});
+  assert.deepEqual(items.map(i => i.classList.contains('active')), [false, false, false]);
 });

@@ -26,13 +26,14 @@ Danmaku Cosmos/
 ├── Info.json                 # Plugin metadata & preference defaults
 ├── main.js                   # State, I/O boundaries, IPC, IINA/DDP integration
 ├── danmaku-document.js       # Canonical parser and shared projection pipeline
+├── lib/                      # Third-party runtime libraries for main.js
+│   └── opencc.min.js         # opencc-js v1.4.1 UMD bundle; loaded once from main through package-local require, converter constructed lazily; conversion memoized on IR nodes for all source formats
 ├── overlay/                  # Danmaku render layer (WebView container)
 │   ├── index.html            # Entry point
 │   ├── index.css             # Render styles
 │   ├── main.js               # Engine entry: message handling, render mode, state mgmt
 │   └── lib/                  # Third-party libs (read-only, do not modify)
-│       ├── niconicomments.min.js  # Forked niconicomments with CSSRenderer
-│       └── opencc.min.js          # opencc-js v1.4.1 UMD bundle; loaded once from main through package-local require, converter constructed lazily; conversion memoized on IR nodes for all source formats
+│       └── niconicomments.min.js  # Forked niconicomments with CSSRenderer
 ├── sidebar/                  # IINA sidebar control panel
 │   ├── index.html            # Layout (general settings incl. Style Preset; advanced settings)
 │   ├── index.css
@@ -52,6 +53,7 @@ When `mode: "css"` is passed to NiconiComments, a `CSSRenderer` is created inste
 - Flash DOM uses `fontSize` / `scale` / `scaleX`, per-run fonts and measured advances, compatibility spacers, and Flash baseline/line offsets. Keep this path separate from HTML5 `charSize`; Flash's `charSize` is zero. The outer element owns animation and the measured collision box; an inner layer resolves fonts at their original size before applying Flash and display scales, preserving WebKit's color-emoji advances.
 
 - Creates a container (`[data-dm-css-container]`) matching the canvas's visible video rectangle, relative to its parent
+- Uses `CSSMeasurementRenderer` with a detached 1×1 Canvas 2D surface instead of creating WebGL or a full-size helper. Overlay passes `viewportSize: {width, height}` at construction so the initial logical viewport and timeline are correct while the display canvas stays 1×1. CSS resizing updates logical dimensions without allocating full-size pixel buffers.
 - Uses `--dm-unit` = displayed video height / 1080 for uniform coordinate mapping; 4:3 retains full-height text rather than shrinking into a 16:9 box
 - Renders each danmaku as a `div[data-dm-comment]` with `will-change: transform, opacity; contain: layout style`
 - Scroll danmaku: CSS `@keyframes dm-scroll` driven by JS-computed duration (inline `animation` style), matching `getPosX()` formula
@@ -95,7 +97,9 @@ All controls live in the sidebar. General settings (top): Style Preset. Advanced
 balanced: Object.assign({}, NICO_STYLE, {canvasFontScale: 0.5, scrollSpeed: 0.5})
 ```
 
-The sidebar sends one `set-style-preset` intent containing only the preset name. Main validates the name and commits its complete parameter bundle plus selection in one `commitState()` call. It forwards one `set-danmaku-style` message containing scale, family/weight, stroke width/color/inversion/opacity, shadow blur and speed; presets restore the default font family. Bilibili restores its thin font and hard outline with shadow disabled. Overlay applies the full tuple to its next debounced rebuild (80 ms), keeping the old renderer entirely unchanged until then. Do not split preset parameters across separate IPC messages or mutate the old renderer's speed while a style rebuild is pending: that exposes an intermediate large-font/slow-speed frame with too many comments. Even a shadow-only preset reset must use the atomic path. Reapplying the selected preset restores manual tweaks; manual tweaks still leave the preset selection unchanged. Preferences and the lazy sidebar snapshot restore the complete state after restart.
+The sidebar sends one `set-style-preset` intent containing only the preset name. Main validates the name and commits its complete parameter bundle plus selection in one `commitState()` call. It forwards one `set-danmaku-style` message containing scale, family/weight, stroke width/color/inversion/opacity, shadow blur and speed; presets restore the default font family. Bilibili restores its thin font and hard outline with shadow disabled. Overlay applies the full tuple to its next debounced rebuild (80 ms), keeping the old renderer entirely unchanged until then. Do not split preset parameters across separate IPC messages or mutate the old renderer's speed while a style rebuild is pending: that exposes an intermediate large-font/slow-speed frame with too many comments. Even a shadow-only preset reset must use the atomic path. Reapplying the selected preset restores manual tweaks; when any preset field is modified manually without selecting a preset, `stylePreset` transitions to `'custom'` so the UI unhighlights the preset buttons accurately. Preferences and the lazy sidebar snapshot restore the complete state after restart.
+
+Saved preset names are limited to `nico`, `balanced`, `bilibili`, and `custom`. Missing values use Nico; invalid or empty saved names become `custom` while retaining the saved appearance parameters, avoiding an inaccurate Nico highlight.
 
 ### Font Settings
 
@@ -121,7 +125,7 @@ The sidebar previews speed on input and commits on change. Speed/weight state ec
 
 ### Time Offset
 
-`set-danmaku-offset` → `applyDanmakuOffset()` (session-only; not persisted). The offset resets to zero on each video load, then forwards to overlay and sidebar. Overlay keeps `getVideoTimeSec()` offset-free and adds `danmakuTimeOffsetSec` only when passing vpos to the renderer. `syncVideoAnchor()` always receives pure video time. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; step = |current offset|, fallback 1 — quirky but works); both send `set-danmaku-offset`.
+`set-danmaku-offset` → `applyDanmakuOffset()` (session-only; not persisted). The offset resets to zero on each video load, then forwards to overlay and sidebar. Overlay keeps `getVideoTimeSec()` offset-free and adds `danmakuTimeOffsetSec` only when passing vpos to the renderer. `syncVideoAnchor()` always receives pure video time. Sidebar: number input (±30s, step 0.5) and A/D keys (only when sidebar has focus; fixed step = 0.5s, clamped to [-30, 30] in both sidebar and main); both send `set-danmaku-offset`.
 
 ### Nico JSON Date Slice
 
@@ -155,6 +159,7 @@ Engine `nakaDedupeWindow` stays 0 (the projection owns scrolling merges), and CA
 - Cache writes await directory creation; reads do not create directories. New entries also store `videoPath` to detect hash collisions.
 - Single hash-keyed cache file per video: `@data/danmaku-cache/{pathHash}.json`
 - Contains `{schemaVersion: 2, videoPath, episodeId, animeTitle, episodeTitle, cachedAt, comments}` (canonical comments); the read boundary also accepts old converted caches. Writes are serialized through `cacheWriteQueue`.
+- Cache maintenance is manual; startup, video loads, and cache writes must not scan or prune the cache directory. README documents its location.
 - 24h TTL; each new DDP load overwrites previous cache for same video path (same filename, so expired data is replaced on refresh, never deleted explicitly)
 - **Expired cache is NOT deleted on read** — `ddpReadVideoCache()` marks it `stale: true` and keeps the file as a download-failure fallback (`ddpFallbackToLocal()` loads stale cache when no local files exist). It appears in the file list with a `(旧)` suffix but is never auto-loaded, so refresh still happens after TTL expiry; a successful refresh overwrites the file and the suffix is removed (`ddpAddToFileListAndLoad(..., fresh=true)`)
 - **Fresh cache (within TTL) fully skips background auto-match** — no hash recompute, no API call (honors the README "replay within 24h skips re-download" promise). Refresh only happens after TTL expiry, or when the user manually triggers matching via the 网络弹幕 panel (`dandanplay-trigger-match`)
@@ -279,11 +284,10 @@ Based on the `niconicomments` third-party library. All sources arrive as the sam
 ## Known Limitations
 
 - Video aspect uses centered contain layout; custom video zoom/pan and sidebars moving the video off-center are not reflected by aspect metadata alone
-- Filenames containing `[` or `]` may cause auto-load to fail (regex matching in `extractNumberFromName`, `[n]`-style only; special formats like `第3话` often fail)
+- Filenames with completely unbracketed bare episode numbers mixed with codecs may rely on fallback matching in `extractNumberFromName` when explicit episode markers (`S01E05`, `第05话`, `EP05`, `[05]`) are absent
 - Canvas mode receives the same filtered source content as CSS mode, but does not support CSS-specific animation/layout behavior.
 - CSS mode (niconicomments) Comment Art vertical positioning may differ slightly from Canvas mode
 - DDP cache only stores the last loaded episode per video (hash overwrite)
-- Style preset dropdown is not rewritten when sliders are manually tweaked (deliberate simplification; preset value persists independently)
 
 ## Avoid
 
@@ -297,4 +301,5 @@ Based on the `niconicomments` third-party library. All sources arrive as the sam
 
 ## Related Repository
 
-- **niconicomments (forked)**: https://github.com/karappo-yu/niconicomments — The fork adds `CSSRenderer` (`src/renderer/css.ts`) and `mode: "css"` support. Changes are on the `develop` branch.
+- **niconicomments-dom (forked)**: https://github.com/karappo-yu/niconicomments-dom — The fork adds `CSSRenderer` (`src/renderer/css.ts`) and `mode: "css"` support. Changes are on the `develop` branch.
+- The bundled CSS measurement implementation was built from engine commit `7d6692989eb9329d09c843c7244955345703ada6`; source tests and WebKit regression tests pass before the artifact is synced.

@@ -2,7 +2,7 @@ var pluginState = {};
 let danmakuDocument = require('./danmaku-document.js');
 // IINA resolves require against the executing script stack. Load the package
 // module here; callbacks only construct/use its converter, never call require.
-let openccLibrary = require('./overlay/lib/opencc.min.js') || globalThis.OpenCC;
+let openccLibrary = require('./lib/opencc.min.js') || globalThis.OpenCC;
 let parseDanmakuSource = danmakuDocument.parseDanmakuSource;
 let projectDanmaku = danmakuDocument.projectDanmaku;
 
@@ -37,6 +37,9 @@ pluginState.danmakuBlocklistEnabled = !!preferences.get("danmakuBlocklistEnabled
 pluginState.danmakuBlockTopEnabled = !!preferences.get("danmakuBlockTopEnabled");
 pluginState.danmakuBlockBottomEnabled = !!preferences.get("danmakuBlockBottomEnabled");
 var blockRegexes = []; // 编译缓存(列表变化时重建)
+// 正则长度上限必须在启动重建之前赋值: 函数声明会提升, var 赋值不会,
+// 否则启动时已保存的 /.../ 词条会因 undefined 比较退化为字面量匹配。
+var BLOCK_REGEX_MAX_LENGTH = 200;
 rebuildBlockRegexes();
 // 弹幕去重: 开关 + 区间(秒,1-5)。滚动弹幕在投影内静态合并为 "原文xN"(时间取组内最早);
 // 固定弹幕(顶部/底部)不在投影合并,由引擎 fixedCombo 在屏上渐进接续(计数 x2→x3,宿主生命周期延长)。
@@ -56,7 +59,10 @@ pluginState.scrollSpeed = preferences.get("scrollSpeed") !== undefined ? prefere
 pluginState.danmakuTimeOffsetSec = 0; // 弹幕偏移不做持久化: 偏移量因视频/弹幕文件而异,每个会话从 0 开始
 pluginState.danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
 pluginState.danmakuFontWeight = preferences.get("danmakuFontWeight") || "500";
-pluginState.stylePreset = preferences.get("stylePreset") || "nico";
+var savedStylePreset = preferences.get("stylePreset");
+pluginState.stylePreset = savedStylePreset === undefined || savedStylePreset === null
+  ? 'nico'
+  : (['nico', 'balanced', 'bilibili', 'custom'].indexOf(savedStylePreset) !== -1 ? savedStylePreset : 'custom');
 var overlayReady = false;
 let overlayLoadId = 0;
 var preferencesSyncTimer = null;
@@ -312,6 +318,16 @@ function commitState(patch, notify) {
       persist = true;
     }
   });
+  if (!Object.prototype.hasOwnProperty.call(patch, 'stylePreset') &&
+      stylePresetFields.some(function (key) { return Object.prototype.hasOwnProperty.call(changed, key); }) &&
+      pluginState.stylePreset !== 'custom') {
+    pluginState.stylePreset = 'custom';
+    changed.stylePreset = 'custom';
+    if (statePreferenceKeys.stylePreset) {
+      preferences.set(statePreferenceKeys.stylePreset, 'custom');
+      persist = true;
+    }
+  }
   if (persist) syncPreferencesSoon();
   if (overlayReady) {
     let atomicStyle = Object.prototype.hasOwnProperty.call(patch, 'stylePreset') &&
@@ -407,9 +423,17 @@ function overlayPostMessage(key, data) {
   postSafeMessage(overlay, key, data);
 }
 
+var DANMAKU_OFFSET_MIN = -30;
+var DANMAKU_OFFSET_MAX = 30;
+function clampDanmakuOffset(value) {
+  var rounded = Math.round(value * 1000) / 1000;
+  return Math.max(DANMAKU_OFFSET_MIN, Math.min(DANMAKU_OFFSET_MAX, rounded));
+}
+
 function applyDanmakuOffset(offsetSec) {
   var nextOffset = parseFloat(offsetSec);
   if (!isFinite(nextOffset)) return;
+  nextOffset = clampDanmakuOffset(nextOffset);
   commitState({danmakuTimeOffsetSec: nextOffset});
   if (danmakuBrowserWatch) pushBrowserTime(mpv.getNumber("time-pos"), true);
 }
@@ -481,8 +505,9 @@ function runDurationCompare(danmakuDuration) {
   setNicoJsonDurationDiff(diff);
   var offset = Math.round(-diff * 10) / 10;
   if (pluginState.danmakuAutoOffset) {
-    applyDanmakuOffset(offset);
-    core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
+    var applied = clampDanmakuOffset(offset);
+    applyDanmakuOffset(applied);
+    core.osd(t('duration_mismatch', { offset: formatSecondsShort(applied) }));
   } else {
     core.osd(t('duration_mismatch_no_offset'));
   }
@@ -509,7 +534,7 @@ function checkNicoJsonDuration(doc) {
 function osdAfterDanmakuLoad(loadedName, loadedMessageKey) {
   if (pluginState.nicoJsonDurationDiff !== null) {
     if (pluginState.danmakuAutoOffset) {
-      var offset = Math.round(-pluginState.nicoJsonDurationDiff * 10) / 10;
+      var offset = pluginState.danmakuTimeOffsetSec;
       core.osd(t('duration_mismatch', { offset: formatSecondsShort(offset) }));
     } else {
       core.osd(t('duration_mismatch_no_offset'));
@@ -601,7 +626,7 @@ function applyDanmakuFilterDensity(density) {
 
 // IINA's package-local CommonJS loader owns initialization; no WebView path
 // messages, persisted absolute paths, or eval are involved.
-function ensureBrowserSimplifier() {
+function ensureSimplifier() {
   if (openccSimplifier) return true;
   if (!pluginState.danmakuForceSimplified) return false;
   try {
@@ -613,25 +638,36 @@ function ensureBrowserSimplifier() {
   }
 }
 
-// ── 屏蔽词过滤(正则支持) ─────────────────────────────────────────────
-// 每个词优先按正则编译;非法正则退化为转义后的普通文本匹配。
+// ── 屏蔽词过滤(默认字面量匹配;/.../ 包裹时编译为正则) ──────────────────────
+// 普通词按大小写不敏感纯文本匹配,避免 ".", "+", "()" 等触发误匹配或 ReDoS;
+// 仅当词条以 /.../ (可选 i/m/s/u 修饰符) 包裹时才作为正则编译并限制最大长度(BLOCK_REGEX_MAX_LENGTH 在文件头部初始化)。
+
+function compileBlockEntry(entry) {
+  if (!entry) return null;
+  var regexMatch = /^\/([\s\S]+)\/([imsu]*)$/.exec(entry);
+  if (regexMatch) {
+    var pattern = regexMatch[1];
+    var rawFlags = regexMatch[2];
+    if (pattern.length <= BLOCK_REGEX_MAX_LENGTH) {
+      var flags = rawFlags.indexOf('i') === -1 ? rawFlags + 'i' : rawFlags;
+      try {
+        return new RegExp(pattern, flags);
+      } catch (e) {}
+    }
+  }
+  var lower = entry.toLowerCase();
+  return {
+    test: function (text) {
+      return String(text).toLowerCase().indexOf(lower) !== -1;
+    }
+  };
+}
 
 function rebuildBlockRegexes() {
   blockRegexes = [];
   for (var i = 0; i < pluginState.danmakuBlocklist.length; i++) {
-    var w = pluginState.danmakuBlocklist[i];
-    if (!w) continue;
-    var re;
-    try {
-      re = new RegExp(w, 'i');
-    } catch (e) {
-      try {
-        re = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      } catch (e2) {
-        continue;
-      }
-    }
-    blockRegexes.push(re);
+    var matcher = compileBlockEntry(pluginState.danmakuBlocklist[i]);
+    if (matcher) blockRegexes.push(matcher);
   }
 }
 
@@ -661,7 +697,7 @@ function getCurrentProjection() {
   let settings = {
     startDay: pluginState.danmakuFilterStartDay, endDay: pluginState.danmakuFilterEndDay,
     density: pluginState.danmakuFilterDensity, forceSimplified: pluginState.danmakuForceSimplified,
-    simplify: pluginState.danmakuForceSimplified && ensureBrowserSimplifier() ? openccSimplifier : null,
+    simplify: pluginState.danmakuForceSimplified && ensureSimplifier() ? openccSimplifier : null,
     dedupeWindow: pluginState.danmakuDedupeEnabled ? pluginState.danmakuDedupeWindow * 100 : 0,
     blockTop: pluginState.danmakuBlockTopEnabled, blockBottom: pluginState.danmakuBlockBottomEnabled,
     blockEnabled: pluginState.danmakuBlocklistEnabled, regexes: blockRegexes,
@@ -757,6 +793,22 @@ function resendDanmakuToOverlay() {
 
 function extractNumberFromName(name) {
   var match;
+  // High-certainty explicit markers take precedence over bare heuristics
+  // (avoids false positives like H.264, x265, 10bit, 2nd Season).
+  match = name.match(/S\d{1,2}E(\d{1,3})(?!\d|p\b|bit\b)/i);
+  if (match) return parseInt(match[1], 10);
+  // Numbered episode suffixes take precedence over volume/season numbers.
+  var suffix = /(\d{1,3})\s*(?:話|话|集)/g;
+  while ((match = suffix.exec(name)) !== null) {
+    var prefix = name.slice(0, match.index);
+    // 全12话/共 12集 describe the series length, not this file's episode.
+    if (/\d$/.test(prefix) || /(?:全|共)\s*$/.test(prefix)) continue;
+    return parseInt(match[1], 10);
+  }
+  // A bare 第 also occurs in season labels (第2季/第2期). Only full
+  // numbered suffixes above count; English markers must start a token.
+  match = name.match(/(?:^|[^a-z])(?:Episode|Ep\.?)\s*(\d{1,3})(?!\d|p\b|bit\b)/i);
+  if (match) return parseInt(match[1], 10);
   match = name.match(/\[(\d{1,3})\](?!.*\[)/);
   if (match) return parseInt(match[1], 10);
   match = name.match(/\[\d{1,3}\]/g);
@@ -764,15 +816,12 @@ function extractNumberFromName(name) {
     match = match[match.length - 1].match(/\[(\d{1,3})\]/);
     if (match) return parseInt(match[1], 10);
   }
-  match = name.match(/S\d{1,2}E(\d{1,3})/i);
-  if (match) return parseInt(match[1], 10);
-  match = name.match(/(?:EP|Vol\.?)\s*(\d{1,3})/i);
+  // Vol. 通常指卷/碟号, 优先级低于明确的集数标记和方括号集数 ("Show Vol.2 [05]" 应为第 5 集)。
+  match = name.match(/(?:^|[^a-z])Vol\.?\s*(\d{1,3})(?!\d|p\b|bit\b)/i);
   if (match) return parseInt(match[1], 10);
   match = name.match(/(?:^|[_\-.\s])(\d{1,3})(?:_|\-|\.|\s|$)/);
   if (match) return parseInt(match[1], 10);
   match = name.match(/(?:^|[\[\]_\-.\s])(1?\d)(?:_|\.|\s|$)/i);
-  if (match) return parseInt(match[1], 10);
-  match = name.match(/(?:第|話|话|Episode|Ep\.?)\s*(\d{1,3})/i);
   if (match) return parseInt(match[1], 10);
   return null;
 }
@@ -995,6 +1044,15 @@ function ddpErrStr(err) {
   try { return JSON.stringify(err); } catch (e) { return String(err); }
 }
 
+function ddpHttpError(res, data) {
+  var base = data && typeof data.errorMessage === 'string' && data.errorMessage
+    ? data.errorMessage : t('ddp_api_error');
+  if (res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300)) {
+    return base + ' (' + res.statusCode + ')';
+  }
+  return base;
+}
+
 function ddpConvertComments(comments) {
   return parseDanmakuSource(comments, '', 'dandanplay');
 }
@@ -1168,20 +1226,22 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
     if (url !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
     if (!isManual && !pluginState.danmakuEnabled) { ddpResetState(); return; }
     var data = ddpParseBody(res);
-    if (res.statusCode === 403) {
+    var isHttpError = res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300);
+    if (res && res.statusCode === 403) {
       commitDdpState({status: 'error', error: t('ddp_auth_error')});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
     }
-    if (!data) {
-      commitDdpState({status: 'error', error: t('ddp_api_error')});
+    if (!data || isHttpError) {
+      var matchErr = ddpHttpError(res, data);
+      commitDdpState({status: 'error', error: matchErr});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
     }
     if (data.success === false) {
-      commitDdpState({status: 'error', error: data.errorMessage || t('ddp_api_error')});
+      commitDdpState({status: 'error', error: ddpHttpError(res, data)});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
@@ -1254,17 +1314,19 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
     if (videoUrl !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
     if (!pluginState.danmakuEnabled && !isManual) { ddpResetState(); return; }
     if (!isManual && !pluginState.dandanplayAutoNetwork) forceLoad = false;
-    if (res.statusCode === 403) {
+    if (res && res.statusCode === 403) {
       commitDdpState({status: 'error', error: t('ddp_auth_error')});
       ddpSyncState();
       ddpFallbackToLocal(true);
       return;
     }
     var data = ddpParseBody(res);
-    if (!data) {
-      commitDdpState({status: 'error', error: t('ddp_api_error')});
+    var isHttpError = res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300);
+    if (!data || isHttpError) {
+      var commentErr = ddpHttpError(res, data);
+      commitDdpState({status: 'error', error: commentErr});
       ddpSyncState();
-      core.osd(t('ddp_api_error'));
+      core.osd(commentErr);
       ddpFallbackToLocal(true);
       return;
     }
@@ -1780,7 +1842,15 @@ function registerSidebarHandlers() {
     if (!keyword) return;
     ddpSearchAnime(keyword).then(function(res) {
       if (generation !== ddpSearchGeneration) return;
+      if (res && res.statusCode === 403) {
+        sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: [], error: t('ddp_auth_error') });
+        return;
+      }
       var result = ddpParseBody(res);
+      if (res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300)) {
+        sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: [], error: ddpHttpError(res, result) });
+        return;
+      }
       if (!result || !result.animes || result.animes.length === 0) {
         sidebarPostMessage("dandanplay-search-result", { searchId: searchId, animes: [], error: t('ddp_no_results') });
         return;
@@ -1800,9 +1870,14 @@ function registerSidebarHandlers() {
     var animeTitle = data.animeTitle;
     ddpGetBangumi(bangumiId).then(function(res) {
       if (generation !== ddpBangumiGeneration || searchGeneration !== ddpSearchGeneration) return;
+      if (res && res.statusCode === 403) {
+        sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: [], error: t('ddp_auth_error') });
+        return;
+      }
       var result = ddpParseBody(res);
-      if (!result || !result.bangumi) {
-        sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: [], error: t('ddp_api_error') });
+      var isHttpError = res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300);
+      if (!result || !result.bangumi || isHttpError) {
+        sidebarPostMessage("dandanplay-bangumi-result", { bangumiId: bangumiId, searchId: data.searchId, animeTitle: animeTitle, episodes: [], error: ddpHttpError(res, result) });
         return;
       }
       var episodes = result.bangumi.episodes || [];
