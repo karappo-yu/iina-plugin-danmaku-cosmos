@@ -134,6 +134,13 @@ function createFileItem(fileInfo, isChecked, isDisabled) {
   name.title = fileInfo.relativePath || fileInfo.filename;
   item.appendChild(name);
 
+  if (fileInfo.type) {
+    var tag = document.createElement('span');
+    tag.className = 'danmaku-file-type-tag';
+    tag.textContent = fileInfo.type;
+    item.appendChild(tag);
+  }
+
   if (fileListState.errorPaths[fileInfo.path]) {
     var errorEl = document.createElement('div');
     errorEl.className = 'danmaku-file-item-error';
