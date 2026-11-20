@@ -615,15 +615,39 @@ input[type="color"]::-webkit-color-swatch {
   display: none;
 }
 
-/* ========== Danmaku file list (IINA 1.5 TrackSelector standalone card) ========== */
-.danmaku-file-list-section {
+/* ========== Danmaku track section (1:1 IINA 1.5 SidebarSubtitlesPane) ========== */
+.danmaku-track-section {
   display: flex;
   flex-direction: column;
-  gap: var(--stack-gap);
+  gap: 8px;
 }
 
-#danmaku-file-list-container:empty {
-  display: none;
+.track-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.track-section-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.track-section-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--secondary-label);
+  flex-shrink: 0;
+}
+
+.track-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--label);
 }
 
 .danmaku-file-list-footer {
@@ -651,6 +675,19 @@ input[type="color"]::-webkit-color-swatch {
   overflow: hidden;
   max-height: 156px;
   overflow-y: auto;
+}
+
+.danmaku-file-empty-row {
+  padding-left: 14px;
+  cursor: default;
+}
+
+.danmaku-file-empty-row:hover {
+  background: transparent;
+}
+
+.danmaku-file-empty-row .danmaku-file-item-name {
+  color: var(--secondary-label);
 }
 
 /* Track-style row matching SidebarTrackSelector (26px height, 4px left accent bar, 11px right tag) */

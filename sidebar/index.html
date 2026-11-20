@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="index.css?v=65" />
+  <link rel="stylesheet" href="index.css?v=66" />
   <title>Danmaku Control</title>
 </head>
 
@@ -55,58 +55,64 @@
     <!-- ==================== Basic tab ==================== -->
     <div id="tab-basic" class="pane-stack">
 
-      <!-- Card: Visibility toggle + Style Preset -->
-      <div class="iina-card">
-        <div class="toggle-row">
-          <span class="toggle-label" data-i18n="danmaku_visible">弹幕开关</span>
+      <!-- Track section: header + toggle outside card, TrackSelector directly below (1:1 IINA 1.5 Subtitles pane) -->
+      <div id="danmaku-file-list-section" class="danmaku-track-section">
+        <div class="track-section-header">
+          <div class="track-section-label">
+            <svg class="track-section-icon" viewBox="0 0 16 16" aria-hidden="true">
+              <rect x="1.5" y="2.5" width="13" height="9.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+              <path d="M4.5 6h5M6.5 8.8h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              <path d="M5 12l-1.5 2.2L7.5 12" fill="currentColor"/>
+            </svg>
+            <span class="track-section-title" data-i18n="danmaku_visible">弹幕开关</span>
+          </div>
           <label class="switch" data-clickable>
             <input type="checkbox" id="toggle-danmaku" checked />
             <span class="switch-slider"></span>
           </label>
         </div>
+        <div id="danmaku-file-list-container"></div>
+      </div>
 
-        <div class="card-divider"></div>
+      <!-- Card: Local / Network source actions + DDP matches & search (1:1 IINA 1.5 LoadSubtitleView) -->
+      <div class="iina-card sources-actions-card">
+        <div class="danmaku-file-list-footer">
+          <div class="danmaku-file-list-actions">
+            <button id="danmaku-file-add-btn" class="danmaku-file-action-btn" data-i18n="file_add">本地添加</button>
+            <button id="dandanplay-match-btn" class="danmaku-file-action-btn" data-i18n="dandanplay_match">网络匹配</button>
+            <button id="dandanplay-search-btn" class="danmaku-file-action-btn" data-i18n="dandanplay_search">搜索</button>
+          </div>
+        </div>
 
+        <div id="dandanplay-section">
+          <div id="dandanplay-error" class="dandanplay-error" style="display:none"></div>
+          <div id="dandanplay-matches">
+            <div id="dandanplay-matches-list" style="display:none"></div>
+          </div>
+          <div id="dandanplay-search-panel" style="display:none">
+            <div class="dandanplay-search-input-row">
+              <input type="text" id="dandanplay-search-input" data-clickable data-i18n-placeholder="dandanplay_search_placeholder" placeholder="动画标题..." />
+              <button id="dandanplay-search-go-btn" class="danmaku-file-action-btn" data-clickable data-i18n="dandanplay_search_go">搜索</button>
+            </div>
+            <div id="dandanplay-search-results" style="display:none">
+              <div class="toggle-row" id="dandanplay-search-results-toggle" data-clickable style="display:none;margin-top:8px">
+                <span class="section-title" id="dandanplay-search-results-header" data-i18n="search_results" style="margin:0">搜索结果</span>
+                <span class="toggle-arrow" id="dandanplay-search-results-arrow">▶</span>
+              </div>
+              <div id="dandanplay-search-results-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card: Style Preset -->
+      <div class="iina-card">
         <div class="control-row preset-row">
           <span class="toggle-label" data-i18n="style_preset">样式预设</span>
           <div class="segmented preset-segmented" id="style-preset-segmented" data-clickable>
             <button class="seg-item active" data-preset="nico">Nico</button>
             <button class="seg-item" data-preset="balanced" data-i18n="style_balanced">Balanced</button>
             <button class="seg-item" data-preset="bilibili">Bilibili</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Sources: TrackSelector card + Actions/DDP card (matching IINA 1.5 Subtitles pane) -->
-      <div id="danmaku-file-list-section" class="danmaku-file-list-section">
-        <div id="danmaku-file-list-container"></div>
-        <div class="iina-card sources-actions-card">
-          <div class="danmaku-file-list-footer">
-            <div class="danmaku-file-list-actions">
-              <button id="danmaku-file-add-btn" class="danmaku-file-action-btn" data-i18n="file_add">本地添加</button>
-              <button id="dandanplay-match-btn" class="danmaku-file-action-btn" data-i18n="dandanplay_match">网络匹配</button>
-              <button id="dandanplay-search-btn" class="danmaku-file-action-btn" data-i18n="dandanplay_search">搜索</button>
-            </div>
-          </div>
-
-          <div id="dandanplay-section">
-            <div id="dandanplay-error" class="dandanplay-error" style="display:none"></div>
-            <div id="dandanplay-matches">
-              <div id="dandanplay-matches-list" style="display:none"></div>
-            </div>
-            <div id="dandanplay-search-panel" style="display:none">
-              <div class="dandanplay-search-input-row">
-                <input type="text" id="dandanplay-search-input" data-clickable data-i18n-placeholder="dandanplay_search_placeholder" placeholder="动画标题..." />
-                <button id="dandanplay-search-go-btn" class="danmaku-file-action-btn" data-clickable data-i18n="dandanplay_search_go">搜索</button>
-              </div>
-              <div id="dandanplay-search-results" style="display:none">
-                <div class="toggle-row" id="dandanplay-search-results-toggle" data-clickable style="display:none;margin-top:8px">
-                  <span class="section-title" id="dandanplay-search-results-header" data-i18n="search_results" style="margin:0">搜索结果</span>
-                  <span class="toggle-arrow" id="dandanplay-search-results-arrow">▶</span>
-                </div>
-                <div id="dandanplay-search-results-list"></div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -380,7 +386,7 @@
     </div>
 
   </div>
-  <script src="index.js?v=72"></script>
+  <script src="index.js?v=73"></script>
 </body>
 
 </html>
