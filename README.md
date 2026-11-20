@@ -163,10 +163,6 @@ An IINA plugin for overlaying danmaku (bullet comments) on videos. Supports loca
 
 <img src="png/bilibili_style.webp" width="75%" alt="Bilibili style" />
 
-### Custom Style
-
-<img src="png/custom_style.webp" width="75%" alt="Custom style" />
-
 ### Comment Art (CA)
 
 <img src="png/comment_art.webp" width="75%" alt="Comment Art (CA)" />
