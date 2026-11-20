@@ -1589,12 +1589,26 @@ test('ordinary quotes, newlines and backslashes do not encode a full comment pay
 });
 
 test('IPC preserves isolated surrogate code units even with a legacy JSON stringifier', () => {
-  const h = createHarness(true);
   const data = {text: '\uD800 a \uDC00 😀 `${literal}'};
   const stringify = JSON.stringify;
-  h.context.JSON = {stringify(value) {return stringify(value).replace(/\\u(d[89ab][0-9a-f]{2}|d[cdef][0-9a-f]{2})/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));}};
-  assert.doesNotThrow(() => h.context.sidebarPostMessage('test', data));
-  const wire = h.sidebarMessages.at(-1).wire;
+  let legacyStringifyCalls = 0;
+  const legacyContext = vm.createContext({
+    JSON: {
+      stringify(value) {
+        legacyStringifyCalls += 1;
+        return stringify(value).replace(/\\u(d[89ab][0-9a-f]{2}|d[cdef][0-9a-f]{2})/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));
+      }
+    },
+    encodeURIComponent,
+    Object,
+  });
+  const ipcSource = fs.readFileSync(path.join(__dirname, '..', 'ipc-transport.js'), 'utf8');
+  const ipc = vm.runInContext('(function () { const module = {};\n' + ipcSource + '\nreturn module.exports; })()', legacyContext);
+  const posted = [];
+  const target = {postMessage(key, payload) { posted.push({key, wire: payload}); }};
+  assert.doesNotThrow(() => ipc.postSafeMessage(target, 'test', data));
+  assert.equal(legacyStringifyCalls, 1, 'legacy JSON.stringify branch must be exercised');
+  const wire = posted.at(-1).wire;
   const bridge = vm.runInNewContext('String.raw`' + stringify(wire) + '`');
   assert.deepEqual(JSON.parse(decodeURIComponent(JSON.parse(bridge).__encoded)), data);
 });

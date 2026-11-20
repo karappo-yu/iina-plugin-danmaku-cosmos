@@ -112,4 +112,11 @@ test('Bilibili XML decouples real p[4] date slicing (UTC+8) from synthetic HTML5
   const sliced = projectDanmaku(doc, {startDay: day2024, endDay: day2024});
   assert.deepEqual(sliced.formatted.map(c => c.content), ['new-bili', 'undated-bili']);
   assert.equal(sliced.formatted[0].date, 1767196800);
+
+  // Microsecond / out-of-range timestamps must be treated as undated so sidebar toISOString() never throws.
+  const badTsDoc = parseDanmakuSource('<i><d p="1,1,25,16777215,1709335800000000,0,u1,1">micro</d></i>');
+  assert.equal(badTsDoc.comments[0].day, null);
+  assert.equal(badTsDoc.dateInfo.firstDay, null);
+  assert.equal(badTsDoc.dateInfo.undatedCount, 1);
+  assert.equal(badTsDoc.comments[0].dateSec, 1767196800);
 });

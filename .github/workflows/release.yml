@@ -38,6 +38,7 @@ jobs:
         run: |
           mkdir -p dist
           zip -r dist/danmaku-cosmos.iinaplgz \
+            LICENSE \
             Info.json \
             main.js \
             danmaku-document.js \

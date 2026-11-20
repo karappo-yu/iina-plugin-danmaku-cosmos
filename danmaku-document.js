@@ -110,7 +110,9 @@ function parseDanmakuSource(rawContent, path, sourceHint) {
     const rawPostedSec = value.postedDateSec !== undefined ? value.postedDateSec : dateSec;
     const postedSec = Number.isSafeInteger(Math.floor(rawPostedSec)) && rawPostedSec > 0 ? Math.floor(rawPostedSec) : 0;
     const tzOffset = value.dayTzOffsetSec !== undefined ? value.dayTzOffsetSec : 32400;
-    const day = value.dated && postedSec > 0 ? Math.floor((postedSec + tzOffset) / 86400) : null;
+    const rawDay = value.dated && postedSec > 0 ? Math.floor((postedSec + tzOffset) / 86400) : null;
+    // Keep days within 1970-01-01..9999-12-31 so sidebar formatFilterDay() never throws RangeError.
+    const day = rawDay !== null && rawDay >= 0 && rawDay <= 2932896 ? rawDay : null;
     const comment = {
       id: id, vpos: Math.round(value.vpos), text: value.text, simplifiedText: null,
       pos: getCommentPosition(commands), commands: Object.freeze(commands), userId: String(value.userId == null ? '' : value.userId),
@@ -191,9 +193,10 @@ function parseDanmakuSource(rawContent, path, sourceHint) {
         const color = Number.isFinite(Number(p[3])) ? (Number(p[3]) >>> 0) & 0xFFFFFF : 0xFFFFFF;
         commands.push('#' + color.toString(16).padStart(6, '0'));
         // Keep dateSec synthetic (2026) so niconicomments always renders Bilibili in HTML5 mode,
-        // while using real p[4] Unix timestamps (>= 2000-01-01, UTC+8) for date slicing.
+        // while using valid p[4] Unix-second timestamps (2000-01-01..9999-12-31, UTC+8) for date slicing.
         const rawTs = Number(p[4]);
-        const postedDateSec = Number.isSafeInteger(Math.floor(rawTs)) && rawTs >= 946684800 ? Math.floor(rawTs) : 0;
+        const floorTs = Math.floor(rawTs);
+        const postedDateSec = Number.isSafeInteger(floorTs) && floorTs >= 946684800 && Math.floor((floorTs + 28800) / 86400) <= 2932896 ? floorTs : 0;
         add({vpos: time * 100, text: text, commands: commands, userId: p[6], no: Number(p[7]),
           densityOrder: rawTs, dateSec: 1767196800, postedDateSec: postedDateSec, dayTzOffsetSec: 28800, dated: true});
       }
