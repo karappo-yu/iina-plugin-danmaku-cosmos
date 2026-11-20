@@ -23,6 +23,10 @@ jobs:
         run: |
           node --check main.js
           node --check danmaku-document.js
+          node --check ipc-transport.js
+          node --check plugin-i18n.js
+          node --check episode-matcher.js
+          node --check ddp-client.js
           node --check overlay/main.js
           node --check sidebar/index.js
           node --test test/*.test.js
@@ -37,6 +41,10 @@ jobs:
             Info.json \
             main.js \
             danmaku-document.js \
+            ipc-transport.js \
+            plugin-i18n.js \
+            episode-matcher.js \
+            ddp-client.js \
             lib \
             overlay \
             sidebar \

@@ -107,7 +107,10 @@ function parseDanmakuSource(rawContent, path, sourceHint) {
     const commands = (Array.isArray(value.commands) ? value.commands : String(value.commands || '').split(/\s+/)).filter(function (c) { return typeof c === 'string' && c.length > 0; });
     if (value.isOwner && value.text[0] === '/' && commands.indexOf('invisible') === -1) commands.push('invisible');
     const dateSec = Number.isSafeInteger(Math.floor(value.dateSec)) && value.dateSec > 0 ? Math.floor(value.dateSec) : 0;
-    const day = value.dated && dateSec > 0 ? Math.floor((dateSec + 32400) / 86400) : null;
+    const rawPostedSec = value.postedDateSec !== undefined ? value.postedDateSec : dateSec;
+    const postedSec = Number.isSafeInteger(Math.floor(rawPostedSec)) && rawPostedSec > 0 ? Math.floor(rawPostedSec) : 0;
+    const tzOffset = value.dayTzOffsetSec !== undefined ? value.dayTzOffsetSec : 32400;
+    const day = value.dated && postedSec > 0 ? Math.floor((postedSec + tzOffset) / 86400) : null;
     const comment = {
       id: id, vpos: Math.round(value.vpos), text: value.text, simplifiedText: null,
       pos: getCommentPosition(commands), commands: Object.freeze(commands), userId: String(value.userId == null ? '' : value.userId),
@@ -187,7 +190,12 @@ function parseDanmakuSource(rawContent, path, sourceHint) {
         if (size >= 36) commands.push('big'); else if (size > 0 && size <= 15) commands.push('small');
         const color = Number.isFinite(Number(p[3])) ? (Number(p[3]) >>> 0) & 0xFFFFFF : 0xFFFFFF;
         commands.push('#' + color.toString(16).padStart(6, '0'));
-        add({vpos: time * 100, text: text, commands: commands, userId: p[6], no: Number(p[7]), densityOrder: Number(p[4]), dateSec: 1767196800});
+        // Keep dateSec synthetic (2026) so niconicomments always renders Bilibili in HTML5 mode,
+        // while using real p[4] Unix timestamps (>= 2000-01-01, UTC+8) for date slicing.
+        const rawTs = Number(p[4]);
+        const postedDateSec = Number.isSafeInteger(Math.floor(rawTs)) && rawTs >= 946684800 ? Math.floor(rawTs) : 0;
+        add({vpos: time * 100, text: text, commands: commands, userId: p[6], no: Number(p[7]),
+          densityOrder: rawTs, dateSec: 1767196800, postedDateSec: postedDateSec, dayTzOffsetSec: 28800, dated: true});
       }
     }
   }

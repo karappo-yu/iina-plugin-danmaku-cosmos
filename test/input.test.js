@@ -34,9 +34,18 @@ test('IINA package modules initialize without Node exports, WebView paths, or ca
   const load = file => vm.runInContext('(function () { const module = {};\n' + fs.readFileSync(path.join(__dirname, '..', file), 'utf8') + '\nreturn module.exports; })()', native);
   const parser = load('danmaku-document.js');
   assert.equal(parser.parseDanmakuSource('<packet><chat vpos="1">&AMP;</chat></packet>').comments[0].text, '&');
+  const ipc = load('ipc-transport.js');
+  assert.equal(ipc.needsIPCEnvelope('${x}'), true);
+  assert.equal(ipc.needsIPCEnvelope('plain'), false);
+  const i18n = load('plugin-i18n.js');
+  assert.equal(i18n.createTranslator('en')('danmaku_on'), 'Danmaku enabled');
+  const matcher = load('episode-matcher.js');
+  assert.equal(matcher.extractNumberFromName('Show S01E07.mkv'), 7);
+  const ddp = load('ddp-client.js');
+  assert.equal(typeof ddp.createDdpClient, 'function');
   const exported = load('lib/opencc.min.js');
   const opencc = exported || native.OpenCC;
-  assert.equal(opencc.Converter({from: 'hk', to: 'cn'})('繁體'), '繁体');
+  assert.equal(opencc.Converter({from: 'tw', to: 'cn'})('繁體著急'), '繁体着急');
 });
 
 test('XML format detection reads the root after the prolog, never comment body markup', () => {
@@ -79,4 +88,28 @@ test('Nico XML premium is opt-in and governs native hex colors; Bilibili and DDP
     assert.equal(source.comments[0].premium, true);
     assert.equal(utils.parseCommandAndNicoScript(projectDanmaku(source).formatted[0], ctx).color.toLowerCase(), '#ff0000');
   }
+});
+
+test('Bilibili XML decouples real p[4] date slicing (UTC+8) from synthetic HTML5 render date', () => {
+  const {projectDanmaku} = require('../danmaku-document.js');
+  // 2015-06-01 00:30:00+08:00 (pre-2017 Flash threshold) and 2024-03-02 23:30:00+08:00
+  const ts2015 = Math.floor(Date.parse('2015-06-01T00:30:00+08:00') / 1000);
+  const ts2024 = Math.floor(Date.parse('2024-03-02T23:30:00+08:00') / 1000);
+  const day2015 = Date.UTC(2015, 5, 1) / 86400000;
+  const day2024 = Date.UTC(2024, 2, 2) / 86400000;
+  const xml = `<i>
+    <d p="1,1,25,16777215,${ts2015},0,u1,1">old-bili</d>
+    <d p="2,1,25,16777215,${ts2024},0,u2,2">new-bili</d>
+    <d p="3,1,25,16777215,0,0,u3,3">undated-bili</d>
+  </i>`;
+  const doc = parseDanmakuSource(xml);
+  assert.equal(doc.dateInfo.firstDay, day2015);
+  assert.equal(doc.dateInfo.lastDay, day2024);
+  assert.equal(doc.dateInfo.undatedCount, 1);
+  assert.deepEqual(Array.from(doc.dateInfo.dayCounts, p => Array.from(p)), [[day2015, 1], [day2024, 1]]);
+  // Synthetic 2026 render date is retained so niconicomments keeps HTML5 layout even for 2015 Bilibili comments.
+  assert.equal(doc.comments[0].dateSec, 1767196800);
+  const sliced = projectDanmaku(doc, {startDay: day2024, endDay: day2024});
+  assert.deepEqual(sliced.formatted.map(c => c.content), ['new-bili', 'undated-bili']);
+  assert.equal(sliced.formatted[0].date, 1767196800);
 });

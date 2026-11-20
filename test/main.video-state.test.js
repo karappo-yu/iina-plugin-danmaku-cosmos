@@ -91,11 +91,12 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     map.set(name, [weakMessageCallbacks ? new WeakRef(handler) : handler]);
   }
 
+  const overlayVisibility = [];
   const iina = {
     overlay: {
       loadFile() { overlayHandlers.clear(); },
-      show() {},
-      hide() {},
+      show() { overlayVisibility.push('show'); },
+      hide() { overlayVisibility.push('hide'); },
       postMessage(name, data) { overlayMessages.push({ name, wire: data, data: JSON.parse(data.__encoded ? decodeURIComponent(data.__encoded) : JSON.stringify(data)) }); },
       onMessage(name, handler) { registerMessage(overlayHandlers, name, handler); },
     },
@@ -201,6 +202,8 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     preferences,
     httpRequests,
     overlayMessages,
+    overlayVisibility,
+    menuItems,
     sidebarMessages,
     sidebarHandlers,
     overlayHandlers,
@@ -2061,4 +2064,29 @@ test('all DDP endpoints include the server error message and HTTP status', async
   h.resolveNextHttp({statusCode: 503, text: JSON.stringify({errorMessage: 'Bangumi unavailable'})});
   await flushMicrotasks();
   assert.equal(h.sidebarMessages.findLast(m => m.name === 'dandanplay-bangumi-result').data.error, 'Bangumi unavailable (503)');
+});
+
+test('Show/Hide Danmaku Overlay menu items synchronize danmakuEnabled, observers, and overlay visibility', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  h.setVideo('file:///videos/A.mp4');
+  h.ackLoad(true);
+  const showItem = h.menuItems.find(item => item.label === 'Show Danmaku Overlay');
+  const hideItem = h.menuItems.find(item => item.label === 'Hide Danmaku Overlay');
+  assert.ok(showItem && hideItem);
+
+  const beforeTimeUpdates = h.overlayMessages.filter(m => m.name === 'time-update').length;
+  hideItem.callback();
+  assert.equal(h.context.pluginState.danmakuEnabled, false);
+  assert.equal(h.overlayVisibility.at(-1), 'hide');
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'toggle-danmaku').data.enabled, false);
+  h.emitEvent('mpv.time-pos.changed', 12.5);
+  assert.equal(h.overlayMessages.filter(m => m.name === 'time-update').length, beforeTimeUpdates, 'time observer stops when hidden');
+
+  showItem.callback();
+  assert.equal(h.context.pluginState.danmakuEnabled, true);
+  assert.equal(h.overlayVisibility.at(-1), 'show');
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'toggle-danmaku').data.enabled, true);
+  h.emitEvent('mpv.time-pos.changed', 13.5);
+  assert.equal(h.overlayMessages.filter(m => m.name === 'time-update').length, beforeTimeUpdates + 1, 'time observer resumes when shown');
 });

@@ -24,10 +24,14 @@ The CSS renderer (a fork addition, `mode: "css"`) renders text via DOM/CSS inste
 ```
 Danmaku Cosmos/
 ├── Info.json                 # Plugin metadata & preference defaults
-├── main.js                   # State, I/O boundaries, IPC, IINA/DDP integration
+├── main.js                   # State, projection coordination, overlay/sidebar/mpv lifecycle
 ├── danmaku-document.js       # Canonical parser and shared projection pipeline
+├── ipc-transport.js          # Lossless WebView IPC envelope (lone surrogates / template syntax)
+├── plugin-i18n.js            # Main-process trilingual OSD/menu/dialog string tables
+├── episode-matcher.js        # Local danmaku discovery and episode-number heuristics
+├── ddp-client.js             # DanDanPlay HTTP client, macOS MD5 hasher, versioned disk cache I/O
 ├── lib/                      # Third-party runtime libraries for main.js
-│   └── opencc.min.js         # opencc-js v1.4.1 UMD bundle; loaded once from main through package-local require, converter constructed lazily; conversion memoized on IR nodes for all source formats
+│   └── opencc.min.js         # opencc-js v1.4.2 UMD t2cn bundle; loaded once from main through package-local require, converter (tw→cn) constructed lazily; conversion memoized on IR nodes for all source formats
 ├── overlay/                  # Danmaku render layer (WebView container)
 │   ├── index.html            # Entry point
 │   ├── index.css             # Render styles
@@ -37,9 +41,10 @@ Danmaku Cosmos/
 ├── sidebar/                  # IINA sidebar control panel
 │   ├── index.html            # Layout (general settings incl. Style Preset; advanced settings)
 │   ├── index.css
-│   └── index.js              # UI logic and preset intents, i18n dict (en/ja/zh, ja/zh as \uXXXX escapes); main.js has its own PLUGIN_I18N dict for OSD/menu strings
-├── png/                      # README screenshots (excluded from release package by release.yml)
-└── .github/workflows/        # Release packaging
+│   └── index.js              # UI logic and preset intents, i18n dict (en/ja/zh, ja/zh as \uXXXX escapes); main-process OSD/menu strings live in plugin-i18n.js
+├── png/                      # README WebP screenshots (excluded from release package by release.yml)
+└── .github/workflows/        # CI & release packaging
+    ├── ci.yml
     └── release.yml
 ```
 
