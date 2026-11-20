@@ -1,26 +1,115 @@
+/*
+ * Danmaku Cosmos Sidebar — aligned with IINA 1.5 native sidebar design system.
+ * Derived from IINA 1.5.1 SidebarPane / SidebarTrackSelector / SidebarSliderView /
+ * LayoutValue (sidebarMargin 16, containerPadding 12, stackSpacing 16, cornerRadius 8)
+ * and adaptive Dark / Light appearance tokens (SidebarContainerBorder, SidebarTabBtnBorder).
+ */
+
 * {
   box-sizing: border-box;
 }
 
 :root {
-  --bg: #1c1c28;
-  --bg-elevated: #252536;
-  --bg-group: rgba(255, 255, 255, 0.105);
-  --bg-hover: rgba(255, 255, 255, 0.13);
-  --bg-selected: rgba(0, 122, 255, 0.18);
-  --label: #f1f1f5;
-  --secondary-label: rgba(235, 235, 245, 0.64);
-  --tertiary-label: rgba(235, 235, 245, 0.4);
-  --separator: rgba(255, 255, 255, 0.13);
+  color-scheme: light dark;
+
+  /* IINA 1.5 Dark tokens (default; follows WKWebView effectiveAppearance) */
+  --container-bg: rgba(128, 128, 128, 0.12);
+  --container-border: rgba(255, 255, 255, 0.08);
+  --subsurface-bg: rgba(0, 0, 0, 0.16);
+  --tab-track-bg: rgba(128, 128, 128, 0.14);
+  --tab-active-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.10));
+  --tab-active-border: rgba(255, 255, 255, 0.22);
+  --tab-active-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
+
+  --label: rgba(255, 255, 255, 0.90);
+  --secondary-label: rgba(255, 255, 255, 0.58);
+  --tertiary-label: rgba(255, 255, 255, 0.36);
+  --separator: rgba(255, 255, 255, 0.09);
+
   --accent: #0a84ff;
   --accent-hover: #409cff;
+  --accent-soft: rgba(10, 132, 255, 0.20);
   --danger: #ff453a;
-  --switch-off: rgba(120, 120, 128, 0.42);
-  --track: rgba(25, 25, 28, 0.9);
-  --thumb: #ececec;
-  --radius: 12px;
-  --radius-sm: 7px;
-  --radius-pill: 20px;
+  --danger-soft: rgba(255, 69, 58, 0.14);
+
+  --control-bg: rgba(255, 255, 255, 0.14);
+  --control-bg-hover: rgba(255, 255, 255, 0.21);
+  --control-bg-active: rgba(255, 255, 255, 0.28);
+  --control-border: transparent;
+  --control-shadow: none;
+  --input-bg: rgba(0, 0, 0, 0.34);
+  --input-border: rgba(255, 255, 255, 0.06);
+
+  --seg-track: rgba(255, 255, 255, 0.13);
+  --seg-sep: rgba(255, 255, 255, 0.20);
+  --seg-active-text: #ffffff;
+
+  --tag-bg: rgba(255, 255, 255, 0.12);
+  --row-hover: rgba(255, 255, 255, 0.06);
+
+  --switch-off: rgba(120, 120, 128, 0.38);
+  --track: rgba(255, 255, 255, 0.18);
+  --thumb: #ffffff;
+  --thumb-border: rgba(0, 0, 0, 0.12);
+  --thumb-shadow: 0 1px 3px rgba(0, 0, 0, 0.36);
+
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23ffffff' stroke-opacity='0.6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M3.25 4.75L6 7.5L8.75 4.75'/%3E%3C/svg%3E");
+
+  --radius-card: 8px;
+  --radius-control: 6px;
+  --radius-tag: 3px;
+  --radius-pill: 999px;
+
+  --sidebar-margin: 16px;
+  --card-padding: 12px;
+  --stack-gap: 14px;
+  --item-gap: 10px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --container-bg: rgba(128, 128, 128, 0.09);
+    --container-border: rgba(0, 0, 0, 0.15);
+    --subsurface-bg: rgba(0, 0, 0, 0.04);
+    --tab-track-bg: rgba(0, 0, 0, 0.06);
+    --tab-active-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.78));
+    --tab-active-border: rgba(0, 0, 0, 0.14);
+    --tab-active-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
+
+    --label: rgba(0, 0, 0, 0.85);
+    --secondary-label: rgba(0, 0, 0, 0.55);
+    --tertiary-label: rgba(0, 0, 0, 0.35);
+    --separator: rgba(0, 0, 0, 0.09);
+
+    --accent: #007aff;
+    --accent-hover: #0066d6;
+    --accent-soft: rgba(0, 122, 255, 0.14);
+    --danger: #ff3b30;
+    --danger-soft: rgba(255, 59, 48, 0.10);
+
+    --control-bg: rgba(255, 255, 255, 0.72);
+    --control-bg-hover: rgba(255, 255, 255, 0.92);
+    --control-bg-active: rgba(0, 0, 0, 0.08);
+    --control-border: rgba(0, 0, 0, 0.14);
+    --control-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.08);
+    --input-bg: rgba(255, 255, 255, 0.78);
+    --input-border: rgba(0, 0, 0, 0.14);
+
+    --seg-track: rgba(0, 0, 0, 0.08);
+    --seg-sep: rgba(0, 0, 0, 0.14);
+    --seg-active-text: #ffffff;
+
+    --tag-bg: rgba(0, 0, 0, 0.07);
+    --row-hover: rgba(0, 0, 0, 0.04);
+
+    --switch-off: rgba(120, 120, 128, 0.28);
+    --track: rgba(0, 0, 0, 0.15);
+    --thumb: #ffffff;
+    --thumb-border: rgba(0, 0, 0, 0.14);
+    --thumb-shadow: 0 1px 2.5px rgba(0, 0, 0, 0.22);
+
+    --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23000000' stroke-opacity='0.55' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M3.25 4.75L6 7.5L8.75 4.75'/%3E%3C/svg%3E");
+  }
 }
 
 html {
@@ -31,13 +120,14 @@ html {
 
 body {
   margin: 0;
-  padding: 14px 14px 20px;
-  font-size: 13px;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
-    Roboto, "Helvetica Neue", sans-serif;
-  font-weight: 600;
+  padding: 10px var(--sidebar-margin) var(--sidebar-margin);
+  font-size: 12.5px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans",
+    "PingFang SC", "Helvetica Neue", sans-serif;
+  font-weight: 400;
+  line-height: 1.35;
   color: var(--label);
-  background: none;
+  background: transparent;
   overflow-y: auto;
   -webkit-font-smoothing: antialiased;
 }
@@ -46,57 +136,187 @@ body::-webkit-scrollbar {
   display: none;
 }
 
-/* ========== Typography ========== */
-.section-title {
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
-  line-height: 1.25;
-  margin: 0 0 10px 0;
+/* ========== Tab bar (IINA 1.5 / macOS 26 capsule pill) ========== */
+.tabbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: var(--stack-gap);
+  background: var(--tab-track-bg);
+  border: 1px solid var(--container-border);
+  border-radius: var(--radius-pill);
+}
+
+.tab {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--secondary-label);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.tab:hover {
   color: var(--label);
+}
+
+.tab.active {
+  color: var(--label);
+  font-weight: 600;
+  background: var(--tab-active-bg);
+  border-color: var(--tab-active-border);
+  box-shadow: var(--tab-active-shadow);
+}
+
+.tab svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  flex-shrink: 0;
+}
+
+/* ========== Pane stack & IINA 1.5 Container Cards ========== */
+.pane-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--stack-gap);
+}
+
+.iina-card {
+  background: var(--container-bg);
+  border: 1px solid var(--container-border);
+  border-radius: var(--radius-card);
+  padding: var(--card-padding);
+  overflow: hidden;
+}
+
+.iina-card-flush {
+  padding: 0;
+}
+
+.card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--item-gap);
+}
+
+.card-divider {
+  border-top: 1px solid var(--separator);
+  margin: 10px 0;
+}
+
+.card-stack .card-divider {
+  margin: 2px 0;
+}
+
+.slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ========== Typography ========== */
+.section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.section-header .section-title {
+  margin-bottom: 0;
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 0 0 6px 0;
+  color: var(--label);
+}
+
+.slider-group .section-title,
+.slider-group .section-header {
+  margin-bottom: 0;
+}
+
+.section-meta {
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--secondary-label);
 }
 
 .toggle-label {
-  font-size: 13px;
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--label);
-  font-weight: 600;
 }
 
 .value-text {
-  font-size: 13px;
-  /* 固定宽度: min-width 会让"500 /min"这种长文案把 flex:1 的滑块挤窄,
-     指针不动也会因为轨道变长短而算出不同的值, 在"数字↔关闭"之间反复跳 */
-  width: 64px;
+  font-size: 12px;
+  font-weight: 400;
+  /* Fixed width keeps flex:1 slider track length stable across label widths ("500 /min" vs "Unlimited") */
+  width: 60px;
   flex-shrink: 0;
   text-align: right;
   color: var(--secondary-label);
   font-variant-numeric: tabular-nums;
 }
 
-/* ========== Layout ========== */
+/* ========== Rows ========== */
 .section {
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
 .toggle-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 28px;
+  gap: 10px;
+  min-height: 24px;
 }
 
 .control-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .control-row select {
   margin-left: auto;
 }
 
-/* ========== Switch (AppKit style) ========== */
+.preset-row {
+  justify-content: space-between;
+}
+
+.preset-segmented {
+  margin-left: auto;
+  flex: 0 1 186px;
+  min-width: 156px;
+}
+
+.dedupe-segmented {
+  margin-left: auto;
+  flex: 0 1 190px;
+  min-width: 150px;
+}
+
+/* ========== Switch (macOS 26 Tahoe NSSwitch capsule thumb) ========== */
 .switch {
   position: relative;
   display: inline-block;
@@ -118,14 +338,11 @@ body::-webkit-scrollbar {
 
 .switch-slider {
   position: absolute;
+  inset: 0;
   cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
   background-color: var(--switch-off);
-  transition: background-color 0.18s ease;
-  border-radius: 9px;
+  transition: background-color 0.16s ease;
+  border-radius: var(--radius-pill);
 }
 
 .switch-slider:before {
@@ -134,11 +351,11 @@ body::-webkit-scrollbar {
   height: 14px;
   width: 20px;
   left: 2px;
-  bottom: 2px;
+  top: 2px;
   background-color: var(--thumb);
-  transition: transform 0.18s ease;
+  transition: transform 0.16s cubic-bezier(0.25, 0.8, 0.25, 1);
   border-radius: 7px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.26);
 }
 
 .switch input:checked + .switch-slider {
@@ -157,32 +374,26 @@ body::-webkit-scrollbar {
   opacity: 0.4;
 }
 
-/* ========== Grouped toggle panel (AppKit settings group) ========== */
-.toggle-group {
-  background: var(--bg-group);
-  border-radius: var(--radius);
-  overflow: hidden;
-  margin-top: 6px;
-}
-
+/* ========== Grouped toggle card ========== */
 .toggle-group .toggle-row {
-  padding: 0 14px;
+  padding: 8px var(--card-padding);
   min-height: 36px;
-  border-bottom: 1px solid var(--separator);
 }
 
-.toggle-group .toggle-row:last-child {
-  border-bottom: none;
+.toggle-group > .toggle-row ~ .toggle-row {
+  border-top: 1px solid var(--separator);
 }
 
-.toggle-group .toggle-label {
-  font-size: 13px;
+.toggle-group .dedupe-row {
+  padding: 8px var(--card-padding) 10px;
+  border-top: 1px solid var(--separator);
 }
 
-/* ========== Slider (AppKit style) ========== */
+/* ========== Slider (macOS 26 Tahoe NSSlider capsule thumb) ========== */
 .slider {
   flex: 1;
-  height: 14px;
+  min-width: 0;
+  height: 16px;
   margin: 0;
   -webkit-appearance: none;
   appearance: none;
@@ -192,72 +403,82 @@ body::-webkit-scrollbar {
 }
 
 .slider::-webkit-slider-runnable-track {
-  height: 3px;
+  height: 4px;
   background: var(--track);
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
 }
 
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 14px;
-  margin-top: -5.5px;
-  border-radius: 7px;
+  width: 19px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: var(--radius-pill);
   background: var(--thumb);
+  border: 0.5px solid var(--thumb-border);
+  box-shadow: var(--thumb-shadow);
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  border: none;
+  transition: transform 0.1s ease;
+}
+
+.slider:active::-webkit-slider-thumb {
+  transform: scale(1.06);
 }
 
 .slider::-moz-range-track {
-  height: 3px;
+  height: 4px;
   background: var(--track);
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
 }
 
 .slider::-moz-range-thumb {
-  width: 18px;
-  height: 14px;
-  border-radius: 7px;
+  width: 19px;
+  height: 12px;
+  border-radius: var(--radius-pill);
   background: var(--thumb);
+  border: 0.5px solid var(--thumb-border);
+  box-shadow: var(--thumb-shadow);
   cursor: pointer;
-  border: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-/* ========== Select / Inputs ========== */
+/* ========== Select / Inputs / ColorWell (IINA 1.5 AppKit controls) ========== */
 select {
   -webkit-appearance: none;
   appearance: none;
-  padding: 5px 28px 5px 10px;
-  font-size: 13px;
+  padding: 4px 26px 4px 9px;
+  font-size: 12px;
   font-family: inherit;
   font-weight: 400;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--bg-group)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ebebf5' fill-opacity='0.55' d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E")
-    no-repeat right 8px center;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-control);
+  background: var(--control-bg) var(--select-arrow) no-repeat right 7px center;
+  box-shadow: var(--control-shadow);
   color: var(--label);
   cursor: pointer;
   outline: none;
-  max-width: 160px;
+  max-width: 62%;
+  min-width: 120px;
+}
+
+select:hover {
+  background-color: var(--control-bg-hover);
 }
 
 select:focus {
-  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.4);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 input[type="text"],
 input[type="number"] {
-  padding: 5px 10px;
-  font-size: 13px;
+  padding: 4px 8px;
+  font-size: 12px;
   font-family: inherit;
   font-weight: 400;
-  border: 1px solid var(--separator);
-  border-radius: var(--radius-sm);
-  background: var(--bg-group);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-control);
+  background: var(--input-bg);
   color: var(--label);
   outline: none;
 }
@@ -265,61 +486,81 @@ input[type="number"] {
 input[type="text"]:focus,
 input[type="number"]:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.25);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
-input[type="color"] {
+.font-custom-input {
+  margin-left: auto;
+  flex: 0 1 160px;
+  min-width: 110px;
+}
+
+.offset-input {
+  margin-left: auto;
+  width: 72px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+input[type="color"],
+.color-well {
+  margin-left: auto;
   -webkit-appearance: none;
   appearance: none;
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 22px;
   padding: 0;
-  border: 1px solid var(--separator);
-  border-radius: var(--radius-sm);
-  background: none;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-control);
+  background: var(--control-bg);
+  box-shadow: var(--control-shadow);
   cursor: pointer;
   overflow: hidden;
 }
 
 input[type="color"]::-webkit-color-swatch-wrapper {
-  padding: 1px;
+  padding: 2px;
 }
 
 input[type="color"]::-webkit-color-swatch {
   border: none;
-  border-radius: 5px;
+  border-radius: 4px;
 }
 
-/* ========== Buttons (pill style) ========== */
+/* ========== Buttons (AppKit push button style) ========== */
 .danmaku-file-action-btn,
 .btn {
-  padding: 5px 14px;
-  font-size: 13px;
+  padding: 4px 10px;
+  min-height: 24px;
+  font-size: 12px;
   font-family: inherit;
   font-weight: 500;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.12);
-  border: none;
-  border-radius: var(--radius-sm);
+  color: var(--label);
+  background: var(--control-bg);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--control-shadow);
   cursor: pointer;
-  transition: background 0.15s;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 .danmaku-file-action-btn:hover,
 .btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--control-bg-hover);
 }
 
 .danmaku-file-action-btn:active,
 .btn:active {
-  background: rgba(10, 132, 255, 0.3);
+  background: var(--control-bg-active);
 }
 
-/* ========== Segmented control style (for presets etc) ========== */
+/* ========== Segmented control (IINA 1.5 flush NSSegmentedControl) ========== */
 .segmented {
   display: flex;
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: var(--radius-sm);
+  background: var(--seg-track);
+  border: none;
+  border-radius: var(--radius-control);
   padding: 0;
   gap: 0;
   overflow: hidden;
@@ -328,124 +569,194 @@ input[type="color"]::-webkit-color-swatch {
 .segmented button,
 .segmented .seg-item {
   flex: 1;
-  padding: 6px 8px;
-  font-size: 13px;
+  padding: 4px 8px;
+  min-height: 24px;
+  font-size: 12px;
   font-family: inherit;
   font-weight: 500;
-  color: #fff;
+  color: var(--label);
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.14s ease, color 0.14s ease;
   white-space: nowrap;
   position: relative;
 }
 
 .segmented button.active,
 .segmented .seg-item.active {
-  color: #fff;
+  color: var(--seg-active-text);
   background: var(--accent);
 }
 
-/* Pressed (mouse down): unselected segments fill with the same-size
-   lighter gray block as the selected blue, covering the separator line */
-.segmented .seg-item:not(.active):active {
-  background: rgb(143, 147, 159);
-}
-.segmented .seg-item:not(.active):active::before {
-  display: none;
-}
-.segmented .seg-item:not(.active):active + .seg-item::before {
-  display: none;
+.segmented .seg-item:not(.active):hover {
+  background: var(--row-hover);
 }
 
-/* IINA segmented control: one container bar, thin white separators only
-   between UNSELECTED segments. Pseudo-element lines (zero layout width,
-   no border gap next to the selected segment). */
+.segmented .seg-item:not(.active):active {
+  background: var(--control-bg-active);
+}
+
 .segmented .seg-item + .seg-item::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 18%;
-  bottom: 18%;
+  top: 20%;
+  bottom: 20%;
   width: 1px;
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--seg-sep);
 }
+
 .segmented .seg-item.active::before,
-.segmented .seg-item.active + .seg-item::before {
+.segmented .seg-item.active + .seg-item::before,
+.segmented .seg-item:not(.active):active::before,
+.segmented .seg-item:not(.active):active + .seg-item::before {
   display: none;
 }
 
-/* ========== Danmaku file list ========== */
-.danmaku-file-list-section {
-  margin-top: 10px;
+/* ========== Danmaku track section (1:1 IINA 1.5 SidebarSubtitlesPane) ========== */
+.danmaku-track-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.track-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.track-section-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.track-section-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--secondary-label);
+  flex-shrink: 0;
+}
+
+.track-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--label);
 }
 
 .danmaku-file-list-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
-  padding-top: 8px;
 }
 
 .danmaku-file-list-actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
+  width: 100%;
+}
+
+.danmaku-file-list-actions .danmaku-file-action-btn {
+  flex: 1;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .danmaku-file-group {
-  margin-bottom: 8px;
+  border-radius: var(--radius-card);
+  background: var(--container-bg);
+  border: 1px solid var(--container-border);
+  overflow: hidden;
+  max-height: 156px;
+  overflow-y: auto;
 }
 
-/* Track-style list item (IINA danmaku file tracks) */
+.danmaku-file-empty-row {
+  padding-left: 14px;
+  cursor: default;
+}
+
+.danmaku-file-empty-row:hover {
+  background: transparent;
+}
+
+.danmaku-file-empty-row .danmaku-file-item-name {
+  color: var(--secondary-label);
+}
+
+/* Track-style row matching SidebarTrackSelector (26px height, 4px left accent bar, 11px right tag) */
 .danmaku-file-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 2px 14px;
-  margin: 0 -14px;
+  gap: 8px;
+  min-height: 26px;
+  padding: 3px 8px 3px 4px;
   cursor: pointer;
-  transition: background 0.12s;
-  background: rgba(255, 255, 255, 0.1);
-}
-/* Separator only between rows (no line at the very top or bottom of the list) */
-.danmaku-file-item + .danmaku-file-item {
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-}
-/* No hover change; selection is indicated by the dot only */
-.danmaku-file-item.selected {
-  background: rgba(255, 255, 255, 0.1);
+  transition: background 0.1s ease;
+  background: transparent;
 }
 
-/* Selector: solid dot when selected, empty placeholder otherwise */
+.danmaku-file-item:hover {
+  background: var(--row-hover);
+}
+
+.danmaku-file-item + .danmaku-file-item {
+  border-top: 1px solid var(--separator);
+}
+
+/* Left accent pill indicator (4px x 16px, cornerRadius 2px, matching TrackSelector.CellView) */
 .danmaku-file-selector {
-  width: 12px;
+  width: 4px;
+  height: 16px;
   display: flex;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
+
 .danmaku-file-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #eee;
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--accent);
 }
+
 .danmaku-file-empty-dot {
-  width: 10px;
-  height: 10px;
+  width: 4px;
+  height: 16px;
 }
 
 .danmaku-file-item-name {
   flex: 1;
   min-width: 0;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--label);
+}
+
+.danmaku-file-item.selected .danmaku-file-item-name {
+  font-weight: 500;
+}
+
+.danmaku-file-type-tag {
+  flex-shrink: 0;
+  padding: 1px 4px;
+  border-radius: var(--radius-tag);
+  background: var(--tag-bg);
+  color: var(--secondary-label);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
 }
 
 .danmaku-file-item.disabled {
@@ -456,7 +767,8 @@ input[type="color"]::-webkit-color-swatch {
 .danmaku-file-item-error {
   font-size: 10px;
   color: var(--danger);
-  padding: 2px 6px;
+  padding: 1px 4px;
+  flex-shrink: 0;
 }
 
 .toggle-arrow {
@@ -466,12 +778,12 @@ input[type="color"]::-webkit-color-swatch {
   color: var(--tertiary-label);
 }
 
-/* ========== Range selector ========== */
+/* ========== Range selector (Date Slice) ========== */
 .range-selector {
   position: relative;
   width: 100%;
-  height: 28px;
-  margin: 6px 0 2px 0;
+  height: 26px;
+  margin: 4px 0 2px;
   cursor: default;
   -webkit-user-select: none;
   user-select: none;
@@ -479,21 +791,21 @@ input[type="color"]::-webkit-color-swatch {
 
 .range-track {
   position: absolute;
-  top: 12px;
+  top: 11px;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 4px;
   background: var(--track);
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
 }
 
 .range-coverage {
   position: absolute;
-  top: 8px;
+  top: 7px;
   height: 12px;
-  background: rgba(10, 132, 255, 0.25);
+  background: var(--accent-soft);
   border: 1px solid rgba(10, 132, 255, 0.55);
-  border-radius: 3px;
+  border-radius: 4px;
   box-sizing: border-box;
 }
 
@@ -501,10 +813,11 @@ input[type="color"]::-webkit-color-swatch {
   position: absolute;
   top: -1px;
   width: 18px;
-  height: 14px;
+  height: 12px;
   background: var(--thumb);
-  border-radius: 7px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  border: 0.5px solid var(--thumb-border);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--thumb-shadow);
   cursor: ew-resize;
   z-index: 2;
 }
@@ -524,7 +837,8 @@ input[type="color"]::-webkit-color-swatch {
   transform: translate(-50%, -50%);
   font-size: 10px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--label);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   pointer-events: none;
   z-index: 1;
   white-space: nowrap;
@@ -536,26 +850,26 @@ input[type="color"]::-webkit-color-swatch {
   z-index: 3;
 }
 
-.range-handle:hover {
-  background: #fff;
-}
-
 .range-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 9px;
-  color: var(--tertiary-label);
-  margin-bottom: 4px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--secondary-label);
 }
 
-/* ========== Dandanplay section ========== */
+/* ========== DanDanPlay section ========== */
 .dandanplay-error {
-  margin-top: 6px;
-  padding: 6px 10px;
+  margin-top: 8px;
+  padding: 6px 9px;
   font-size: 11px;
   color: var(--danger);
-  background: rgba(255, 69, 58, 0.1);
-  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  border-radius: var(--radius-control);
+}
+
+.card-stack .dandanplay-error {
+  margin-top: 0;
 }
 
 .dandanplay-search-input-row {
@@ -566,27 +880,29 @@ input[type="color"]::-webkit-color-swatch {
 
 .dandanplay-search-input-row input[type="text"] {
   flex: 1;
+  min-width: 0;
 }
 
 .dandanplay-search-result-item,
 .dandanplay-match-item {
-  padding: 8px 12px;
-  margin-top: 4px;
-  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  margin-top: 6px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--container-border);
   cursor: pointer;
   font-size: 12px;
-  background: var(--bg-group);
-  transition: background 0.12s;
+  background: var(--subsurface-bg);
+  transition: background 0.12s ease;
 }
 
 .dandanplay-search-result-item:hover,
 .dandanplay-match-item:hover {
-  background: var(--bg-hover);
+  background: var(--row-hover);
 }
 
 .dandanplay-match-item.selected {
-  background: var(--bg-selected);
-  border-left: 2px solid var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(10, 132, 255, 0.45);
 }
 
 #dandanplay-matches-list {
@@ -606,149 +922,99 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 .dandanplay-search-result-episodes {
-  color: var(--tertiary-label);
+  color: var(--secondary-label);
   font-size: 11px;
 }
 
 .dandanplay-episode-item {
-  padding: 4px 12px 4px 20px;
+  padding: 4px 10px 4px 16px;
   margin-top: 2px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--secondary-label);
-  transition: background 0.12s, color 0.12s;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .dandanplay-episode-item:hover {
-  background: rgba(10, 132, 255, 0.12);
+  background: var(--accent-soft);
   color: var(--label);
 }
 
-/* ========== Dandanplay search results ========== */
 #dandanplay-search-results-toggle {
   cursor: pointer;
   user-select: none;
 }
 
-/* ========== Misc ========== */
-kbd {
-  display: inline-block;
-  padding: 2px 6px;
-  font-size: 11px;
-  font-family: -apple-system, sans-serif;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--separator);
-  border-radius: 4px;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
-  color: var(--secondary-label);
-}
-
-/* ========== Tab bar (IINA style: icon + text, active brightens) ========== */
-.tabbar {
-  display: flex;
-  align-items: center;
-  margin: -14px -14px 12px;
-  padding: 0 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-}
-.tab {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 11px 4px;
-  font-size: 14px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.45);
-  cursor: pointer;
-  user-select: none;
-  transition: color 0.15s;
-}
-.tab:hover {
-  color: rgba(255, 255, 255, 0.7);
-}
-.tab.active {
-  color: #fff;
-  font-weight: 700;
-}
-.tab svg {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  flex-shrink: 0;
-}
-.tab svg circle {
-  fill: currentColor;
-  stroke: none;
-}
-
-/* Advanced tab: divider between switch / slider / misc groups (full-width) */
-.adv-separator {
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  margin: 16px -14px;
-}
-
-/* ========== Filter tab: danmaku browser list ========== */
+/* ========== Filter tab: virtualized danmaku browser & blocklist ========== */
 .browser-total {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--secondary-label);
 }
+
 .toggle-row-left {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
+
 .danmaku-browser-list-wrap {
   position: relative;
-  height: min(70vh, 700px);
+  height: min(64vh, 640px);
   min-height: 220px;
+  border-top: 1px solid var(--separator);
 }
+
 .danmaku-browser-list {
   position: absolute;
   inset: 0;
 }
+
 .danmaku-browser-spacer {
   position: relative;
   width: 100%;
 }
+
 .danmaku-browser-row {
   position: absolute;
   left: 0;
   right: 0;
   top: 0;
+}
 
-}
 .danmaku-browser-row.blocked {
-  opacity: 0.45;
+  opacity: 0.42;
 }
+
 .danmaku-browser-row.blocked .danmaku-browser-text {
   text-decoration: line-through;
   text-decoration-color: var(--secondary-label);
 }
-/* owner(投稿者)弹幕: 不参与过滤,半透明浅红底色以示区分 */
+
 .danmaku-browser-row.owner {
-  background: rgba(255, 90, 90, 0.16);
+  background: rgba(255, 90, 90, 0.14);
 }
+
 .danmaku-browser-row.owner:hover {
-  background: rgba(255, 90, 90, 0.26);
+  background: rgba(255, 90, 90, 0.22);
 }
+
 .danmaku-browser-time {
   flex-shrink: 0;
-  min-width: 40px;
+  min-width: 38px;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   color: var(--tertiary-label);
-  cursor: pointer; /* 点击跳转到该弹幕时间 */
+  cursor: pointer;
 }
+
 .danmaku-browser-time:hover {
   color: var(--accent);
   text-decoration: underline;
 }
+
 .danmaku-browser-text {
   flex: 1;
   min-width: 0;
@@ -756,17 +1022,20 @@ kbd {
   text-overflow: ellipsis;
   color: var(--label);
 }
+
 .danmaku-time-link {
   color: var(--accent);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   text-decoration: underline;
-  text-decoration-color: rgba(255, 255, 255, 0.3);
+  text-decoration-color: rgba(10, 132, 255, 0.45);
   text-underline-offset: 2px;
 }
+
 .danmaku-time-link:hover {
-  color: #fff;
+  color: var(--accent-hover);
 }
+
 .danmaku-browser-empty {
   position: absolute;
   inset: 0;
@@ -778,49 +1047,42 @@ kbd {
   pointer-events: none;
 }
 
-/* 回到实时: 悬浮在列表右下角(跟随模式退出时显示) */
 .danmaku-browser-follow-float {
   position: absolute;
   right: 8px;
   bottom: 8px;
   z-index: 5;
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 12px;
+  background: var(--control-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-pill);
   padding: 3px 10px;
   font-size: 11px;
+  font-weight: 500;
   color: var(--label);
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--tab-active-shadow);
 }
+
 .danmaku-browser-follow-float:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: var(--control-bg-hover);
 }
 
-/* toggle-group 内嵌面板: 与分组面板同宽(全宽,不缩进不套框) */
-.toggle-group .danmaku-browser-list,
-.toggle-group .danmaku-blocklist-list {
-  margin-top: 0;
-}
-/* 面板内行内容(添加按钮/去重区间标签)与开关行 14px 内边距对齐,不贴框边缘 */
-.toggle-group #danmaku-dedupe-row {
-  padding: 0 14px 6px; /* 底部小留白: 五个选项按钮不贴分组面板底边 */
-}
-
-/* ── 屏蔽词列表: 与弹幕列表同款样式(共用规则,仅容器定位不同) ── */
 .danmaku-browser-list,
 .danmaku-blocklist-list {
   overflow-y: auto;
   overflow-x: hidden;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-sm);
-  margin-top: 8px; /* 与标题行(开关)隔开 */
+  background: var(--subsurface-bg);
   -webkit-overflow-scrolling: touch;
 }
+
 .danmaku-blocklist-list {
   max-height: 140px;
   padding: 2px 0;
+  border-top: 1px solid var(--separator);
 }
+
 .danmaku-browser-row,
 .danmaku-blocklist-item {
   height: 26px;
@@ -832,12 +1094,13 @@ kbd {
   font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--separator);
 }
-/* 屏蔽词列表全量渲染: 最后一行不画底部分隔线(弹幕列表是虚拟渲染,不可用 :last-child) */
+
 .danmaku-blocklist-item:last-child {
   border-bottom: none;
 }
+
 .danmaku-blocklist-item-text {
   flex: 1;
   min-width: 0;
@@ -845,33 +1108,38 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .danmaku-blocklist-item-x {
   background: none;
   border: none;
   color: var(--tertiary-label);
   font-size: 13px;
   line-height: 1;
-  padding: 0 2px;
+  padding: 0 3px;
   border-radius: 50%;
   cursor: pointer;
   flex-shrink: 0;
 }
+
 .danmaku-blocklist-item-x:hover {
   color: var(--label);
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--control-bg-hover);
 }
-/* + 号添加行: 点击进入内联编辑 */
+
 .danmaku-blocklist-add-item {
-  color: var(--tertiary-label);
+  color: var(--secondary-label);
   cursor: pointer;
 }
+
 .danmaku-blocklist-add-item:hover {
   color: var(--label);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--row-hover);
 }
+
 .danmaku-blocklist-add-item.editing {
   padding: 0 8px;
 }
+
 .danmaku-blocklist-add-item .danmaku-blocklist-input {
   flex: 1;
   min-width: 0;
@@ -882,7 +1150,8 @@ kbd {
   font-size: 12px;
   padding: 0;
 }
+
 .danmaku-blocklist-add-item .danmaku-blocklist-input:focus {
   border-color: transparent;
-  box-shadow: none; /* 去掉全局 input:focus 的蓝色光晕 */
+  box-shadow: none;
 }

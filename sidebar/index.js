@@ -87,9 +87,7 @@ var ddpState = {
 };
 
 var settingsSections = [
-  opacitySlider.closest('.section'),
-  fontsizeSlider.closest('.section'),
-  document.getElementById('danmaku-density-section')
+  document.getElementById('danmaku-basic-sliders-card') || opacitySlider.closest('.section')
 ];
 
 var state = {
@@ -134,6 +132,13 @@ function createFileItem(fileInfo, isChecked, isDisabled) {
   name.title = fileInfo.relativePath || fileInfo.filename;
   item.appendChild(name);
 
+  if (fileInfo.type) {
+    var tag = document.createElement('span');
+    tag.className = 'danmaku-file-type-tag';
+    tag.textContent = fileInfo.type;
+    item.appendChild(tag);
+  }
+
   if (fileListState.errorPaths[fileInfo.path]) {
     var errorEl = document.createElement('div');
     errorEl.className = 'danmaku-file-item-error';
@@ -163,7 +168,20 @@ function renderFileList() {
   var allFiles = fileListState.xmlFiles.concat(fileListState.jsonFiles);
   allFiles.sort(function (a, b) { return String(a.filename).localeCompare(String(b.filename)); });
   var group = createFileGroup(allFiles, fileListState.selectedPaths);
-  if (group) container.appendChild(group);
+  if (group) {
+    container.appendChild(group);
+  } else {
+    var emptyGroup = document.createElement('div');
+    emptyGroup.className = 'danmaku-file-group';
+    var emptyRow = document.createElement('div');
+    emptyRow.className = 'danmaku-file-item danmaku-file-empty-row';
+    var emptyText = document.createElement('span');
+    emptyText.className = 'danmaku-file-item-name';
+    emptyText.textContent = t('filter_empty');
+    emptyRow.appendChild(emptyText);
+    emptyGroup.appendChild(emptyRow);
+    container.appendChild(emptyGroup);
+  }
 }
 
 function updateDanmakuInfoUI() {
@@ -1099,6 +1117,7 @@ onPluginMessage("danmaku-file-error", function (data) {
 });
 
 applyI18n();
+renderFileList();
 
 
 var ddpMatchesExpanded = false;
