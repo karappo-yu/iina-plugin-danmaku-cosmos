@@ -227,11 +227,6 @@ body::-webkit-scrollbar {
   gap: 6px;
 }
 
-.date-slice-group {
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--separator);
-}
-
 /* ========== Typography ========== */
 .section-header {
   display: flex;

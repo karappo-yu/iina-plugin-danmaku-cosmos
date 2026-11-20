@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="index.css?v=64" />
+  <link rel="stylesheet" href="index.css?v=65" />
   <title>Danmaku Control</title>
 </head>
 
@@ -111,24 +111,25 @@
         </div>
       </div>
 
-      <!-- Card: Quick Adjustments (Date Slice + Density + Opacity + Font Scale) -->
-      <div class="section iina-card card-stack" id="danmaku-basic-sliders-card">
-        <div class="slider-group date-slice-group" id="danmaku-filter-section" style="display:none">
-          <div class="section-title" data-i18n="danmaku_filter">日期切片</div>
-          <div class="range-selector" id="danmaku-range-selector">
-            <div class="range-track"></div>
-            <div class="range-coverage" id="filter-coverage">
-              <div class="range-handle range-handle-left" id="filter-handle-left" data-clickable tabindex="0" role="slider" data-i18n-aria-label="date_filter_start"></div>
-              <div class="range-handle range-handle-right" id="filter-handle-right" data-clickable tabindex="0" role="slider" data-i18n-aria-label="date_filter_end"></div>
-              <span id="filter-count" class="range-count">0</span>
-            </div>
-          </div>
-          <div class="range-labels">
-            <span id="danmaku-filter-date-start"></span>
-            <span id="danmaku-filter-date-end"></span>
+      <!-- Card: Date Slice -->
+      <div class="section iina-card" id="danmaku-filter-section" style="display:none">
+        <div class="section-title" data-i18n="danmaku_filter">日期切片</div>
+        <div class="range-selector" id="danmaku-range-selector">
+          <div class="range-track"></div>
+          <div class="range-coverage" id="filter-coverage">
+            <div class="range-handle range-handle-left" id="filter-handle-left" data-clickable tabindex="0" role="slider" data-i18n-aria-label="date_filter_start"></div>
+            <div class="range-handle range-handle-right" id="filter-handle-right" data-clickable tabindex="0" role="slider" data-i18n-aria-label="date_filter_end"></div>
+            <span id="filter-count" class="range-count">0</span>
           </div>
         </div>
+        <div class="range-labels">
+          <span id="danmaku-filter-date-start"></span>
+          <span id="danmaku-filter-date-end"></span>
+        </div>
+      </div>
 
+      <!-- Card: Quick Sliders (Density + Opacity + Font Scale) -->
+      <div class="section iina-card card-stack" id="danmaku-basic-sliders-card">
         <div class="slider-group" id="danmaku-density-section">
           <div class="section-header">
             <span class="section-title" data-i18n="density_filter">弹幕密度</span>
