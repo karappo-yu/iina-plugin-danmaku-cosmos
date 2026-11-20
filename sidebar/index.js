@@ -87,9 +87,7 @@ var ddpState = {
 };
 
 var settingsSections = [
-  opacitySlider.closest('.section'),
-  fontsizeSlider.closest('.section'),
-  document.getElementById('danmaku-density-section')
+  document.getElementById('danmaku-basic-sliders-card') || opacitySlider.closest('.section')
 ];
 
 var state = {

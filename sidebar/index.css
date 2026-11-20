@@ -227,6 +227,11 @@ body::-webkit-scrollbar {
   gap: 6px;
 }
 
+.date-slice-group {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--separator);
+}
+
 /* ========== Typography ========== */
 .section-header {
   display: flex;
@@ -248,7 +253,8 @@ body::-webkit-scrollbar {
   color: var(--label);
 }
 
-.slider-group .section-title {
+.slider-group .section-title,
+.slider-group .section-header {
   margin-bottom: 0;
 }
 

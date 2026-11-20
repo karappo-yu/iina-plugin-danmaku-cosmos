@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="index.css?v=63" />
+  <link rel="stylesheet" href="index.css?v=64" />
   <title>Danmaku Control</title>
 </head>
 
@@ -111,50 +111,49 @@
         </div>
       </div>
 
-      <!-- Card: Date Slice -->
-      <div class="section iina-card" id="danmaku-filter-section" style="display:none">
-        <div class="section-title" data-i18n="danmaku_filter">日期切片</div>
-        <div class="range-selector" id="danmaku-range-selector">
-          <div class="range-track"></div>
-          <div class="range-coverage" id="filter-coverage">
-            <div class="range-handle range-handle-left" id="filter-handle-left" data-clickable tabindex="0" role="slider" data-i18n-aria-label="date_filter_start"></div>
-            <div class="range-handle range-handle-right" id="filter-handle-right" data-clickable tabindex="0" role="slider" data-i18n-aria-label="date_filter_end"></div>
-            <span id="filter-count" class="range-count">0</span>
+      <!-- Card: Quick Adjustments (Date Slice + Density + Opacity + Font Scale) -->
+      <div class="section iina-card card-stack" id="danmaku-basic-sliders-card">
+        <div class="slider-group date-slice-group" id="danmaku-filter-section" style="display:none">
+          <div class="section-title" data-i18n="danmaku_filter">日期切片</div>
+          <div class="range-selector" id="danmaku-range-selector">
+            <div class="range-track"></div>
+            <div class="range-coverage" id="filter-coverage">
+              <div class="range-handle range-handle-left" id="filter-handle-left" data-clickable tabindex="0" role="slider" data-i18n-aria-label="date_filter_start"></div>
+              <div class="range-handle range-handle-right" id="filter-handle-right" data-clickable tabindex="0" role="slider" data-i18n-aria-label="date_filter_end"></div>
+              <span id="filter-count" class="range-count">0</span>
+            </div>
+          </div>
+          <div class="range-labels">
+            <span id="danmaku-filter-date-start"></span>
+            <span id="danmaku-filter-date-end"></span>
           </div>
         </div>
-        <div class="range-labels">
-          <span id="danmaku-filter-date-start"></span>
-          <span id="danmaku-filter-date-end"></span>
-        </div>
-      </div>
 
-      <!-- Card: Density -->
-      <div class="section iina-card" id="danmaku-density-section">
-        <div class="section-header">
-          <span class="section-title" data-i18n="density_filter">弹幕密度</span>
-          <span id="density-count" class="section-meta"></span>
+        <div class="slider-group" id="danmaku-density-section">
+          <div class="section-header">
+            <span class="section-title" data-i18n="density_filter">弹幕密度</span>
+            <span id="density-count" class="section-meta"></span>
+          </div>
+          <div class="control-row">
+            <input type="range" id="density-slider" data-clickable min="50" max="550" step="50" value="550" class="slider" />
+            <span id="density-value" class="value-text" data-i18n="unlimited">无限制</span>
+          </div>
         </div>
-        <div class="control-row">
-          <input type="range" id="density-slider" data-clickable min="50" max="550" step="50" value="550" class="slider" />
-          <span id="density-value" class="value-text" data-i18n="unlimited">无限制</span>
-        </div>
-      </div>
 
-      <!-- Card: Opacity -->
-      <div class="section iina-card">
-        <div class="section-title" data-i18n="opacity">不透明度</div>
-        <div class="control-row">
-          <input type="range" id="opacity-slider" data-clickable min="0.1" max="1" step="0.05" value="0.8" class="slider" />
-          <span id="opacity-value" class="value-text">80%</span>
+        <div class="slider-group">
+          <div class="section-title" data-i18n="opacity">不透明度</div>
+          <div class="control-row">
+            <input type="range" id="opacity-slider" data-clickable min="0.1" max="1" step="0.05" value="0.8" class="slider" />
+            <span id="opacity-value" class="value-text">80%</span>
+          </div>
         </div>
-      </div>
 
-      <!-- Card: Font Scale -->
-      <div class="section iina-card">
-        <div class="section-title" data-i18n="font_scale">字体缩放</div>
-        <div class="control-row">
-          <input type="range" id="fontsize-slider" data-clickable min="25" max="100" step="5" value="100" class="slider" />
-          <span id="fontsize-value" class="value-text">100%</span>
+        <div class="slider-group">
+          <div class="section-title" data-i18n="font_scale">字体缩放</div>
+          <div class="control-row">
+            <input type="range" id="fontsize-slider" data-clickable min="25" max="100" step="5" value="100" class="slider" />
+            <span id="fontsize-value" class="value-text">100%</span>
+          </div>
         </div>
       </div>
 
@@ -380,7 +379,7 @@
     </div>
 
   </div>
-  <script src="index.js?v=71"></script>
+  <script src="index.js?v=72"></script>
 </body>
 
 </html>
