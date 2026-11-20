@@ -136,3 +136,5 @@ test-all.json
 NICOSCRIPT_DOC.md
 IINA插件开发指南.md
 弹幕解析渲染对比报告.md
+test/**/*.mp4
+

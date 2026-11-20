@@ -29,7 +29,7 @@
 - **风格预设一键切换**:
   - **Nico**:原生大字、原速、柔和字形阴影
   - **平衡**:Nico 外观,字号和速度减半
-  - **Bilibili**:小字、慢速、细体、半透明
+  - **Bilibili**:小字、慢速、细体、半透明描边
 - **自由微调**:字体(日文/中文预设或自定义)、粗细、缩放、透明度、描边、阴影模糊、滚动速度,即调即看
 - **双渲染模式**:CSS(默认)与 Canvas 可按需切换
 - **完整还原 Niconico 弹幕**:字符画(CA)、owner 弹幕、新旧 Flash / HTML5 样式混排
@@ -37,7 +37,7 @@
 #### 弹幕管理
 
 - **密度控制**:按每分钟弹幕数上限筛选,弹幕少时原样保留,保留弹幕随剧情起伏的节奏;默认不限制
-- **日期切片**(Nico JSON):按投稿日期范围筛选,只看某段时间的弹幕
+- **日期切片**(带投稿时间的弹幕源):按投稿日期范围筛选,只看某段时间的弹幕
 - **屏蔽**:屏蔽词列表(支持正则)、顶部 / 底部固定弹幕独立屏蔽
 - **去重合并**:时间窗内的重复滚动弹幕合并为「原文 xN」,后缀独立着色;重复的顶部 / 底部固定弹幕则接续显示,计数随到达渐进增长(x2→x3)
 - **时间轴列表**:流畅浏览数万条弹幕,跟随播放位置滚动,点击时间戳跳转;弹幕文本里的时间(如「空降 01:39」)也可点击跳转
@@ -53,23 +53,23 @@
 
 Nico 风格:
 
-<img src="png/nico_style.png" width="75%" alt="Nico 风格" />
+<img src="png/nico_style.webp" width="75%" alt="Nico 风格" />
 
 平衡风格:
 
-<img src="png/balance_style.png" width="75%" alt="平衡风格" />
+<img src="png/balance_style.webp" width="75%" alt="平衡风格" />
 
 Bilibili 风格:
 
-<img src="png/bilibili_style.png" width="75%" alt="Bilibili 风格" />
+<img src="png/bilibili_style.webp" width="75%" alt="Bilibili 风格" />
 
 自定义风格:
 
-<img src="png/costom_style.png" width="75%" alt="自定义风格" />
+<img src="png/custom_style.webp" width="75%" alt="自定义风格" />
 
 字符画(CA):
 
-<img src="png/comment art.png" width="75%" alt="字符画弹幕" />
+<img src="png/comment_art.webp" width="75%" alt="字符画弹幕" />
 
 ---
 
@@ -98,7 +98,7 @@ IINA で動画を見ながらコメントを流せるプラグイン。Niconico 
 - **スタイルプリセットをワンクリックで切り替え**:
   - **Nico**:ニコニコ本来の大きめの文字と速度、柔らかい文字の影
   - **バランス**:Nico と同じ見た目で、文字サイズと速度を半分に
-  - **Bilibili**:小さめの文字、ゆっくりした速度、細めのウェイト、半透明
+  - **Bilibili**:小さめの文字、ゆっくりした速度、細めのウェイト、半透明の縁取り
 - **自由な微調整**:フォント(和文 / 中文プリセットまたはカスタム)、ウェイト、サイズ倍率、不透明度、縁取り、影のぼかし、スクロール速度。変更はすぐに反映されます
 - **2 つの描画モード**:CSS(デフォルト)と Canvas を用途に応じて切り替え
 - **ニコニココメントを忠実に再現**:コメントアート(CA)、投稿者コメント、Flash 時代と HTML5 時代のスタイル混在表示に対応
@@ -106,7 +106,7 @@ IINA で動画を見ながらコメントを流せるプラグイン。Niconico 
 #### コメント管理
 
 - **密度調整**:1 分あたりのコメント数の上限で絞り込みます。コメントが少ない時間帯はそのままなので、物語の展開に応じたコメントの増減が保たれます。デフォルトは無制限
-- **投稿日で絞り込み**(Nico JSON):投稿日の範囲を指定して、特定の期間のコメントだけを表示
+- **投稿日で絞り込み**(投稿日時付きソース):投稿日の範囲を指定して、特定の期間のコメントだけを表示
 - **NG 設定**:NG ワードリスト(正規表現対応)、上部 / 下部の固定コメントを個別にブロック
 - **重複コメントの集約**:一定時間内の重複スクロールコメントを「原文 xN」にまとめ、件数部分は別色で表示。上部 / 下部の固定コメントは表示中に到着した分だけ件数が増えていきます(x2→x3)
 - **タイムライン一覧**:数万件のコメントもスムーズに表示。再生位置に追従してスクロールし、タイムスタンプをクリックするとその位置にシーク。コメント本文の時刻表記もクリックでシークできます
@@ -122,23 +122,23 @@ IINA で動画を見ながらコメントを流せるプラグイン。Niconico 
 
 Nico スタイル:
 
-<img src="png/nico_style.png" width="75%" alt="Nico スタイル" />
+<img src="png/nico_style.webp" width="75%" alt="Nico スタイル" />
 
 バランススタイル:
 
-<img src="png/balance_style.png" width="75%" alt="バランススタイル" />
+<img src="png/balance_style.webp" width="75%" alt="バランススタイル" />
 
 Bilibili スタイル:
 
-<img src="png/bilibili_style.png" width="75%" alt="Bilibili スタイル" />
+<img src="png/bilibili_style.webp" width="75%" alt="Bilibili スタイル" />
 
 カスタムスタイル:
 
-<img src="png/costom_style.png" width="75%" alt="カスタムスタイル" />
+<img src="png/custom_style.webp" width="75%" alt="カスタムスタイル" />
 
 コメントアート(CA):
 
-<img src="png/comment art.png" width="75%" alt="コメントアート" />
+<img src="png/comment_art.webp" width="75%" alt="コメントアート" />
 
 ---
 
@@ -167,7 +167,7 @@ Display danmaku comments while watching videos in IINA: supports Niconico / Bili
 - **One-click style presets**:
   - **Nico**: native large font, original speed, soft glyph shadows
   - **Balanced**: the Nico look at half font size and speed
-  - **Bilibili**: small font, slow speed, thin weight, semi-transparent
+  - **Bilibili**: small font, slow speed, thin weight, semi-transparent outline
 - **Fine-tune freely**: font (Japanese/Chinese presets or custom), weight, scale, opacity, stroke, shadow blur, scroll speed — changes apply instantly
 - **Dual render modes**: switch between CSS (default) and Canvas as needed
 - **Faithful Niconico reproduction**: comment art (CA), owner comments, and mixed Flash / HTML5 era styles
@@ -175,7 +175,7 @@ Display danmaku comments while watching videos in IINA: supports Niconico / Bili
 #### Danmaku Management
 
 - **Density control**: cap the number of comments per minute. Quiet moments stay untouched, preserving the natural ebb and flow of comments as the story unfolds. Unlimited by default
-- **Date slicing** (Nico JSON): filter by posting date range to show only comments from a chosen period
+- **Date slicing** (dated sources): filter by posting date range to show only comments from a chosen period
 - **Blocking**: block-word list (regex supported), plus independent blocking of top / bottom fixed comments
 - **Dedupe merge**: repeated scrolling comments within a time window merge into "text xN", with the count shown in its own color; duplicate top / bottom fixed comments chain on screen, growing the count as they arrive (x2 → x3)
 - **Timeline list**: smoothly browse tens of thousands of comments; follows the playback position, click a timestamp to seek. Times written inside comment text are clickable too
@@ -191,23 +191,23 @@ Display danmaku comments while watching videos in IINA: supports Niconico / Bili
 
 Nico style:
 
-<img src="png/nico_style.png" width="75%" alt="Nico style" />
+<img src="png/nico_style.webp" width="75%" alt="Nico style" />
 
 Balanced style:
 
-<img src="png/balance_style.png" width="75%" alt="Balanced style" />
+<img src="png/balance_style.webp" width="75%" alt="Balanced style" />
 
 Bilibili style:
 
-<img src="png/bilibili_style.png" width="75%" alt="Bilibili style" />
+<img src="png/bilibili_style.webp" width="75%" alt="Bilibili style" />
 
 Custom style:
 
-<img src="png/costom_style.png" width="75%" alt="Custom style" />
+<img src="png/custom_style.webp" width="75%" alt="Custom style" />
 
 Comment art (CA):
 
-<img src="png/comment art.png" width="75%" alt="Comment art" />
+<img src="png/comment_art.webp" width="75%" alt="Comment art" />
 
 ---
 

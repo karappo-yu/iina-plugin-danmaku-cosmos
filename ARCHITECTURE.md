@@ -30,4 +30,4 @@ The bundled `overlay/lib/niconicomments.min.js` is generated from the sibling `n
 - A WebKit frame-sampling check exercises the actual sidebar intent → main transaction → overlay message, including delayed delivery. On a fixed test corpus it observes only complete Balanced and Nico states (42 → 21 DOM comments), one appearance message and one renderer replacement.
 - An additional local WebKit smoke run loaded the plugin's actual overlay and sidebar HTML, exercised mixed Flash/HTML5 comments and literal template characters, and confirmed snapshot/settings traffic, font spaces/caret preservation Canvas activation from a disabled state, composing-only IME commit sequences, empty Custom mode, inline blocklist drafts and deferred hidden rendering without page errors.
 
-The plugin still has no build step or runtime package manager. Release packaging includes `danmaku-document.js` and omits the retired `overlay/input.js`.
+The plugin still has no build step or runtime package manager. Release packaging includes `danmaku-document.js`, `ipc-transport.js`, `plugin-i18n.js`, `episode-matcher.js`, and `ddp-client.js`, and omits the retired `overlay/input.js`.

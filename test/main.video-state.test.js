@@ -91,11 +91,12 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     map.set(name, [weakMessageCallbacks ? new WeakRef(handler) : handler]);
   }
 
+  const overlayVisibility = [];
   const iina = {
     overlay: {
       loadFile() { overlayHandlers.clear(); },
-      show() {},
-      hide() {},
+      show() { overlayVisibility.push('show'); },
+      hide() { overlayVisibility.push('hide'); },
       postMessage(name, data) { overlayMessages.push({ name, wire: data, data: JSON.parse(data.__encoded ? decodeURIComponent(data.__encoded) : JSON.stringify(data)) }); },
       onMessage(name, handler) { registerMessage(overlayHandlers, name, handler); },
     },
@@ -201,6 +202,8 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     preferences,
     httpRequests,
     overlayMessages,
+    overlayVisibility,
+    menuItems,
     sidebarMessages,
     sidebarHandlers,
     overlayHandlers,
@@ -1586,12 +1589,26 @@ test('ordinary quotes, newlines and backslashes do not encode a full comment pay
 });
 
 test('IPC preserves isolated surrogate code units even with a legacy JSON stringifier', () => {
-  const h = createHarness(true);
   const data = {text: '\uD800 a \uDC00 😀 `${literal}'};
   const stringify = JSON.stringify;
-  h.context.JSON = {stringify(value) {return stringify(value).replace(/\\u(d[89ab][0-9a-f]{2}|d[cdef][0-9a-f]{2})/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));}};
-  assert.doesNotThrow(() => h.context.sidebarPostMessage('test', data));
-  const wire = h.sidebarMessages.at(-1).wire;
+  let legacyStringifyCalls = 0;
+  const legacyContext = vm.createContext({
+    JSON: {
+      stringify(value) {
+        legacyStringifyCalls += 1;
+        return stringify(value).replace(/\\u(d[89ab][0-9a-f]{2}|d[cdef][0-9a-f]{2})/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));
+      }
+    },
+    encodeURIComponent,
+    Object,
+  });
+  const ipcSource = fs.readFileSync(path.join(__dirname, '..', 'ipc-transport.js'), 'utf8');
+  const ipc = vm.runInContext('(function () { const module = {};\n' + ipcSource + '\nreturn module.exports; })()', legacyContext);
+  const posted = [];
+  const target = {postMessage(key, payload) { posted.push({key, wire: payload}); }};
+  assert.doesNotThrow(() => ipc.postSafeMessage(target, 'test', data));
+  assert.equal(legacyStringifyCalls, 1, 'legacy JSON.stringify branch must be exercised');
+  const wire = posted.at(-1).wire;
   const bridge = vm.runInNewContext('String.raw`' + stringify(wire) + '`');
   assert.deepEqual(JSON.parse(decodeURIComponent(JSON.parse(bridge).__encoded)), data);
 });
@@ -2061,4 +2078,29 @@ test('all DDP endpoints include the server error message and HTTP status', async
   h.resolveNextHttp({statusCode: 503, text: JSON.stringify({errorMessage: 'Bangumi unavailable'})});
   await flushMicrotasks();
   assert.equal(h.sidebarMessages.findLast(m => m.name === 'dandanplay-bangumi-result').data.error, 'Bangumi unavailable (503)');
+});
+
+test('Show/Hide Danmaku Overlay menu items synchronize danmakuEnabled, observers, and overlay visibility', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  h.setVideo('file:///videos/A.mp4');
+  h.ackLoad(true);
+  const showItem = h.menuItems.find(item => item.label === 'Show Danmaku Overlay');
+  const hideItem = h.menuItems.find(item => item.label === 'Hide Danmaku Overlay');
+  assert.ok(showItem && hideItem);
+
+  const beforeTimeUpdates = h.overlayMessages.filter(m => m.name === 'time-update').length;
+  hideItem.callback();
+  assert.equal(h.context.pluginState.danmakuEnabled, false);
+  assert.equal(h.overlayVisibility.at(-1), 'hide');
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'toggle-danmaku').data.enabled, false);
+  h.emitEvent('mpv.time-pos.changed', 12.5);
+  assert.equal(h.overlayMessages.filter(m => m.name === 'time-update').length, beforeTimeUpdates, 'time observer stops when hidden');
+
+  showItem.callback();
+  assert.equal(h.context.pluginState.danmakuEnabled, true);
+  assert.equal(h.overlayVisibility.at(-1), 'show');
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'toggle-danmaku').data.enabled, true);
+  h.emitEvent('mpv.time-pos.changed', 13.5);
+  assert.equal(h.overlayMessages.filter(m => m.name === 'time-update').length, beforeTimeUpdates + 1, 'time observer resumes when shown');
 });

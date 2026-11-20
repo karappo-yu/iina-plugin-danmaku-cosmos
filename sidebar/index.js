@@ -86,7 +86,11 @@ var ddpState = {
   autoNetwork: true
 };
 
-var settingsSections = [opacitySlider.closest('.section'), fontsizeSlider.closest('.section'), strokeOpacitySlider.closest('.section')];
+var settingsSections = [
+  opacitySlider.closest('.section'),
+  fontsizeSlider.closest('.section'),
+  document.getElementById('danmaku-density-section')
+];
 
 var state = {
   dateInfo: {firstDay: null, lastDay: null, dayCounts: [], undatedCount: 0},
@@ -482,6 +486,10 @@ function trackSliderDrag(slider) {
   return drag;
 }
 
+const opacitySliderDrag = trackSliderDrag(opacitySlider);
+const fontsizeSliderDrag = trackSliderDrag(fontsizeSlider);
+const strokeOpacitySliderDrag = trackSliderDrag(strokeOpacitySlider);
+const strokeWidthSliderDrag = trackSliderDrag(strokeWidthSlider);
 const speedSliderDrag = trackSliderDrag(speedSlider);
 const fontWeightSliderDrag = trackSliderDrag(fontWeightSlider);
 const cssTextShadowBlurSliderDrag = trackSliderDrag(cssTextShadowBlurSlider);
@@ -527,14 +535,22 @@ function updateUI() {
   var hasDanmaku = state.danmakuLoaded || hasFiles;
   toggleDanmaku.checked = state.enabled && hasDanmaku;
   toggleDanmaku.disabled = !hasDanmaku;
-  opacitySlider.value = state.canvasOpacity;
-  opacityValue.textContent = Math.round(state.canvasOpacity * 100) + "%";
-  fontsizeSlider.value = Math.round(state.canvasFontScale * 100);
-  fontsizeValue.textContent = Math.round(state.canvasFontScale * 100) + "%";
-  strokeOpacitySlider.value = Math.round(state.strokeOpacity * 100);
-  strokeOpacityValue.textContent = Math.round(state.strokeOpacity * 100) + "%";
-  strokeWidthSlider.value = state.strokeWidth;
-  strokeWidthValue.textContent = String(state.strokeWidth) + 'px';
+  if (!opacitySliderDrag.active) {
+    opacitySlider.value = state.canvasOpacity;
+    opacityValue.textContent = Math.round(state.canvasOpacity * 100) + "%";
+  }
+  if (!fontsizeSliderDrag.active) {
+    fontsizeSlider.value = Math.round(state.canvasFontScale * 100);
+    fontsizeValue.textContent = Math.round(state.canvasFontScale * 100) + "%";
+  }
+  if (!strokeOpacitySliderDrag.active) {
+    strokeOpacitySlider.value = Math.round(state.strokeOpacity * 100);
+    strokeOpacityValue.textContent = Math.round(state.strokeOpacity * 100) + "%";
+  }
+  if (!strokeWidthSliderDrag.active) {
+    strokeWidthSlider.value = state.strokeWidth;
+    strokeWidthValue.textContent = String(state.strokeWidth) + 'px';
+  }
   if (!cssTextShadowBlurSliderDrag.active && state.cssTextShadowBlur !== undefined) {
     cssTextShadowBlurSlider.value = state.cssTextShadowBlur;
     cssTextShadowBlurValue.textContent = String(state.cssTextShadowBlur) + 'px';
@@ -1211,7 +1227,11 @@ if (ddpSearchGoBtn) {
 }
 
 if (ddpSearchInput) {
+  let ddpSearchComposing = false;
+  ddpSearchInput.addEventListener("compositionstart", function () { ddpSearchComposing = true; });
+  ddpSearchInput.addEventListener("compositionend", function () { ddpSearchComposing = false; });
   ddpSearchInput.addEventListener("keydown", function (e) {
+    if (ddpSearchComposing || e.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter') ddpDoSearch();
   });
 }
@@ -1412,19 +1432,21 @@ function browserRowForVpos(vpos, items) {
 // 弹幕内容里的时间(m:ss / h:mm:ss)→ 可点击链接,点击 seek 到该时间。
 // 普通文本保留为文本节点(可复制),时间部分拆成独立 span。
 function browserRenderTextWithLinks(text, container) {
-  var re = /(\d{1,2}):(\d{2})(?::(\d{2}))?/g;
+  var re = /(^|[^\d:])(\d{1,2}):(\d{2})(?::(\d{2}))?(?![\d:])/g;
   var last = 0, m;
   while ((m = re.exec(text)) !== null) {
-    var hasHours = m[3] !== undefined;
-    var hours = hasHours ? parseInt(m[1], 10) : 0;
-    var mins = hasHours ? parseInt(m[2], 10) : parseInt(m[1], 10);
-    var secs = hasHours ? parseInt(m[3], 10) : parseInt(m[2], 10);
+    var hasHours = m[4] !== undefined;
+    var hours = hasHours ? parseInt(m[2], 10) : 0;
+    var mins = hasHours ? parseInt(m[3], 10) : parseInt(m[2], 10);
+    var secs = hasHours ? parseInt(m[4], 10) : parseInt(m[3], 10);
     if (mins >= 60 || secs >= 60) continue;
-    if (m.index > last) container.appendChild(document.createTextNode(text.slice(last, m.index)));
+    var timeStart = m.index + m[1].length;
+    var timeText = m[0].slice(m[1].length);
+    if (timeStart > last) container.appendChild(document.createTextNode(text.slice(last, timeStart)));
     var sec = hours * 3600 + mins * 60 + secs;
     var link = document.createElement("span");
     link.className = "danmaku-time-link";
-    link.textContent = m[0];
+    link.textContent = timeText;
     (function (vpos) {
       link.addEventListener("click", function (e) {
         e.stopPropagation(); // 不干扰行内文本选择

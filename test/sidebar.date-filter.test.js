@@ -555,3 +555,58 @@ test('style preset buttons unhighlight when stylePreset becomes custom', () => {
   h.emit('danmaku-state', {stylePreset: 'custom'});
   assert.deepEqual(items.map(i => i.classList.contains('active')), [false, false, false]);
 });
+
+test('ddpSearchInput ignores Enter during IME composition and searches on regular Enter', () => {
+  const h = createSidebar();
+  const input = h.elements.get('dandanplay-search-input');
+  input.value = '鬼滅の刃';
+  input.fire('compositionstart');
+  input.fire('keydown', {key: 'Enter'});
+  h.flush();
+  assert.equal(h.messages.filter(m => m.name === 'dandanplay-search').length, 0);
+
+  input.fire('keydown', {key: 'Enter', isComposing: true});
+  input.fire('keydown', {key: 'Enter', keyCode: 229});
+  h.flush();
+  assert.equal(h.messages.filter(m => m.name === 'dandanplay-search').length, 0);
+
+  input.fire('compositionend');
+  input.fire('keydown', {key: 'Enter'});
+  h.flush();
+  const sent = h.messages.filter(m => m.name === 'dandanplay-search');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].data.keyword, '鬼滅の刃');
+});
+
+test('browserRenderTextWithLinks ignores digit/colon-adjacent tokens while matching separated pairs', () => {
+  const h = createSidebar();
+  const invalid = h.document.createElement('SPAN');
+  h.context.browserRenderTextWithLinks('编号 123:45 和 01:23:456 与 1:02:03:04 不跳转', invalid);
+  assert.equal(invalid.children.length, 0);
+
+  const pair = h.document.createElement('SPAN');
+  h.context.browserRenderTextWithLinks('01:39~02:05', pair);
+  const links = pair.children.filter(c => c.className === 'danmaku-time-link');
+  assert.deepEqual(links.map(l => l.textContent), ['01:39', '02:05']);
+});
+
+test('opacity, fontsize, stroke-opacity and stroke-width sliders protect active drags from state echoes', () => {
+  const h = createSidebar();
+  const cases = [
+    ['opacity-slider', '0.5', {canvasOpacity: 0.9}, '0.9'],
+    ['fontsize-slider', '60', {canvasFontScale: 1.0}, '100'],
+    ['stroke-opacity-slider', '40', {strokeOpacity: 0.8}, '80'],
+    ['stroke-width-slider', '3', {strokeWidth: 0}, '0'],
+  ];
+  for (const [id, dragVal, echo, settledVal] of cases) {
+    const slider = h.elements.get(id);
+    slider.fire('pointerdown', {button: 0});
+    slider.value = dragVal;
+    slider.fire('input');
+    h.emit('danmaku-state', echo);
+    assert.equal(String(slider.value), dragVal, `${id} keeps dragged value during echo`);
+    h.document.fire('pointerup');
+    h.emit('danmaku-state', echo);
+    assert.equal(String(slider.value), settledVal, `${id} accepts echo after release`);
+  }
+});
