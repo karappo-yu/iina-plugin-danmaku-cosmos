@@ -1945,7 +1945,8 @@ test('catastrophic blocklist regexes fall back to literals and are reported as i
   assert.deepEqual(state.blocklist.invalid, ['/(a+)+$/', '/(?:x|y*)*z/']);
   for (const [pattern, unsafe] of [
     ['^regex-\\d+$', false], ['owner|c4', false], ['[(a+)]+', false], ['(?:ab)+', false], ['(abc){1,3}', false],
-    ['(a+)?', false], ['(a+){1}', false], ['.*x', false], ['a.*|b.*', false], ['\\d{1,3}-\\d{1,3}', false],
+    ['(a+){1}', false], ['.*x', false], ['a.*|b.*', false], ['\\d{3}-\\d{3}', false],
+    ['a?', false], ['a{0,16}', false], ['a?|b?', false], ['(?:ab|cd)', false],
     ['^.{20,}$', false], ['w{3,}', false], ['(?:ab)+c', false],
     ['(\\d+\\.)+', true], ['(a*){20}', true],
     // bounded repetition of an ambiguous body is still super-linear
@@ -1958,15 +1959,18 @@ test('catastrophic blocklist regexes fall back to literals and are reported as i
     ['.*.*x', true], ['.*.*.*x', true], ['\\d+\\d+\\d+$', true], ['a*a*a*b', true], ['a.*b.*c', true],
     ['.*?.*?x', true], ['(?:.*)(?:.*)x', true], ['(?=.*a)(?=.*b)', true], ['(?:ab)+.*', true],
     ['a{1,100}a{1,100}$', true], ['[a-z]+\\d+', true], ['x|.*.*y', true],
+    // Short choices also multiply; exact counts add no length choice.
+    ['a?a?b', true], ['a{0,16}a{0,16}b', true], ['\\d{1,3}-\\d{1,3}', true], ['(a+)?', true],
+    ['(?:a?)(?:a?)b', true], ['(a|aa)(a|aa)b', true], ['a{16}a{16}b', false],
   ]) {
     assert.equal(h.context.isUnsafeBlockPattern(pattern), unsafe, pattern);
   }
 });
 
-test('every pattern accepted by the regex guard stays fast on adversarial comments', () => {
+test('common accepted blocklist patterns stay fast on adversarial comments', () => {
   const h = createHarness(true);
-  const accepted = ['^regex-\\d+$', 'owner|c4', '[(a+)]+', '(?:ab)+', '(abc){1,3}', '(a+)?', '.*x', 'a.*|b.*',
-    '\\d{1,3}-\\d{1,3}', '^.{20,}$', 'w{3,}', '(?:ab)+c'];
+  const accepted = ['^regex-\\d+$', 'owner|c4', '[(a+)]+', '(?:ab)+', '(abc){1,3}', 'a?', '.*x', 'a.*|b.*',
+    '\\d{3}-\\d{3}', '^.{20,}$', 'w{3,}', '(?:ab)+c', 'a{16}a{16}b', '(?:ab|cd)'];
   const inputs = ['a'.repeat(5000) + '!', 'ab'.repeat(2500) + '!', 'abc'.repeat(1500) + '!', '1'.repeat(5000) + '!',
     '1-'.repeat(2500) + '!', 'w'.repeat(5000) + '!'];
   for (const pattern of accepted) {
@@ -1989,6 +1993,40 @@ test('a saved polynomial regex is rejected on startup, not only when added', () 
   assert.ok(Date.now() - started < 1000);
   h.emitSidebar('request-state');
   assert.deepEqual(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.blocklist.invalid, ['/.*.*.*x/']);
+});
+
+test('short variable repetitions cannot multiply backtracking paths', () => {
+  const entries = ['/' + 'a?'.repeat(30) + 'b/', '/' + 'a{0,16}'.repeat(6) + 'b/'];
+  const h = createHarness(true, false, {danmakuBlocklist: JSON.stringify(entries), danmakuBlocklistEnabled: true});
+  for (const entry of entries) {
+    assert.equal(h.context.compileBlockEntry(entry).invalid, true, entry);
+  }
+  const p = setPositionSource(h, 'dandanplay', [
+    {t: 100, text: 'a'.repeat(5000) + '!', _commands: []},
+    {t: 200, text: entries[0], _commands: []},
+    {t: 300, text: entries[1], _commands: []},
+  ]);
+  assert.deepEqual(h.context.getEffectiveContent(p).map(c => c.content), ['a'.repeat(5000) + '!']);
+  h.emitSidebar('request-state');
+  assert.deepEqual(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.blocklist.invalid, entries);
+});
+
+test('color requests receive their own acknowledgment even when the value is unchanged', () => {
+  for (const [message, key, color] of [['set-stroke-color', 'strokeColor', '#000000'],
+    ['set-stroke-inversion-color', 'strokeInversionColor', '#ffffff']]) {
+    const h = createHarness(true);
+    h.readyOverlay();
+    h.sidebarMessages.length = 0;
+    h.overlayMessages.length = 0;
+    h.emitSidebar(message, {color, requestId: 'sidebar-session:1'});
+    assert.deepEqual(h.sidebarMessages.map(m => [m.name, m.data]), [
+      ['danmaku-color-ack', {stateKey: key, color, requestId: 'sidebar-session:1'}],
+    ]);
+    assert.equal(h.overlayMessages.length, 0, 'acknowledging a no-op does not rebuild the renderer');
+    h.emitSidebar(message, {color: '#123456', requestId: 'sidebar-session:2'});
+    assert.deepEqual(h.sidebarMessages.at(-1).data, {stateKey: key, color: '#123456', requestId: 'sidebar-session:2'});
+    assert.equal(h.context.pluginState[key], '#123456');
+  }
 });
 
 test('payloads missing their fields never become settings or requests', () => {

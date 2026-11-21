@@ -652,7 +652,37 @@ test('stroke color pickers send only the latest color', () => {
   assert.deepEqual(h.messages.filter(m => m.name === 'set-stroke-color').map(m => m.data.color), ['#333333']);
 });
 
-test('a sent color stays protected until main echoes it back', () => {
+test('A-B-A color submissions only accept the latest request acknowledgment', () => {
+  for (const [id, key, message] of [['stroke-color', 'strokeColor', 'set-stroke-color'],
+    ['stroke-inversion-color', 'strokeInversionColor', 'set-stroke-inversion-color']]) {
+    const h = createSidebar();
+    h.emit('danmaku-state', {[key]: '#000000'});
+    const input = h.elements.get(id);
+    for (const color of ['#111111', '#222222', '#111111']) {
+      input.value = color; input.fire('input'); h.flush();
+    }
+    const requests = h.messages.filter(m => m.name === message);
+    assert.equal(new Set(requests.map(m => m.data.requestId)).size, 3);
+    for (const request of requests.slice(0, 2)) {
+      h.emit('danmaku-state', {[key]: request.data.color});
+      h.emit('danmaku-color-ack', {stateKey: key, ...request.data});
+      assert.equal(input.value, '#111111', 'older replies cannot replace the final A');
+    }
+    input.fire('change');
+    assert.equal(h.messages.filter(m => m.name === message).length, 3, 'closing the picker does not resubmit a stale DOM value');
+    h.emit('danmaku-color-ack', {stateKey: key, ...requests[2].data});
+    h.emit('danmaku-state', {[key]: '#ffffff', stylePreset: 'bilibili'});
+    assert.equal(input.value, '#ffffff', 'the latest acknowledgment releases protection');
+  }
+});
+
+function acknowledgeColorRequest(h, message, index = -1) {
+  const request = h.messages.filter(m => m.name === message).at(index);
+  const stateKey = message === 'set-stroke-color' ? 'strokeColor' : 'strokeInversionColor';
+  h.emit('danmaku-color-ack', {stateKey, ...request.data});
+}
+
+test('a sent color stays protected until main acknowledges its request', () => {
   for (const [id, key, message] of [['stroke-color', 'strokeColor', 'set-stroke-color'],
     ['stroke-inversion-color', 'strokeInversionColor', 'set-stroke-inversion-color']]) {
     const h = createSidebar();
@@ -668,16 +698,18 @@ test('a sent color stays protected until main echoes it back', () => {
     assert.equal(input.value, '#222222', id + ': an older snapshot does not replace the awaited value');
     h.emit('danmaku-state', {[key]: '#222222'});
     assert.equal(input.value, '#222222');
+    acknowledgeColorRequest(h, message);
     h.emit('danmaku-state', {stylePreset: 'bilibili', [key]: '#ffffff'});
-    assert.equal(input.value, '#ffffff', id + ': after the echo, later external changes apply again');
+    assert.equal(input.value, '#ffffff', id + ': after the acknowledgment, external changes apply again');
   }
 });
 
-test('sending the color main already holds does not wait for an echo that never comes', () => {
+test('an explicit acknowledgment releases an unchanged color request', () => {
   const h = createSidebar();
   h.emit('danmaku-state', {strokeColor: '#000000'});
   const input = h.elements.get('stroke-color');
   input.value = '#000000'; input.fire('input'); input.fire('change');
+  acknowledgeColorRequest(h, 'set-stroke-color');
   h.emit('danmaku-state', {stylePreset: 'bilibili', strokeColor: '#ffffff'});
   assert.equal(input.value, '#ffffff');
   // A -> back to the original: main still echoes the original after A
@@ -686,8 +718,9 @@ test('sending the color main already holds does not wait for an echo that never 
   h.emit('danmaku-state', {strokeColor: '#333333'});
   assert.equal(input.value, '#ffffff');
   h.emit('danmaku-state', {strokeColor: '#ffffff'});
+  acknowledgeColorRequest(h, 'set-stroke-color');
   h.emit('danmaku-state', {strokeColor: '#444444'});
-  assert.equal(input.value, '#444444', 'protection was released by the final echo');
+  assert.equal(input.value, '#444444', 'protection was released by the latest request acknowledgment');
 });
 
 test('a state echo during the color debounce cannot replace the last picked color', () => {

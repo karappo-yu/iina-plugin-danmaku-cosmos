@@ -54,8 +54,6 @@ var blockInvalidEntries = [];
 // 正则长度上限必须在启动重建之前赋值: 函数声明会提升, var 赋值不会,
 // 否则启动时已保存的 /.../ 词条会因 undefined 比较退化为字面量匹配。
 var BLOCK_REGEX_MAX_LENGTH = 200;
-// Repetitions allowing more than this many items count as "wide" (see isUnsafeBlockPattern).
-var BLOCK_REGEX_WIDE_REPEAT = 16;
 rebuildBlockRegexes();
 // 弹幕去重: 开关 + 区间(秒,1-5)。滚动弹幕在投影内静态合并为 "原文xN"(时间取组内最早);
 // 固定弹幕(顶部/底部)不在投影合并,由引擎 fixedCombo 在屏上渐进接续(计数 x2→x3,宿主生命周期延长)。
@@ -555,19 +553,21 @@ function ensureSimplifier() {
 
 // Reads a quantifier at pattern[index]. `repeats` is true when the item can
 // occur more than once (*, +, {n,}, {n,m}/{n} with a maximum above 1).
+// `variable` means its length can change; an exact {n} adds no length choice.
 function readRegexQuantifier(pattern, index) {
   let ch = pattern.charAt(index);
-  let length = 0, max = 0;
-  if (ch === '*' || ch === '+') { length = 1; max = Infinity; }
+  let length = 0, min = 0, max = 0;
+  if (ch === '*' || ch === '+') { length = 1; min = ch === '+' ? 1 : 0; max = Infinity; }
   else if (ch === '?') { length = 1; max = 1; }
   else if (ch === '{') {
     let m = /^\{(\d+)(,(\d*))?\}/.exec(pattern.slice(index));
     if (!m) return null;
     length = m[0].length;
+    min = Number(m[1]);
     max = m[2] === undefined ? Number(m[1]) : m[3] === '' ? Infinity : Number(m[3]);
   } else return null;
   if (pattern.charAt(index + length) === '?') length++; // lazy form
-  return {length: length, repeats: max > 1, wide: max > BLOCK_REGEX_WIDE_REPEAT};
+  return {length: length, repeats: max > 1, variable: min !== max};
 }
 
 // A synchronous RegExp cannot be interrupted, and a saved catastrophic entry
@@ -575,21 +575,19 @@ function readRegexQuantifier(pattern, index) {
 // 1. a group that can repeat (any maximum above 1, bounded or not) while its
 //    body is ambiguous, i.e. contains a quantifier or an alternation:
 //    (a+)+, (a+){9}, (a{1,5})+, (a|aa)+ (exponential);
-// 2. two or more wide repetitions (*, +, {n,} or a maximum above 16) along one
-//    alternative, anywhere in the sequence: .*.*x, \d+\d+$, a.*b.*c,
-//    (?=.*a)(?=.*b) (polynomial: each extra one multiplies the work by the
-//    comment length). Alternatives count separately: a.*|b.* is allowed.
-// This is conservative: some safe forms such as (ab|cd)+ or [a-z]+\d+ are
-// rejected too; they fall back to literal matching and are marked in the list.
+// 2. two or more variable choices along one alternative, including optional
+//    and bounded repetitions and alternatives inside groups. A short bound
+//    does not stop choices multiplying: a?a?...b, a{0,16}a{0,16}...b.
+//    Fixed {n} has no length choice. Top-level alternatives count separately.
+// This is conservative: safe forms such as (ab|cd)+, (a+)? and two bounded
+// numeric fields are also rejected; they fall back to marked literal entries.
 function isUnsafeBlockPattern(pattern) {
-  // wide: wide repetitions on the current alternative; widest: max over the
-  // alternatives already closed by |.
-  let newFrame = function () { return {ambiguous: false, wide: 0, widest: 0}; };
+  let newFrame = function () { return {ambiguous: false, variable: 0, maxVariable: 0, alternation: false}; };
   let stack = [newFrame()];
   let top = function () { return stack[stack.length - 1]; };
-  let addWide = function (frame, n) {
-    frame.wide += n;
-    return frame.wide >= 2;
+  let addVariable = function (frame, n) {
+    frame.variable += n;
+    return frame.variable >= 2;
   };
   for (let i = 0; i < pattern.length; i++) {
     let ch = pattern.charAt(i);
@@ -606,7 +604,7 @@ function isUnsafeBlockPattern(pattern) {
       let quantifier = readRegexQuantifier(pattern, i + 1);
       if (quantifier) {
         top().ambiguous = true;
-        if (quantifier.wide && addWide(top(), 1)) return true;
+        if (quantifier.variable && addVariable(top(), 1)) return true;
         i += quantifier.length;
       }
       continue;
@@ -614,8 +612,9 @@ function isUnsafeBlockPattern(pattern) {
     if (ch === '|') {
       let frame = top();
       frame.ambiguous = true;
-      frame.widest = Math.max(frame.widest, frame.wide);
-      frame.wide = 0;
+      frame.alternation = true;
+      frame.maxVariable = Math.max(frame.maxVariable, frame.variable);
+      frame.variable = 0;
       continue;
     }
     if (ch === '(') {
@@ -636,16 +635,17 @@ function isUnsafeBlockPattern(pattern) {
       let quantifier = readRegexQuantifier(pattern, i + 1);
       if (quantifier && quantifier.repeats && frame.ambiguous) return true;
       if (frame.ambiguous || quantifier) top().ambiguous = true;
-      // The group contributes its widest alternative, plus its own repetition.
-      let groupWide = Math.max(frame.widest, frame.wide) + (quantifier && quantifier.wide ? 1 : 0);
-      if (groupWide && addWide(top(), groupWide)) return true;
+      // Include choices inside the group, its alternatives and its quantifier.
+      let groupVariable = Math.max(frame.maxVariable, frame.variable) + (frame.alternation ? 1 : 0) +
+        (quantifier && quantifier.variable ? 1 : 0);
+      if (groupVariable && addVariable(top(), groupVariable)) return true;
       if (quantifier) i += quantifier.length;
       continue;
     }
     let quantifier = readRegexQuantifier(pattern, i);
     if (quantifier) {
       top().ambiguous = true;
-      if (quantifier.wide && addWide(top(), 1)) return true;
+      if (quantifier.variable && addVariable(top(), 1)) return true;
       i += quantifier.length - 1;
     }
   }
@@ -1351,8 +1351,7 @@ function registerSidebarHandlers() {
   [
     ['set-opacity', 'canvasOpacity', 'opacity', isNonNegative], ['set-fontscale', 'canvasFontScale', 'scale', isPositive],
     ['set-canvas-mode', 'currentCanvasMode', 'mode', isCanvasMode], ['set-stroke-opacity', 'strokeOpacity', 'opacity', isNonNegative],
-    ['set-stroke-width', 'strokeWidth', 'width', isNonNegative], ['set-stroke-color', 'strokeColor', 'color', isHexColor],
-    ['set-stroke-inversion-color', 'strokeInversionColor', 'color', isHexColor], ['set-comment-limit', 'commentLimit', 'limit', isNonNegative],
+    ['set-stroke-width', 'strokeWidth', 'width', isNonNegative], ['set-comment-limit', 'commentLimit', 'limit', isNonNegative],
     ['set-scroll-speed', 'scrollSpeed', 'speed', isPositive]
   ].forEach(function (entry) {
     sidebarOnMessage(entry[0], function (data) {
@@ -1360,6 +1359,20 @@ function registerSidebarHandlers() {
       let patch = {};
       patch[entry[1]] = data[entry[2]];
       commitState(patch);
+    });
+  });
+
+  [['set-stroke-color', 'strokeColor'], ['set-stroke-inversion-color', 'strokeInversionColor']].forEach(function (entry) {
+    sidebarOnMessage(entry[0], function (data) {
+      if (!isHexColor(data.color)) return;
+      let patch = {};
+      patch[entry[1]] = data.color;
+      commitState(patch);
+      // A no-op still acknowledges this request; value echoes cannot identify
+      // repeated A -> B -> A submissions or confirm an unchanged setting.
+      if (typeof data.requestId === 'string' && data.requestId) sidebarPostMessage('danmaku-color-ack', {
+        requestId: data.requestId, stateKey: entry[1], color: pluginState[entry[1]]
+      });
     });
   });
 

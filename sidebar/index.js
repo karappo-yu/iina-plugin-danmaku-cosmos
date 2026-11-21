@@ -583,8 +583,7 @@ function updateUI() {
     cssTextShadowBlurValue.textContent = String(state.cssTextShadowBlur) + 'px';
   }
   updateCssTextShadowMode(state.useCanvasRenderer);
-  // A pending picker value owns its input until it is sent; an unrelated
-  // state echo must not replace it (and then be sent as the "latest" color).
+  // The picker owns its value until the latest request is acknowledged.
   if (!isColorPending(strokeColorPost)) strokeColorInput.value = state.strokeColor;
   if (!isColorPending(strokeInversionPost)) strokeInversionInput.value = state.strokeInversionColor;
   if (!commentLimitSliderDrag.active) {
@@ -836,8 +835,10 @@ cssTextShadowBlurSlider.addEventListener('change', submitCssTextShadowBlur);
 // rebuild the renderer, so send only the latest color after a short pause.
 // The value is captured at each input event, so the color sent is always the
 // last one the user picked, whatever happens to the element before the flush.
-// After sending, the value stays protected until main echoes it back: an echo
-// of an earlier send or an older snapshot can still arrive in between.
+// A page-scoped token also prevents an old WebView's reply acknowledging a
+// new page's first submission. State echoes never acknowledge color requests.
+let colorRequestSession = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+let colorRequestSerial = 0;
 function debouncedColorPost(input, message, stateKey) {
   let post = {pending: null, timer: null, awaiting: null, stateKey: stateKey};
   function flush() {
@@ -846,22 +847,18 @@ function debouncedColorPost(input, message, stateKey) {
     if (post.pending === null) return;
     let color = post.pending;
     post.pending = null;
-    // main only echoes changes: when it already holds (or will hold) this
-    // color no echo comes, so there is nothing to wait for.
-    let expected = post.awaiting !== null ? post.awaiting : state[stateKey];
-    post.awaiting = color !== expected ? color : post.awaiting;
-    iina.postMessage(message, { color: color });
+    let requestId = colorRequestSession + ':' + (++colorRequestSerial);
+    post.awaiting = requestId;
+    iina.postMessage(message, { color: color, requestId: requestId });
   }
   input.addEventListener("input", function () {
     post.pending = input.value;
     if (post.timer) clearTimeout(post.timer);
     post.timer = setTimeout(flush, 150);
   });
-  input.addEventListener("change", function () {
-    // change follows the final input; send it now instead of waiting.
-    if (post.pending === null) post.pending = input.value;
-    flush();
-  });
+  // input owns the draft. A trailing change after the timer has sent it must
+  // not read a possibly echoed DOM value and submit the same edit again.
+  input.addEventListener("change", flush);
   return post;
 }
 
@@ -869,14 +866,18 @@ function isColorPending(post) {
   return !!post && (post.pending !== null || post.awaiting !== null);
 }
 
-// Called for every incoming color value; only the echo of the awaited color
-// releases the protection, older values are left to be overwritten by it.
-function acknowledgeColor(post, value) {
-  if (post && post.awaiting !== null && post.awaiting === value) post.awaiting = null;
-}
-
 var strokeColorPost = debouncedColorPost(strokeColorInput, "set-stroke-color", 'strokeColor');
 var strokeInversionPost = debouncedColorPost(strokeInversionInput, "set-stroke-inversion-color", 'strokeInversionColor');
+
+onPluginMessage('danmaku-color-ack', function (data) {
+  if (!data || typeof data.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(data.color)) return;
+  let post = data.stateKey === 'strokeColor' ? strokeColorPost :
+    data.stateKey === 'strokeInversionColor' ? strokeInversionPost : null;
+  if (!post || post.awaiting === null || post.awaiting !== data.requestId) return;
+  post.awaiting = null;
+  state[post.stateKey] = data.color;
+  updateUI();
+});
 
 commentLimitSlider.addEventListener("input", function () {
   let val = parseInt(commentLimitSlider.value, 10);
@@ -1136,11 +1137,9 @@ onPluginMessage("danmaku-state", function (data) {
   if (data.cssTextShadowBlur !== undefined) state.cssTextShadowBlur = data.cssTextShadowBlur;
   if (data.strokeColor !== undefined) {
     state.strokeColor = data.strokeColor;
-    acknowledgeColor(strokeColorPost, data.strokeColor);
   }
   if (data.strokeInversionColor !== undefined) {
     state.strokeInversionColor = data.strokeInversionColor;
-    acknowledgeColor(strokeInversionPost, data.strokeInversionColor);
   }
   if (data.commentLimit !== undefined) state.commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) state.scrollSpeed = data.scrollSpeed;
