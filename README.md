@@ -45,6 +45,7 @@
 - **密度控制**：按每分钟弹幕数上限筛选；弹幕稀疏时段保持原样，保留弹幕随剧情起伏的节奏（默认无限制）
 - **日期切片**：按投稿日期范围筛选弹幕（支持 Niconico XML / JSON 及带时间戳的 Bilibili XML）
 - **屏蔽过滤**：屏蔽词列表（支持正则表达式）、顶部 / 底部固定弹幕独立屏蔽
+  - 正则采用保守检查：`.*`、`.+` 等可变通配符需要在所在分支用 `^` 锚定；被拒绝的规则按普通文字匹配并标记提示
 - **去重合并**：时间窗内的重复滚动弹幕合并为 `原文xN`，计数后缀独立着色；重复的顶部 / 底部固定弹幕在屏上接续显示，计数随到达渐进增长（`x2` → `x3`）
 - **时间轴列表**：虚拟滚动流畅浏览数万条弹幕，跟随播放进度滚动，点击时间戳跳转；弹幕文本中的时间（如「空降 01:39」）也可点击跳转
 
@@ -94,6 +95,7 @@ IINA で動画を見ながらコメントを流せるプラグインです。Nic
 - **密度調整**：1 分あたりのコメント数に上限を設けて絞り込みます。コメントが少ない時間帯はそのまま残るため、展開に応じた自然な盛り上がりが保たれます（デフォルトは無制限）
 - **投稿日で絞り込み**：投稿日の範囲を指定して、特定の期間のコメントだけを表示します（Niconico XML / JSON、およびタイムスタンプ付きの Bilibili XML に対応）
 - **NG 設定**：NG ワードリスト（正規表現対応）と、上部 / 下部の固定コメントの個別ブロックに対応しています
+  - 正規表現は保守的に検査します。`.*` や `.+` などの可変ワイルドカードには分岐ごとに `^` が必要です。拒否されたルールは通常の文字列として照合し、一覧に表示します
 - **重複コメントの集約**：一定時間内の重複スクロールコメントを `本文xN` にまとめ、件数部分を別色で表示します。上部 / 下部の固定コメントは表示中に到着した分だけ件数が増えていきます（`x2` → `x3`）
 - **タイムライン一覧**：数万件のコメントも仮想スクロールで軽快に閲覧できます。再生位置に追従してスクロールし、タイムスタンプやコメント本文内の時刻表記（例：`01:39`）をクリックするとその位置にシークします
 
@@ -143,6 +145,7 @@ An IINA plugin for overlaying danmaku (bullet comments) on videos. Supports loca
 - **Density control**: Cap the maximum number of comments per minute while leaving quieter scenes untouched, preserving the natural ebb and flow of reactions (unlimited by default).
 - **Date slicing**: Filter comments by posting date range to view reactions from a specific period (supports Niconico XML / JSON and timestamped Bilibili XML).
 - **Filtering & blocking**: Keyword blocklist with regex support, plus independent toggles to hide pinned top and bottom comments.
+  - Regex screening is conservative: variable wildcards such as `.*` and `.+` require a `^` anchor on their alternative. Rejected rules are matched as plain text and marked in the list.
 - **Duplicate merging**: Collapses repeated scrolling comments within a configurable time window into `textxN` with a color-coded count suffix; duplicate pinned top/bottom comments stack in place on screen, incrementing the counter as they arrive (`x2` → `x3`).
 - **Timeline list**: Smoothly browse tens of thousands of comments via virtual scrolling. Follows playback position, and both row timestamps and timestamps mentioned inside comments (e.g., `01:39`) are clickable to seek.
 

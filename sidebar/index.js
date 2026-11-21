@@ -56,6 +56,7 @@ var densityCount = document.getElementById("density-count");
 // 滑块最右端不是密度值, 而是"无限制"哨兵; 与 index.html 的 max 必须一致
 var DENSITY_SLIDER_OFF = 550;
 let pendingDensityValue = null;
+let endDensityInputEdit = function () {};
 var tabBasic = document.getElementById("tab-basic");
 var tabAdvanced = document.getElementById("tab-advanced");
 var tabFilter = document.getElementById("tab-filter");
@@ -748,6 +749,7 @@ if (tabButtons.length) {
   tabButtons.forEach(function (tab) {
     tab.addEventListener("click", function () {
       var name = tab.dataset.tab;
+      if (name !== activeTabName) endDensityInputEdit();
       activeTabName = name;
       tabButtons.forEach(function (t) {
         t.classList.toggle("active", t === tab);
@@ -822,15 +824,17 @@ strokeWidthSlider.addEventListener("input", function () {
   iina.postMessage("set-stroke-width", { width: val });
 });
 
-function submitCssTextShadowBlur() {
+function previewCssTextShadowBlur() {
   if (cssTextShadowBlurSlider.disabled) return;
   let blur = parseFloat(cssTextShadowBlurSlider.value);
   cssTextShadowBlurValue.textContent = String(blur) + 'px';
-  iina.postMessage('set-css-text-shadow-blur', {blur: blur});
 }
 
-cssTextShadowBlurSlider.addEventListener('input', submitCssTextShadowBlur);
-cssTextShadowBlurSlider.addEventListener('change', submitCssTextShadowBlur);
+cssTextShadowBlurSlider.addEventListener('input', previewCssTextShadowBlur);
+cssTextShadowBlurSlider.addEventListener('change', previewCssTextShadowBlur);
+bindLiveRangePost(cssTextShadowBlurSlider, 'set-css-text-shadow-blur', 'blur', function () {
+  return cssTextShadowBlurSlider.disabled ? null : parseFloat(cssTextShadowBlurSlider.value);
+});
 
 strokeColorInput.addEventListener("input", function () {
   iina.postMessage("set-stroke-color", { color: strokeColorInput.value });
@@ -914,6 +918,7 @@ if (fontCustomInput) {
 function bindLiveRangePost(slider, message, field, readValue) {
   let lastInputValue = null;
   let post = function (value) {
+    if (value === null) return; // A disabled control may decline the edit.
     let payload = {};
     payload[field] = value;
     iina.postMessage(message, payload);
@@ -1074,6 +1079,10 @@ var DENSITY_PAUSE_MS = 150;
 if (densitySlider) {
   let densityTimer = null;
   let densityInputValue = null;
+  // End input/change pairing without dropping a captured pending setting.
+  endDensityInputEdit = function () { densityInputValue = null; };
+  document.addEventListener('pointercancel', endDensityInputEdit);
+  if (typeof window.addEventListener === 'function') window.addEventListener('blur', endDensityInputEdit);
   let readDensity = function () {
     let value = parseInt(densitySlider.value, 10);
     return value >= DENSITY_SLIDER_OFF ? 0 : value;
@@ -1101,7 +1110,10 @@ if (densitySlider) {
   densitySlider.addEventListener("change", function () {
     // A timer may already have sent this input. Do not turn an echoed DOM
     // value into a new edit; change-only operations still submit normally.
-    if (densityInputValue === null) pendingDensityValue = readDensity();
+    if (densityInputValue === null) {
+      let density = readDensity();
+      if (pendingDensityValue !== null || density !== state.danmakuFilterDensity) pendingDensityValue = density;
+    }
     densityInputValue = null;
     sendDensity();
   });
@@ -1178,6 +1190,7 @@ onPluginMessage("danmaku-file-list", function (data) {
     }
   }
   if ((fileListState.selectedPaths[0] || '') !== ((data.selectedPaths || [])[0] || '')) {
+    endDensityInputEdit();
     if (filterTimer) clearTimeout(filterTimer);
     filterTimer = null;
     filterDragMode = null;
@@ -1353,7 +1366,10 @@ onPluginMessage("dandanplay-status", function (data) {
     // 新视频加载时 main.js 会 ddpResetState() 推送 status='idle':
     // 复位为闭合,避免新视频残留上一个视频的展开状态(列表为空却展开,
     // 用户要收起再展开才能触发匹配)。展开头部时会自动触发匹配
-    if (data.status === 'idle') ddpMatchesExpanded = false;
+    if (data.status === 'idle') {
+      ddpMatchesExpanded = false;
+      releasePendingBangumiItem();
+    }
     if (data.animeTitle !== undefined) ddpState.animeTitle = data.animeTitle;
     if (data.episodeTitle !== undefined) ddpState.episodeTitle = data.episodeTitle;
     if (data.episodeId !== undefined) ddpState.episodeId = data.episodeId;
@@ -1776,6 +1792,7 @@ iina.postMessage("danmaku-browser-watch", { watch: false });
 // Closing the sidebar on the Filter tab sends no tab switch; pause the
 // playback-time push while hidden and resume it when shown again.
 document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === 'hidden') endDensityInputEdit();
   if (activeTabName !== 'filter') return;
   if (document.visibilityState === 'hidden') {
     iina.postMessage("danmaku-browser-watch", { watch: false });

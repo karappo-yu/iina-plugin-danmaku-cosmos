@@ -1969,7 +1969,7 @@ test('catastrophic blocklist regexes fall back to literals and are reported as i
   assert.deepEqual(state.blocklist.invalid, ['/(a+)+$/', '/(?:x|y*)*z/']);
   for (const [pattern, unsafe] of [
     ['^regex-\\d+$', false], ['owner|c4', false], ['[(a+)]+', false], ['(?:ab)+', false], ['(abc){1,3}', false],
-    ['(a+){1}', false], ['.*x', false], ['a.*|b.*', false], ['\\d{3}-\\d{3}', false],
+    ['(a+){1}', false], ['^.*x', false], ['^a.*|^b.*', false], ['\\d{3}-\\d{3}', false],
     ['a?', false], ['a{0,16}', false], ['a?|b?', false], ['(?:ab|cd)', false],
     ['^.{20,}$', false], ['w{3,}', false], ['(?:ab)+c', false],
     ['(\\d+\\.)+', true], ['(a*){20}', true],
@@ -1991,19 +1991,59 @@ test('catastrophic blocklist regexes fall back to literals and are reported as i
   }
 });
 
-test('common accepted blocklist patterns stay fast on adversarial comments', () => {
+test('accepted blocklist patterns preserve matching behavior without wall-clock limits', () => {
   const h = createHarness(true);
-  const accepted = ['^regex-\\d+$', 'owner|c4', '[(a+)]+', '(?:ab)+', '(abc){1,3}', 'a?', '.*x', 'a.*|b.*',
-    '\\d{3}-\\d{3}', '^.{20,}$', 'w{3,}', '(?:ab)+c', 'a{16}a{16}b', '(?:ab|cd)'];
-  const inputs = ['a'.repeat(5000) + '!', 'ab'.repeat(2500) + '!', 'abc'.repeat(1500) + '!', '1'.repeat(5000) + '!',
-    '1-'.repeat(2500) + '!', 'w'.repeat(5000) + '!'];
-  for (const pattern of accepted) {
-    assert.equal(h.context.isUnsafeBlockPattern(pattern), false, pattern);
-    const regex = new RegExp(pattern, 'i');
-    const started = Date.now();
-    for (const text of inputs) regex.test(text);
-    assert.ok(Date.now() - started < 200, pattern);
+  for (const [pattern, matching, failing] of [
+    ['^regex-\\d+$', 'regex-42', 'regex-x'], ['owner|c4', 'owner', 'ordinary'],
+    ['[(a+)]+', '(a+)', 'xyz'], ['(?:ab)+', 'abab', 'xyz'], ['(abc){1,3}', 'abcabc', 'xyz'],
+    ['^a?$', 'a', 'aa'], ['^.*x', 'prefix x', 'a'.repeat(5000) + '!'],
+    ['^a.*|^b.*', 'alpha', 'gamma'], ['\\d{3}-\\d{3}', '123-456', '1-2'],
+    ['^.{20,}$', 'a'.repeat(20), 'short'], ['w{3,}', 'wwww!', 'ww!'],
+    ['^(?:ab)+c', 'ababc', 'ab'.repeat(2500) + '!'],
+    ['a{16}a{16}b', 'a'.repeat(32) + 'b', 'a'.repeat(31) + 'b'], ['(?:ab|cd)', 'cd', 'ef'],
+  ]) {
+    const matcher = h.context.compileBlockEntry('/' + pattern + '/');
+    assert.ok(matcher.regex, pattern);
+    assert.equal(matcher.regex.test(matching), true, pattern);
+    assert.equal(matcher.regex.test(failing), false, pattern);
   }
+});
+
+test('unanchored variable wildcards fall back to literals while anchored alternatives remain usable', () => {
+  const h = createHarness(true);
+  for (const pattern of ['.*x', '.+x', 'prefix.*x', '(?:.*)x', '^x|.*y', 'a.*|b.*']) {
+    assert.equal(h.context.compileBlockEntry('/' + pattern + '/').invalid, true, pattern);
+  }
+  for (const pattern of ['^.*x', '^.+x', '^(?:.*)x', '^a.*|^b.*']) {
+    assert.ok(h.context.compileBlockEntry('/' + pattern + '/').regex, pattern);
+  }
+  assert.equal(h.context.compileBlockEntry('/^.*x/ms').invalid, true, 'line restarts plus dot-all are also conservative');
+  assert.ok(h.context.compileBlockEntry('/^.*x/m').regex);
+  assert.ok(h.context.compileBlockEntry('/^.*x/s').regex);
+});
+
+test('named backreferences resolve long and Unicode-escaped capture names', () => {
+  const h = createHarness(true);
+  const longName = 'a'.repeat(64);
+  for (const pattern of [
+    '^(?<' + longName + '>a*)\\k<' + longName + '>x',
+    '^(?<a>a*)\\k<\\u0061>x', '^(?<\\u0061>a*)\\k<a>x',
+    '^(?<\\u{61}>a*)\\k<a>x', '^(?<a>a*)\\k<\\u{61}>x',
+    '^(?<\\u{10400}>a*)\\k<\uD801\uDC00>x',
+    '^(?<\\u{110000}>a*)x', '^(?<a>a*)\\k<\\u{zz}>x',
+  ]) {
+    assert.equal(h.context.isUnsafeBlockPattern(pattern), true, pattern);
+    assert.equal(h.context.compileBlockEntry('/' + pattern + '/').invalid, true, pattern);
+  }
+  for (const pattern of ['(?<\\u0061>.)\\k<a>', '(?<a>.)\\k<\\u{61}>']) {
+    const matcher = h.context.compileBlockEntry('/' + pattern + '/');
+    assert.ok(matcher.regex, pattern);
+    assert.equal(matcher.regex.test('aa'), true);
+    assert.equal(matcher.regex.test('ab'), false);
+  }
+  const literal = h.context.compileBlockEntry('/(\\u{61})+/u');
+  assert.ok(literal.regex, 'a Unicode literal is not a nested quantifier');
+  assert.equal(literal.regex.test('aaa'), true);
 });
 
 test('a saved polynomial regex is rejected on startup, not only when added', () => {
@@ -2042,8 +2082,8 @@ test('backreferences to variable-length captures count as a length choice', () =
     ['((a*))\\2x', true], ['((a*))\\1x', true], ['(a|ab)\\1c', true], ['(.*)(?:\\1)+', true], ['(a?)\\1b', true],
     // fixed-length captures, quantified references and references that match empty
     ['(.)\\1{5,}', false], ['^(.)\\1+$', false], ['(ab)\\1', false], ['(\\d{3})-\\1', false],
-    ['(?<c>.)\\k<c>', false], ['(a){1,3}\\1', false], ['(.*)x|\\1y', false], ['\\2(a)(.*)', false],
-    ['(.*\\1)x', false], ['[\\1](.*)', false],
+    ['(?<c>.)\\k<c>', false], ['(a){1,3}\\1', false], ['^(.*)x|\\1y', false], ['^\\2(a)(.*)', false],
+    ['^(.*\\1)x', false], ['^[\\1](.*)', false],
   ]) {
     assert.equal(h.context.isUnsafeBlockPattern(pattern), unsafe, pattern);
   }
@@ -2086,6 +2126,49 @@ test('payloads missing their fields never become settings or requests', () => {
   assert.equal(h.context.pluginState.danmakuFilterDensity, 200);
   h.emitSidebar('set-danmaku-filter-density', {density: 0});
   assert.equal(h.context.pluginState.danmakuFilterDensity, 0, 'an explicit 0 still means unlimited');
+});
+
+test('invalid and unchanged date selections do not rebuild or push the comment list', () => {
+  const h = createHarness(true); h.readyOverlay();
+  const day = calendarDay('2026-01-01');
+  loadDateFixture(h, [{fork: 'main', comments: [1, 2, 3].map(d => ({
+    body: 'day' + d, vposMs: d * 1000, no: d, postedAt: '2026-01-0' + d + 'T00:00:00+09:00', commands: []
+  }))}]);
+  h.emitSidebar('danmaku-browser-watch', {watch: true});
+  h.sidebarMessages.length = 0; h.overlayMessages.length = 0;
+  for (const data of [{startDay: day + 1, endDay: day}, {startDay: day + 0.5, endDay: day + 1},
+    {startDay: String(day), endDay: day + 1}, {}]) h.emitSidebar('set-danmaku-filter', data);
+  assert.equal(h.sidebarMessages.length, 0);
+  assert.equal(h.overlayMessages.length, 0);
+  h.emitSidebar('set-danmaku-filter', {startDay: day, endDay: day});
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-browser-data').length, 1);
+  h.sidebarMessages.length = 0; h.overlayMessages.length = 0;
+  h.emitSidebar('set-danmaku-filter', {startDay: day, endDay: day});
+  assert.equal(h.sidebarMessages.length, 0);
+  assert.equal(h.overlayMessages.length, 0);
+});
+
+test('opacity bounds, offset types and match IDs reject invalid intents before mutation', () => {
+  const h = createHarness(true); h.readyOverlay();
+  const before = JSON.stringify(h.context.pluginState);
+  h.sidebarMessages.length = 0; h.overlayMessages.length = 0;
+  for (const [name, data] of [
+    ['set-opacity', {opacity: 1.1}], ['set-stroke-opacity', {opacity: 1.1}],
+    ['set-danmaku-offset', {offset: '5'}], ['dandanplay-select-match', {match: {episodeId: {bad: true}}}],
+    ['dandanplay-select-match', {match: {episodeId: Infinity}}],
+  ]) h.emitSidebar(name, data);
+  assert.equal(JSON.stringify(h.context.pluginState), before);
+  assert.equal(h.httpRequests.length, 0);
+  assert.equal(h.sidebarMessages.length, 0);
+  assert.equal(h.overlayMessages.length, 0);
+  h.emitSidebar('set-opacity', {opacity: 0});
+  h.emitSidebar('set-stroke-opacity', {opacity: 0.5});
+  h.emitSidebar('set-danmaku-offset', {offset: 5});
+  assert.equal(h.context.pluginState.canvasOpacity, 0);
+  assert.equal(h.context.pluginState.strokeOpacity, 0.5);
+  assert.equal(h.context.pluginState.danmakuTimeOffsetSec, 5);
+  h.emitSidebar('dandanplay-select-match', {match: {episodeId: '99', animeTitle: 'A', episodeTitle: '1'}});
+  assert.equal(h.httpRequests.length, 1);
 });
 
 test('payloadless intents still run without a message body', () => {
@@ -2185,6 +2268,10 @@ test('extractNumberFromName prioritizes explicit episode markers over codec/seas
     ['Show S01E1080p [05]', 5],
     ['Show Vol.1080p', null],
     ['Mob Psycho 100 - 07', 7],
+    ['Show - 05 - 10-bit', 5],
+    ['Show - 05 - 2.0 AAC', 5],
+    ['Mob Psycho 100 - 07 - 10-bit', 7],
+    ['Show - 05v2 - 2.0 AAC', 5],
     ['86 - Eighty Six - 03', 3],
     ['Spy x Family 2 - 04', 4],
     ['Show - 2023 - 05', 5],

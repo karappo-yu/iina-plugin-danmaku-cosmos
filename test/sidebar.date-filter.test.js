@@ -15,6 +15,7 @@ function createSidebar() {
   const messages = [];
   const handlers = new Map();
   const timers = new Map();
+  const tabs = [];
   let timerId = 0;
   function element(tagName = 'DIV', attributes = {}) {
     const events = new Map();
@@ -75,6 +76,7 @@ function createSidebar() {
     }
     if (rootStack.length) rootStack.at(-1).appendChild(el);
     if (attrs.id) elements.set(attrs.id, el);
+    if (el.dataset.tab && el.classList.contains('tab')) tabs.push(el);
     if (!/\/\s*$/.test(attrText) && !/^(input|meta|link|br|hr)$/i.test(tag)) rootStack.push(el);
   }
   const segmented = elements.get('style-preset-segmented');
@@ -88,6 +90,7 @@ function createSidebar() {
     createElement: tag => element(tag.toUpperCase()),
     createTextNode: text => ({ nodeType: 3, textContent: String(text), remove() {} }),
     querySelectorAll(selector) {
+      if (selector === '.tabbar .tab') return tabs;
       const attr = /^\[([\w-]+)\]$/.exec(selector);
       return attr ? [...elements.values()].filter(el => Object.hasOwn(el.attributes, attr[1])) : [];
     },
@@ -112,7 +115,7 @@ function createSidebar() {
   emit('danmaku-state', { enabled: true, danmakuLoaded: true, danmakuFileType: 'nico-json' });
   filterInfo();
   return {
-    elements, context, document, window, messages, emit, filterInfo,
+    elements, context, document, window, messages, tabs, emit, filterInfo,
     flush() { for (const [id, callback] of Array.from(timers)) { timers.delete(id); callback(); } },
     filterMessages() { return messages.filter(message => message.name === 'set-danmaku-filter'); },
   };
@@ -773,4 +776,60 @@ test('Nico source types hide the complete simplification row without resetting i
   h.filterInfo({fileType: 'nico-xml'});
   assert.equal(row.style.display, 'none', 'filter/source metadata also hides the row');
   assert.equal(h.messages.filter(m => m.name === 'set-danmaku-force-simplified').length, 0, 'state restoration sends no settings intent');
+});
+
+test('sidebar visibility pauses and resumes watching only on the filter tab', () => {
+  for (const name of ['filter', 'basic', 'advanced']) {
+    const h = createSidebar();
+    h.tabs.find(tab => tab.dataset.tab === name).fire('click');
+    h.messages.length = 0;
+    h.document.visibilityState = 'hidden'; h.document.fire('visibilitychange');
+    assert.deepEqual(h.messages.map(m => [m.name, m.data && m.data.watch]),
+      name === 'filter' ? [['danmaku-browser-watch', false]] : [], name);
+    h.messages.length = 0;
+    h.document.visibilityState = 'visible'; h.document.fire('visibilitychange');
+    assert.deepEqual(h.messages.map(m => [m.name, m.data && m.data.watch]),
+      name === 'filter' ? [['danmaku-browser-request', undefined], ['danmaku-browser-watch', true]] : [], name);
+  }
+});
+
+test('idle network status releases a bangumi row whose request was cancelled', () => {
+  const h = createSidebar();
+  h.elements.get('dandanplay-search-input').value = 'show';
+  h.elements.get('dandanplay-search-go-btn').fire('click'); h.flush();
+  const searchId = h.messages.findLast(m => m.name === 'dandanplay-search').data.searchId;
+  h.emit('dandanplay-search-result', {searchId, animes: [{animeId: 1, animeTitle: 'A'}]});
+  const row = h.elements.get('dandanplay-search-results-list').children[0];
+  row.fire('click');
+  h.emit('dandanplay-status', {status: 'idle'});
+  assert.equal(row.children[1].textContent, h.context.t('click_load_episodes'));
+  row.fire('click');
+  assert.deepEqual(h.messages.filter(m => m.name === 'dandanplay-get-bangumi').map(m => m.data.bangumiId), ['1', '1']);
+});
+
+test('shadow blur applies live and does not resubmit its trailing change', () => {
+  const h = createSidebar();
+  h.emit('danmaku-state', {canvasMode: 'css', cssTextShadowBlur: 2});
+  const slider = h.elements.get('css-text-shadow-blur-slider');
+  slider.value = '3.5'; slider.fire('input'); slider.fire('change');
+  assert.deepEqual(h.messages.filter(m => m.name === 'set-css-text-shadow-blur').map(m => m.data.blur), [3.5]);
+  h.emit('danmaku-state', {canvasMode: 'default'});
+  slider.fire('input'); slider.fire('change');
+  assert.equal(h.messages.filter(m => m.name === 'set-css-text-shadow-blur').length, 1);
+});
+
+test('interrupted density edits allow the next standalone change', () => {
+  for (const finish of ['hide', 'tab', 'source']) {
+    const h = createSidebar();
+    h.filterInfo({filterDensity: 300});
+    const slider = h.elements.get('density-slider');
+    slider.value = '350'; slider.fire('input');
+    if (finish === 'hide') {h.document.visibilityState = 'hidden'; h.document.fire('visibilitychange');}
+    if (finish === 'tab') h.tabs.find(tab => tab.dataset.tab === 'advanced').fire('click');
+    if (finish === 'source') h.emit('danmaku-file-list', {xmlFiles: [], jsonFiles: [], selectedPaths: ['/new']});
+    h.flush();
+    h.filterInfo({filterDensity: 350});
+    slider.value = '400'; slider.fire('change');
+    assert.deepEqual(h.messages.filter(m => m.name === 'set-danmaku-filter-density').map(m => m.data.density), [350, 400], finish);
+  }
 });

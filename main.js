@@ -320,6 +320,10 @@ function isHexColor(value) {
   return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
 }
 
+function isDdpId(value) {
+  return (typeof value === 'string' && value.trim() !== '') || isFiniteNumber(value);
+}
+
 function sidebarOnMessage(name, callback) {
   let handler = withPayload(name, callback);
   sidebarMessageHandlers[name] = handler;
@@ -498,10 +502,8 @@ function resetNicoJsonFilterState(extra) {
 }
 
 function applyDanmakuFilter(startDay, endDay) {
-  if (startDay === null && endDay === null) {
-    commitState({danmakuFilterStartDay: null, danmakuFilterEndDay: null});
-  } else {
-    if (!Number.isInteger(startDay) || !Number.isInteger(endDay) || startDay > endDay || pluginState.nicoJsonDateInfo.firstDay === null) return;
+  if (startDay !== null || endDay !== null) {
+    if (!Number.isInteger(startDay) || !Number.isInteger(endDay) || startDay > endDay || pluginState.nicoJsonDateInfo.firstDay === null) return false;
     let days = pluginState.nicoJsonDateInfo.dayCounts;
     let startIndex = 0;
     while (startIndex < days.length - 1 && days[startIndex][0] < startDay) startIndex += 1;
@@ -510,9 +512,12 @@ function applyDanmakuFilter(startDay, endDay) {
     startDay = days[startIndex][0];
     endDay = days[endIndex][0];
     let fullRange = startDay === pluginState.nicoJsonDateInfo.firstDay && endDay === pluginState.nicoJsonDateInfo.lastDay;
-    commitState({danmakuFilterStartDay: fullRange ? null : startDay, danmakuFilterEndDay: fullRange ? null : endDay});
+    if (fullRange) { startDay = null; endDay = null; }
   }
+  if (startDay === pluginState.danmakuFilterStartDay && endDay === pluginState.danmakuFilterEndDay) return false;
+  commitState({danmakuFilterStartDay: startDay, danmakuFilterEndDay: endDay});
   refreshDanmakuFilters();
+  return true;
 }
 
 function refreshDanmakuFilters() {
@@ -570,8 +575,28 @@ function readRegexQuantifier(pattern, index) {
   return {length: length, repeats: max > 1, variable: min !== max};
 }
 
+function readRegexUnicodeEscape(pattern, index, allowCodePoint) {
+  let match = /^\\u(?:\{([0-9a-fA-F]+)\}|([0-9a-fA-F]{4}))/.exec(pattern.slice(index));
+  if (!match || (match[1] && !allowCodePoint)) return null;
+  let code = parseInt(match[1] || match[2], 16);
+  if (!Number.isFinite(code) || code > 0x10FFFF) return null;
+  return {length: match[0].length, code: code};
+}
+
+function normalizeRegexGroupName(name) {
+  let normalized = '';
+  for (let i = 0; i < name.length; i++) {
+    if (name.charAt(i) !== '\\') { normalized += name.charAt(i); continue; }
+    let escape = readRegexUnicodeEscape(name, i, true);
+    if (!escape) return null;
+    normalized += String.fromCodePoint(escape.code);
+    i += escape.length - 1;
+  }
+  return normalized || null;
+}
+
 // A synchronous RegExp cannot be interrupted, and a saved catastrophic entry
-// would freeze every load after a restart. Two shapes are rejected:
+// would freeze every load after a restart. Three shapes are rejected:
 // 1. a group that can repeat (any maximum above 1, bounded or not) while its
 //    body is ambiguous, i.e. contains a quantifier or an alternation:
 //    (a+)+, (a+){9}, (a{1,5})+, (a|aa)+ (exponential);
@@ -581,10 +606,17 @@ function readRegexQuantifier(pattern, index) {
 //    Fixed {n} has no length choice. Top-level alternatives count separately.
 //    A backreference to a variable-length capture re-matches every length the
 //    group tried, so it counts as one more choice: (.*)\1x is cubic.
+// 3. variable wildcards without a preceding start anchor on their alternative:
+//    .*x restarts from every character on failure. ^.*x remains usable unless
+//    both m and s allow repeated line starts to consume the entire remainder.
 // This is conservative: safe forms such as (ab|cd)+, (a+)? and two bounded
 // numeric fields are also rejected; they fall back to marked literal entries.
-function isUnsafeBlockPattern(pattern) {
-  let newFrame = function () { return {ambiguous: false, variable: 0, maxVariable: 0, alternation: false}; };
+function isUnsafeBlockPattern(pattern, flags) {
+  flags = flags || '';
+  let unicode = flags.indexOf('u') !== -1;
+  let multilineDotAll = flags.indexOf('m') !== -1 && flags.indexOf('s') !== -1;
+  let newFrame = function (anchor) { return {ambiguous: false, variable: 0, maxVariable: 0,
+    alternation: false, anchored: !!anchor, inheritedAnchor: !!anchor}; };
   let stack = [newFrame()];
   let top = function () { return stack[stack.length - 1]; };
   let addVariable = function (frame, n) {
@@ -598,17 +630,36 @@ function isUnsafeBlockPattern(pattern) {
   for (let i = 0; i < pattern.length; i++) {
     let ch = pattern.charAt(i);
     if (ch === '\\') {
-      let ref = /^\\(?:([1-9]\d*)|k<([^>]+)>)/.exec(pattern.slice(i, i + 64));
-      if (ref) {
-        let group = ref[1] ? Number(ref[1]) : captureNames[ref[2]];
-        i += ref[0].length - 1;
+      let group, refEnd = null;
+      if (pattern.slice(i, i + 3) === '\\k<') {
+        refEnd = pattern.indexOf('>', i + 3);
+        if (refEnd < 0) return true;
+        let name = normalizeRegexGroupName(pattern.slice(i + 3, refEnd));
+        if (name === null) return true;
+        group = captureNames[name];
+      } else {
+        let ref = /^\\([1-9]\d*)/.exec(pattern.slice(i));
+        if (ref) { group = Number(ref[1]); refEnd = i + ref[0].length - 1; }
+      }
+      if (refEnd !== null) {
+        i = refEnd;
         if (group && variableCaptures[group]) {
           top().ambiguous = true;
           if (addVariable(top(), 1)) return true;
         }
         continue;
       }
+      let escape = readRegexUnicodeEscape(pattern, i, unicode);
+      if (escape) { i += escape.length - 1; continue; }
+      let hex = /^\\x[0-9a-fA-F]{2}/.exec(pattern.slice(i));
+      if (hex) { i += hex[0].length - 1; continue; }
       i++;
+      continue;
+    }
+    if (ch === '^') { top().anchored = true; continue; }
+    if (ch === '.') {
+      let quantifier = readRegexQuantifier(pattern, i + 1);
+      if (quantifier && quantifier.variable && (!top().anchored || multilineDotAll)) return true;
       continue;
     }
     if (ch === '[') {
@@ -634,10 +685,11 @@ function isUnsafeBlockPattern(pattern) {
       frame.alternation = true;
       frame.maxVariable = Math.max(frame.maxVariable, frame.variable);
       frame.variable = 0;
+      frame.anchored = frame.inheritedAnchor;
       continue;
     }
     if (ch === '(') {
-      let frame = newFrame();
+      let frame = newFrame(top().anchored);
       stack.push(frame);
       if (pattern.charAt(i + 1) === '?') {
         let next = pattern.charAt(i + 2);
@@ -649,8 +701,11 @@ function isUnsafeBlockPattern(pattern) {
             // Named groups (?<name>...) are numbered like plain captures.
             let close = pattern.indexOf('>', i);
             frame.capture = ++captureCount;
-            if (close > 0) captureNames[pattern.slice(i + 3, close)] = frame.capture;
-            i = close < 0 ? pattern.length : close;
+            if (close < 0) return true;
+            let name = normalizeRegexGroupName(pattern.slice(i + 3, close));
+            if (name === null) return true;
+            captureNames[name] = frame.capture;
+            i = close;
           }
         }
       } else {
@@ -690,7 +745,7 @@ function compileBlockEntry(entry) {
   if (regexMatch) {
     var pattern = regexMatch[1];
     var rawFlags = regexMatch[2];
-    if (pattern.length <= BLOCK_REGEX_MAX_LENGTH && !isUnsafeBlockPattern(pattern)) {
+    if (pattern.length <= BLOCK_REGEX_MAX_LENGTH && !isUnsafeBlockPattern(pattern, rawFlags)) {
       var flags = rawFlags.indexOf('i') === -1 ? rawFlags + 'i' : rawFlags;
       try {
         return {regex: new RegExp(pattern, flags)};
@@ -1380,9 +1435,10 @@ function registerSidebarHandlers() {
   let isCanvasMode = function (value) { return value === 'css' || value === 'default'; };
   let isNonNegative = function (value) { return isFiniteNumber(value) && value >= 0; };
   let isPositive = function (value) { return isFiniteNumber(value) && value > 0; };
+  let isOpacity = function (value) { return isFiniteNumber(value) && value >= 0 && value <= 1; };
   [
-    ['set-opacity', 'canvasOpacity', 'opacity', isNonNegative], ['set-fontscale', 'canvasFontScale', 'scale', isPositive],
-    ['set-canvas-mode', 'currentCanvasMode', 'mode', isCanvasMode], ['set-stroke-opacity', 'strokeOpacity', 'opacity', isNonNegative],
+    ['set-opacity', 'canvasOpacity', 'opacity', isOpacity], ['set-fontscale', 'canvasFontScale', 'scale', isPositive],
+    ['set-canvas-mode', 'currentCanvasMode', 'mode', isCanvasMode], ['set-stroke-opacity', 'strokeOpacity', 'opacity', isOpacity],
     ['set-stroke-width', 'strokeWidth', 'width', isNonNegative], ['set-stroke-color', 'strokeColor', 'color', isHexColor],
     ['set-stroke-inversion-color', 'strokeInversionColor', 'color', isHexColor], ['set-comment-limit', 'commentLimit', 'limit', isNonNegative],
     ['set-scroll-speed', 'scrollSpeed', 'speed', isPositive]
@@ -1422,6 +1478,7 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("set-danmaku-offset", function (data) {
+    if (!isFiniteNumber(data.offset)) return;
     applyDanmakuOffset(data.offset);
   });
 
@@ -1439,8 +1496,7 @@ function registerSidebarHandlers() {
 
   sidebarOnMessage("set-danmaku-filter", function (data) {
     if (data.startDay === undefined || data.endDay === undefined) return;
-    applyDanmakuFilter(data.startDay, data.endDay);
-    notifyBrowserDataChanged(); // 范围切片变化 → 列表与 overlay 同步重建
+    if (applyDanmakuFilter(data.startDay, data.endDay)) notifyBrowserDataChanged();
   });
 
   sidebarOnMessage("set-danmaku-filter-density", function (data) {
@@ -1593,7 +1649,7 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("dandanplay-get-bangumi", function (data) {
-    if ((typeof data.bangumiId !== 'string' && !isFiniteNumber(data.bangumiId)) || data.bangumiId === '') return;
+    if (!isDdpId(data.bangumiId)) return;
     let generation = ++ddpBangumiGeneration;
     let searchGeneration = ddpSearchGeneration;
     var bangumiId = data.bangumiId;
@@ -1621,14 +1677,14 @@ function registerSidebarHandlers() {
 
   sidebarOnMessage("dandanplay-select-match", function (data) {
     var match = data.match;
-    if (match && match.episodeId) {
+    if (match && isDdpId(match.episodeId)) {
       commitDdpState({matchType: 'filename'});
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, true, DDP_LOAD_ORIGIN.MANUAL);
     }
   });
 
   sidebarOnMessage("dandanplay-select-episode", function (data) {
-    if ((typeof data.episodeId !== 'string' && !isFiniteNumber(data.episodeId)) || data.episodeId === '') return;
+    if (!isDdpId(data.episodeId)) return;
     commitDdpState({matchType: 'filename'});
     ddpLoadComments(data.episodeId, data.animeTitle, data.episodeTitle, true, DDP_LOAD_ORIGIN.MANUAL);
   });

@@ -36,8 +36,9 @@ function extractNumberFromName(name) {
   }
   // Fansub style "Title - 07": the number after a spaced dash is the episode,
   // even when the title itself contains numbers (Mob Psycho 100 - 07,
-  // 86 - Eighty Six - 03, Spy x Family 2 - 04). The last such token wins.
-  let dashMatches = name.match(/\s[-\u2013\u2014]\s*\d{1,3}(?:v\d)?(?=$|[\s.\[\]()_\-])/gi);
+  // 86 - Eighty Six - 03, Spy x Family 2 - 04). Ignore technical suffixes
+  // such as " - 10-bit" and " - 2.0 AAC"; the last episode token wins.
+  let dashMatches = name.match(/\s[-\u2013\u2014]\s*\d{1,3}(?:v\d)?(?!\d|p\b|-?bit\b|\.\d)(?=$|[\s.\[\]()_\-])/gi);
   if (dashMatches) {
     match = dashMatches[dashMatches.length - 1].match(/(\d{1,3})(?:v\d)?$/i);
     if (match) return parseInt(match[1], 10);
