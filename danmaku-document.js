@@ -257,16 +257,21 @@ function mergeProjectedComments(items, windowVpos) {
   return result;
 }
 
+function canSimplifySource(sourceType) {
+  return sourceType === 'bilibili-xml' || sourceType === 'dandanplay';
+}
+
 function projectDanmaku(doc, settings) {
   settings = settings || {};
+  const simplify = settings.forceSimplified && canSimplifySource(doc.sourceType) && settings.simplify;
   const sliced = doc.comments.filter(function (c) {
     return c.isOwner || c.isEasy || c.day === null || settings.startDay == null || settings.endDay == null || (c.day >= settings.startDay && c.day <= settings.endDay);
   });
   const kept = selectDensity(sliced, settings.density);
   const items = kept.map(function (c) {
     let text = c.text;
-    if (settings.forceSimplified && settings.simplify && !(c.isOwner && /^[/@＠]/.test(c.text))) {
-      if (c.simplifiedText === null) c.simplifiedText = settings.simplify(c.text);
+    if (simplify && !(c.isOwner && /^[/@＠]/.test(c.text))) {
+      if (c.simplifiedText === null) c.simplifiedText = simplify(c.text);
       text = c.simplifiedText;
     }
     return {comment: c, text: text, blocked: !c.isOwner && !!(settings.isBlocked && settings.isBlocked(text, c.pos)), count: 1};
@@ -306,4 +311,5 @@ function projectDanmaku(doc, settings) {
 }
 
 module.exports = {parseDanmakuSource: parseDanmakuSource, projectDanmaku: projectDanmaku, emptyDateInfo: emptyDateInfo,
-  getCommentPosition: getCommentPosition, decodeXmlText: decodeXmlText, mergeProjectedComments: mergeProjectedComments};
+  getCommentPosition: getCommentPosition, decodeXmlText: decodeXmlText, mergeProjectedComments: mergeProjectedComments,
+  canSimplifySource: canSimplifySource};

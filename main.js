@@ -742,10 +742,11 @@ function getCurrentProjection() {
   let path = pluginState.danmakuFileList.selectedPaths[0];
   let doc = path && danmakuCache[path];
   if (!doc) return null;
+  let forceSimplified = pluginState.danmakuForceSimplified && danmakuDocument.canSimplifySource(doc.sourceType);
   let settings = {
     startDay: pluginState.danmakuFilterStartDay, endDay: pluginState.danmakuFilterEndDay,
-    density: pluginState.danmakuFilterDensity, forceSimplified: pluginState.danmakuForceSimplified,
-    simplify: pluginState.danmakuForceSimplified && ensureSimplifier() ? openccSimplifier : null,
+    density: pluginState.danmakuFilterDensity, forceSimplified: forceSimplified,
+    simplify: forceSimplified && ensureSimplifier() ? openccSimplifier : null,
     dedupeWindow: pluginState.danmakuDedupeEnabled ? pluginState.danmakuDedupeWindow * 100 : 0,
     blockTop: pluginState.danmakuBlockTopEnabled, blockBottom: pluginState.danmakuBlockBottomEnabled,
     blockEnabled: pluginState.danmakuBlocklistEnabled, regexes: blockRegexes,

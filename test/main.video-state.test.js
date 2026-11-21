@@ -1124,18 +1124,42 @@ test('XML attributes, CDATA and numeric entities have the same text in filters a
   assert.equal(h.context.getEffectiveContent(p).length, 0);
 });
 
-test('simplification operates on decoded text and preserves metadata and literal entity text', () => {
+test('Nico XML preserves decoded text and metadata with forced simplification enabled', () => {
   const h = createHarness(true);
   h.context.pluginState.danmakuForceSimplified = true;
-  h.context.openccSimplifier = text => text.replace(/體/g, '体');
+  h.context.openccSimplifier = () => {throw new Error('Nico text must not be converted');};
   const source = '<packet><chat user_id="體" mail="font:體" vpos="-10">&#x9ad4; &amp;lt;</chat></packet>';
   const p = setPositionSource(h, 'nico-xml', source);
   const effective = h.context.getEffectiveContent(p);
   assert.equal(h.context.danmakuCache[p].comments[0].userId, '體');
   assert.deepEqual(Array.from(effective[0].mail), ['font:體']);
-  assert.equal(effective[0].content, '体 &lt;');
-  assert.equal(h.context.buildDanmakuBrowserList()[0].text, '体 &lt;');
+  assert.equal(effective[0].content, '體 &lt;');
+  assert.equal(h.context.buildDanmakuBrowserList()[0].text, '體 &lt;');
   assert.equal(h.context.buildDanmakuBrowserList()[0].t, -10);
+});
+
+test('a saved simplification setting skips Nico and resumes for Chinese sources', () => {
+  const h = createHarness(true, false, {danmakuForceSimplified: true});
+  h.readyOverlay();
+  const sources = [
+    ['/videos/v1.json', JSON.stringify([{fork: 'main', comments: [{body: '繁體字幕', vposMs: 1000, commands: []}]}])],
+    ['/videos/legacy.json', JSON.stringify([{chat: {content: '繁體字幕', vpos: 100, user_id: 'viewer'}}])],
+    ['/videos/nico.xml', '<packet><chat vpos="100" user_id="viewer">繁體字幕</chat></packet>'],
+  ];
+  for (const [path, source] of sources) {
+    h.setFile(path, source);
+    h.emitSidebar('select-danmaku-file', {path});
+    assert.equal(h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.comments[0].content, '繁體字幕');
+    assert.equal(h.context.buildDanmakuBrowserList()[0].text, '繁體字幕');
+    assert.equal(h.context.openccSimplifier, null, 'loading Nico does not construct OpenCC');
+    assert.equal(h.context.pluginState.danmakuForceSimplified, true);
+  }
+  h.setFile('/videos/bili.xml', '<i><d p="1,1,25,16777215,0,0,viewer,1">繁體字幕</d></i>');
+  h.emitSidebar('select-danmaku-file', {path: '/videos/bili.xml'});
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.comments[0].content, '繁体字幕');
+  h.emitSidebar('select-danmaku-file', {path: '/videos/nico.xml'});
+  assert.equal(h.context.getEffectiveContent('/videos/nico.xml')[0].content, '繁體字幕', 'returning to cached Nico retains native text');
+  assert.equal(h.preferences.get('danmakuForceSimplified'), true, 'source switches retain the saved preference');
 });
 
 test('real legacy JSON density and blocking preserve owners and match the bundled parser', () => {

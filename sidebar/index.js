@@ -10,6 +10,7 @@ function onPluginMessage(name, callback) {
 var toggleDanmaku = document.getElementById("toggle-danmaku");
 var canvasRendererToggle = document.getElementById("canvas-renderer-toggle");
 var danmakuForceSimplifiedToggle = document.getElementById("danmaku-force-simplified-toggle"); 
+let danmakuForceSimplifiedRow = document.getElementById("danmaku-force-simplified-row");
 var danmakuAutoOffsetToggle = document.getElementById("danmaku-auto-offset-toggle"); 
 let danmakuAutoOffsetRow = document.getElementById("danmaku-auto-offset-row");
 let blockTopToggle = document.getElementById("danmaku-block-top-toggle");
@@ -595,7 +596,7 @@ function updateUI() {
     speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
   }
   if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
-  if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified; 
+  updateForceSimplifiedUI();
   if (danmakuAutoOffsetToggle) danmakuAutoOffsetToggle.checked = state.danmakuAutoOffset; 
   if (danmakuAutoOffsetRow) {
     let showAutoOffset = (state.danmakuLoaded || fileListState.selectedPaths.length > 0) && state.danmakuType === 'nico-json' && state.nicoJsonHasDuration;
@@ -606,6 +607,12 @@ function updateUI() {
   updateFontUI();
   syncStylePresetUI();
   updateFilterUI();
+}
+
+function updateForceSimplifiedUI() {
+  if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified;
+  let isNico = typeof state.danmakuType === 'string' && state.danmakuType.indexOf('nico-') === 0;
+  if (danmakuForceSimplifiedRow) danmakuForceSimplifiedRow.style.display = isNico ? 'none' : '';
 }
 
 function updateCssTextShadowMode(useCanvas) {
@@ -1112,6 +1119,7 @@ onPluginMessage("danmaku-filter-info", function (data) {
   filterDateAxis = buildFilterDateAxis(state.dateInfo);
   state.danmakuFilterDensity = data.filterDensity || 0;
   state.filteredCount = data.filteredCount || 0;
+  updateForceSimplifiedUI();
   updateFilterUI();
 });
 

@@ -59,7 +59,7 @@ test('entity decoding is case insensitive, single pass, and leaves CDATA literal
 });
 
 test('projection caches conversion only and matches blocking after conversion', () => {
-  const doc = parse(nico(2));
+  const doc = parse([{t: 0, text: 'c0'}, {t: 10, text: 'c1'}], '', 'dandanplay');
   let conversions = 0;
   const settings = {forceSimplified: true, simplify(text) {conversions++; return text.toUpperCase();}, isBlocked: text => text === 'C0'};
   const first = project(doc, settings), second = project(doc, settings);
@@ -70,6 +70,35 @@ test('projection caches conversion only and matches blocking after conversion', 
   assert.deepEqual(doc.comments.map(c => c.text), ['c0', 'c1']);
   assert.throws(() => {doc.comments[0].text = 'changed';}, TypeError);
   assert.deepEqual(bodies(project(doc)), ['c0', 'c1']);
+});
+
+for (const [name, source] of [
+  ['V1 JSON', [{fork: 'main', comments: [{body: '繁體字幕', vposMs: 1000, commands: []}]}]],
+  ['legacy JSON', [{chat: {content: '繁體字幕', vpos: 100, user_id: 'viewer'}}]],
+  ['XML', '<packet><chat vpos="100" user_id="viewer">繁體字幕</chat></packet>'],
+]) test('Nico documents keep original text under forced simplification: ' + name, () => {
+  const doc = parse(source);
+  const settings = {forceSimplified: true, simplify() {throw new Error('Nico text must not reach the converter');}};
+  assert.deepEqual(bodies(project(doc, settings)), ['繁體字幕']);
+  assert.deepEqual(project(doc, settings).items.map(c => c.text), ['繁體字幕']);
+  assert.equal(doc.comments[0].simplifiedText, null);
+  doc.comments[0].simplifiedText = '以前的转换缓存';
+  assert.deepEqual(bodies(project(doc, settings)), ['繁體字幕'], 'Nico also ignores an existing converted memo');
+});
+
+for (const [name, source, hint] of [
+  ['Bilibili XML', '<i><d p="1,1,25,16777215,0,0,viewer,1">繁體字幕</d></i>', undefined],
+  ['Dandanplay', [{p: '1,1,16777215,viewer', m: '繁體字幕'}], 'dandanplay'],
+]) test('eligible Chinese sources still simplify screen and list text: ' + name, () => {
+  const doc = parse(source, '', hint);
+  let conversions = 0;
+  const settings = {forceSimplified: true, simplify(text) {conversions++; return text.replace(/體/g, '体');}};
+  const result = project(doc, settings);
+  assert.deepEqual(bodies(result), ['繁体字幕']);
+  assert.deepEqual(result.items.map(c => c.text), ['繁体字幕']);
+  project(doc, settings);
+  assert.equal(conversions, 1, 'eligible conversions remain memoized');
+  assert.deepEqual(bodies(project(doc)), ['繁體字幕']);
 });
 
 test('screen merges scrolling comments statically while fixed comments stay individual for engine fixedCombo', () => {
@@ -84,12 +113,12 @@ test('screen merges scrolling comments statically while fixed comments stay indi
   assert.deepEqual(result.items.filter(c => !c.blocked).map(c => c.text), ['samex2', 'same', 'same', 'samex2']);
 });
 
-test('OpenCC preserves owner control text while converting ordinary owner text', () => {
-  const doc = parse([{fork: 'owner', comments: [
-    {vposMs: 1000, body: '/command 繁體', commands: []},
-    {vposMs: 2000, body: '繁體字幕', commands: []},
-    {vposMs: 3000, body: '@置換 繁體', commands: []},
-  ]}]);
+test('eligible sources preserve owner control text while converting ordinary owner text', () => {
+  const doc = parse([
+    {t: 100, text: '/command 繁體', _commands: [], _isOwner: true},
+    {t: 200, text: '繁體字幕', _commands: [], _isOwner: true},
+    {t: 300, text: '@置換 繁體', _commands: [], _isOwner: true},
+  ], '', 'dandanplay');
   const converted = [];
   const result = project(doc, {forceSimplified: true, simplify(text) {converted.push(text); return text.replace(/體/g, '体');}});
   assert.deepEqual(converted, ['繁體字幕']);

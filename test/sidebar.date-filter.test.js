@@ -755,3 +755,22 @@ test('density keeps its captured edit through keyboard echoes and interrupted dr
     assert.deepEqual(sent(), [350, 350], finish + ': the next edit is not suppressed by historical sends');
   }
 });
+
+test('Nico source types hide the complete simplification row without resetting its preference', () => {
+  const h = createSidebar();
+  const row = h.elements.get('danmaku-force-simplified-row');
+  const toggle = h.elements.get('danmaku-force-simplified-toggle');
+  for (const type of ['nico-json', 'nico-json-v1', 'nico-json-legacy', 'nico-xml']) {
+    h.emit('danmaku-state', {danmakuFileType: type, danmakuLoaded: false, danmakuForceSimplified: true});
+    assert.equal(row.style.display, 'none', type + ': hidden even while rendering is pending');
+    assert.equal(toggle.checked, true, 'hiding preserves the saved setting');
+  }
+  for (const type of ['bilibili-xml', 'dandanplay', null]) {
+    h.emit('danmaku-state', {danmakuFileType: type});
+    assert.equal(row.style.display, '', String(type) + ': the switch returns');
+    assert.equal(toggle.checked, true);
+  }
+  h.filterInfo({fileType: 'nico-xml'});
+  assert.equal(row.style.display, 'none', 'filter/source metadata also hides the row');
+  assert.equal(h.messages.filter(m => m.name === 'set-danmaku-force-simplified').length, 0, 'state restoration sends no settings intent');
+});
