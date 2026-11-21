@@ -710,3 +710,48 @@ test('density applies when a drag pauses and on release, without resending the s
   assert.deepEqual(sent(), [300, 100, 0], 'the rightmost step means unlimited and is sent once');
 });
 
+test('new speed and weight edits are sent again after a preset restores another value', () => {
+  for (const [id, message, field, draft, value] of [
+    ['speed-slider', 'set-scroll-speed', 'speed', '95', 0.95],
+    ['danmaku-font-weight-slider', 'set-danmaku-font', 'fontWeight', '550', '550'],
+  ]) {
+    const h = createSidebar();
+    const slider = h.elements.get(id);
+    const preset = {stylePreset: 'nico', scrollSpeed: 1, danmakuFontWeight: '500'};
+    const sent = () => h.messages.filter(m => m.name === message).map(m => m.data[field]);
+    h.emit('danmaku-state', preset);
+    slider.value = draft; slider.fire('input'); slider.fire('change');
+    assert.deepEqual(sent(), [value]);
+    h.emit('danmaku-state', preset);
+    slider.value = draft; slider.fire('input'); slider.fire('change');
+    assert.deepEqual(sent(), [value, value], id + ': a new keyboard edit is not an old duplicate');
+    h.emit('danmaku-state', preset);
+    slider.value = draft; slider.fire('change');
+    assert.deepEqual(sent(), [value, value, value], id + ': a standalone change also starts a new edit');
+  }
+});
+
+test('density keeps its captured edit through keyboard echoes and interrupted drags', () => {
+  for (const finish of ['keyboard', 'window-blur', 'pointer-cancel']) {
+    const h = createSidebar();
+    const slider = h.elements.get('density-slider');
+    const sent = () => h.messages.filter(m => m.name === 'set-danmaku-filter-density').map(m => m.data.density);
+    h.filterInfo({filterDensity: 300});
+    if (finish !== 'keyboard') slider.fire('pointerdown', {button: 0});
+    slider.value = '350'; slider.fire('input');
+    if (finish === 'window-blur') h.window.fire('blur');
+    if (finish === 'pointer-cancel') h.document.fire('pointercancel');
+    h.emit('danmaku-state', {canvasOpacity: 0.5});
+    h.filterInfo({filterDensity: 300});
+    assert.equal(String(slider.value), '350', finish + ': pending preview survives both state channels');
+    assert.equal(h.elements.get('density-value').textContent, '350 /min');
+    h.flush();
+    assert.deepEqual(sent(), [350], finish + ': the pause sends the captured value');
+    h.filterInfo({filterDensity: 300});
+    slider.fire('change');
+    assert.deepEqual(sent(), [350], finish + ': a trailing change cannot resubmit a stale DOM value');
+    slider.value = '350'; slider.fire('input'); slider.fire('change');
+    h.flush();
+    assert.deepEqual(sent(), [350, 350], finish + ': the next edit is not suppressed by historical sends');
+  }
+});

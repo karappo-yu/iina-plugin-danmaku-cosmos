@@ -54,6 +54,7 @@ var densityValue = document.getElementById("density-value");
 var densityCount = document.getElementById("density-count");
 // 滑块最右端不是密度值, 而是"无限制"哨兵; 与 index.html 的 max 必须一致
 var DENSITY_SLIDER_OFF = 550;
+let pendingDensityValue = null;
 var tabBasic = document.getElementById("tab-basic");
 var tabAdvanced = document.getElementById("tab-advanced");
 var tabFilter = document.getElementById("tab-filter");
@@ -633,8 +634,9 @@ function updateFilterUI() {
 function updateDensitySlider() {
   if (!densitySlider || !densityValue) return;
   var density = state.danmakuFilterDensity || 0;
-  if (densitySliderDrag.active) {
-    // keep the held preview; only the count below follows main
+  if (densitySliderDrag.active || pendingDensityValue !== null) {
+    // Keep the captured preview while a pause is pending, including keyboard
+    // edits and interrupted drags; only the count below follows main.
   } else if (density > 0) {
     densitySlider.value = density;
     densityValue.textContent = density + ' /min';
@@ -900,38 +902,40 @@ if (fontCustomInput) {
   });
 }
 
-// Weight and speed apply live while dragging. change only sends a value that
-// input has not already sent (keyboard or programmatic changes).
-if (fontWeightSlider) {
-  let lastSentWeight = null;
-  let sendWeight = function () {
-    let weight = fontWeightSlider.value;
-    if (weight === lastSentWeight) return;
-    lastSentWeight = weight;
-    iina.postMessage("set-danmaku-font", { fontWeight: weight });
+// Every input is a new intent, even when a preset restored another value.
+// Suppress only the matching change at the end of this input edit.
+function bindLiveRangePost(slider, message, field, readValue) {
+  let lastInputValue = null;
+  let post = function (value) {
+    let payload = {};
+    payload[field] = value;
+    iina.postMessage(message, payload);
   };
-  fontWeightSlider.addEventListener("input", function () {
-    if (fontWeightValue) fontWeightValue.textContent = fontWeightSlider.value;
-    sendWeight();
+  slider.addEventListener('input', function () {
+    lastInputValue = readValue();
+    post(lastInputValue);
   });
-  fontWeightSlider.addEventListener("change", sendWeight);
+  slider.addEventListener('change', function () {
+    let value = readValue();
+    let previousInput = lastInputValue;
+    lastInputValue = null;
+    if (value !== previousInput) post(value);
+  });
 }
 
-let lastSentSpeed = null;
-function sendScrollSpeed() {
-  let speed = parseFloat(speedSlider.value) / 100;
-  if (speed === lastSentSpeed) return;
-  lastSentSpeed = speed;
-  iina.postMessage("set-scroll-speed", { speed: speed });
+if (fontWeightSlider) {
+  fontWeightSlider.addEventListener("input", function () {
+    if (fontWeightValue) fontWeightValue.textContent = fontWeightSlider.value;
+  });
+  bindLiveRangePost(fontWeightSlider, 'set-danmaku-font', 'fontWeight', function () { return fontWeightSlider.value; });
 }
 
 speedSlider.addEventListener("input", function () {
   var val = parseFloat(speedSlider.value) / 100;
   speedValue.textContent = Math.round(val * 100) + '%';
-  sendScrollSpeed();
 });
 
-speedSlider.addEventListener("change", sendScrollSpeed);
+bindLiveRangePost(speedSlider, 'set-scroll-speed', 'speed', function () { return parseFloat(speedSlider.value) / 100; });
 
 if (stylePresetSegmented) {
   stylePresetSegmented.addEventListener("click", function (e) {
@@ -1062,14 +1066,17 @@ if (typeof window.addEventListener === 'function') window.addEventListener('blur
 var DENSITY_PAUSE_MS = 150;
 if (densitySlider) {
   let densityTimer = null;
-  let lastSentDensity = null;
+  let densityInputValue = null;
+  let readDensity = function () {
+    let value = parseInt(densitySlider.value, 10);
+    return value >= DENSITY_SLIDER_OFF ? 0 : value;
+  };
   let sendDensity = function () {
     if (densityTimer) clearTimeout(densityTimer);
     densityTimer = null;
-    var val = parseInt(densitySlider.value, 10);
-    var density = val >= DENSITY_SLIDER_OFF ? 0 : val;
-    if (density === lastSentDensity) return;
-    lastSentDensity = density;
+    if (pendingDensityValue === null) return;
+    let density = pendingDensityValue;
+    pendingDensityValue = null;
     iina.postMessage("set-danmaku-filter-density", { density: density });
   };
   densitySlider.addEventListener("input", function () {
@@ -1079,10 +1086,18 @@ if (densitySlider) {
     } else {
       densityValue.textContent = val + ' /min';
     }
+    densityInputValue = readDensity();
+    pendingDensityValue = densityInputValue;
     if (densityTimer) clearTimeout(densityTimer);
     densityTimer = setTimeout(sendDensity, DENSITY_PAUSE_MS);
   });
-  densitySlider.addEventListener("change", sendDensity);
+  densitySlider.addEventListener("change", function () {
+    // A timer may already have sent this input. Do not turn an echoed DOM
+    // value into a new edit; change-only operations still submit normally.
+    if (densityInputValue === null) pendingDensityValue = readDensity();
+    densityInputValue = null;
+    sendDensity();
+  });
 }
 
 onPluginMessage("danmaku-filter-info", function (data) {
