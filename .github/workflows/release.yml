@@ -21,15 +21,7 @@ jobs:
 
       - name: Validate Plugin
         run: |
-          node --check main.js
-          node --check danmaku-document.js
-          node --check ipc-transport.js
-          node --check plugin-i18n.js
-          node --check episode-matcher.js
-          node --check ddp-client.js
-          node --check overlay/main.js
-          node --check sidebar/index.js
-          node --test test/*.test.js
+          npm run check
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             node -e 'const info = require("./Info.json"); if (process.env.GITHUB_REF_NAME !== "v" + info.version) { throw new Error("Release tag must match Info.json version"); }'
           fi

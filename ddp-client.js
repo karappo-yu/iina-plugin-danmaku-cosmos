@@ -99,7 +99,7 @@ function createDdpClient(deps) {
   }
 
   // Compute MD5 of the first 16MB + file size for DDP hash matching.
-  // Runs as an async /bin/sh subprocess so it never blocks video opening (JS thread stays free).
+  // Runs as an async /bin/bash subprocess (pipefail is not POSIX sh) so it never blocks video opening (JS thread stays free).
   // Uses only macOS base-system tools (dd, /sbin/md5, stat) — no python3/Xcode CLT dependency.
   function calcFileHash(filePath) {
     if (!filePath) return Promise.resolve(null);
@@ -111,7 +111,7 @@ function createDdpClient(deps) {
       + 'sz=$(stat -f %z "$f")\n'
       + 'printf "%s %s\\n" "$h" "$sz"';
     try {
-      return utils.exec('/bin/sh', ['-c', script, 'ddp-hash', filePath]).then(function (result) {
+      return utils.exec('/bin/bash', ['-c', script, 'ddp-hash', filePath]).then(function (result) {
         if (!result || result.status !== 0 || !result.stdout) return null;
         let parts = result.stdout.trim().split(/\s+/);
         if (parts.length >= 2 && /^[0-9a-f]{32}$/.test(parts[0])) {
