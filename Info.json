@@ -38,7 +38,7 @@
     "stylePreset": "nico",
     "dandanplayAppId": "",
     "dandanplayAppSecret": "",
-    "dandanplayAutoNetwork": true,
+    "dandanplayAutoNetwork": false,
     "danmakuForceSimplified": false,
     "danmakuAutoOffset": false,
     "danmakuBlocklistEnabled": false,

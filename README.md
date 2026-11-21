@@ -25,7 +25,9 @@
 
 - **本地文件自动加载**：打开视频时自动查找同目录下的弹幕文件（同名文件、`弹幕` / `Comments` / `コメント` 子文件夹、按集数匹配），也可通过侧边栏或菜单手动选择
 - **支持格式**：Niconico XML、Niconico V1 / 旧版 JSON、Bilibili XML
-- **弹弹play 网络弹幕**：自动为当前视频匹配网络弹幕（文件 hash 精确匹配 → 文件名匹配 → 手动搜索）；结果缓存 24 小时，重播无需重新下载；支持切换网络优先或本地优先
+- **弹弹play 网络弹幕**：为当前视频匹配网络弹幕（文件 hash 精确匹配 → 文件名匹配 → 手动搜索）；24 小时内重播直接使用缓存、不重新请求；过期缓存不会删除，网络失败时作为备用（标记「(旧)」）；支持切换网络优先或本地优先
+  - 自动匹配默认关闭，可在侧边栏开启「自动加载网络弹幕」；关闭时仍可点「网络匹配」或「手动搜索」按需获取
+  - 匹配时会向 api.dandanplay.net 发送视频文件名、文件前 16 MB 的 MD5 和文件大小
   - 缓存目录：`~/Library/Application Support/com.colliderli.iina/plugins/.data/com.danmaku-cosmos.iina-plugin/danmaku-cache`
 
 #### 弹幕风格
@@ -72,7 +74,9 @@ IINA で動画を見ながらコメントを流せるプラグインです。Nic
 
 - **ローカルファイルの自動読み込み**：動画を開くと、同じフォルダ内のコメントファイルを自動で検出します（同名ファイル、`弹幕` / `Comments` / `コメント` フォルダ、ファイル名の話数番号による自動一致）。サイドバーやメニューから手動で選ぶこともできます
 - **対応フォーマット**：Niconico XML、Niconico V1 / 旧版 JSON、Bilibili XML
-- **DanDanPlay オンラインコメント**：再生中の動画に合うオンラインコメントを自動でマッチングします（ファイルハッシュによる完全一致 → ファイル名による候補照合 → 手動検索）。取得結果は 24 時間キャッシュされるため、見返す際の再ダウンロードは不要です。オンライン優先 / ローカル優先の切り替えにも対応しています
+- **DanDanPlay オンラインコメント**：再生中の動画に合うオンラインコメントをマッチングします（ファイルハッシュによる完全一致 → ファイル名による候補照合 → 手動検索）。24 時間以内の再生はキャッシュを使い、再リクエストしません。期限切れのキャッシュは削除されず、通信失敗時の予備として使われます（「(旧)」表示）。オンライン優先 / ローカル優先の切り替えにも対応しています
+  - 自動マッチングは既定でオフです。サイドバーの「ネットワークコメントを自動読み込み」でオンにできます。オフのままでも「ネットマッチ」や「検索」で必要なときに取得できます
+  - マッチング時には、動画のファイル名・先頭 16 MB の MD5・ファイルサイズを api.dandanplay.net に送信します
   - キャッシュの保存先：`~/Library/Application Support/com.colliderli.iina/plugins/.data/com.danmaku-cosmos.iina-plugin/danmaku-cache`
 
 #### コメントスタイル
@@ -119,7 +123,9 @@ An IINA plugin for overlaying danmaku (bullet comments) on videos. Supports loca
 
 - **Auto-load local files**: Automatically looks for local comment files alongside the video (matching filenames, `弹幕` / `Comments` / `コメント` subfolders, and episode-number matching). Files can also be loaded manually from the sidebar or menu.
 - **Supported formats**: Niconico XML, Niconico V1 / legacy JSON, and Bilibili XML.
-- **DanDanPlay online danmaku**: Automatically matches online comments for the current video (exact file-hash match → filename match → manual search). Results are cached for 24 hours to avoid redundant downloads on replay. Supports online-first and local-first priority modes.
+- **DanDanPlay online danmaku**: Matches online comments for the current video (exact file-hash match → filename match → manual search). Replays within 24 hours use the cache without a new request; expired entries are kept (not deleted) and used as a fallback, marked "(old)", when the network fails. Supports online-first and local-first priority modes.
+  - Automatic matching is off by default; turn on "Auto-load network danmaku" in the sidebar to enable it. With it off, "Network Match" and "Search" still fetch comments on demand.
+  - Matching sends the video's file name, the MD5 of its first 16 MB and its file size to api.dandanplay.net.
   - Cache folder: `~/Library/Application Support/com.colliderli.iina/plugins/.data/com.danmaku-cosmos.iina-plugin/danmaku-cache`
 
 #### Danmaku Style

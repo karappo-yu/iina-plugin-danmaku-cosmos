@@ -1928,6 +1928,141 @@ test('saved /.../ blocklist regexes still block after a restart', () => {
   assert.deepEqual(h.context.getEffectiveContent(p).map(c => c.content), ['ordinary should stay']);
 });
 
+test('catastrophic blocklist regexes fall back to literals and are reported as invalid', () => {
+  const h = createHarness(true);
+  const items = [
+    {t: 100, text: 'a'.repeat(40) + '!', _commands: []},
+    {t: 200, text: 'contains /(a+)+$/ literally', _commands: []},
+    {t: 300, text: 'note 42', _commands: []},
+  ];
+  const p = setPositionSource(h, 'dandanplay', items);
+  for (const word of ['/(a+)+$/', '/(?:x|y*)*z/', '/note \\d+/']) h.emitSidebar('danmaku-blocklist-add', {word});
+  h.emitSidebar('danmaku-blocklist-set-enabled', {enabled: true});
+  const started = Date.now();
+  assert.deepEqual(h.context.getEffectiveContent(p).map(c => c.content), ['a'.repeat(40) + '!']);
+  assert.ok(Date.now() - started < 1000, 'no catastrophic backtracking');
+  const state = h.sidebarMessages.findLast(m => m.name === 'danmaku-state' && m.data.blocklist).data;
+  assert.deepEqual(state.blocklist.invalid, ['/(a+)+$/', '/(?:x|y*)*z/']);
+  for (const [pattern, unsafe] of [
+    ['^regex-\\d+$', false], ['owner|c4', false], ['[(a+)]+', false], ['(?:ab)+', false], ['(abc){1,3}', false],
+    ['(a+)?', false], ['(a+){1}', false], ['.*x', false], ['a.*|b.*', false], ['\\d{1,3}-\\d{1,3}', false],
+    ['^.{20,}$', false], ['w{3,}', false], ['(?:ab)+c', false],
+    ['(\\d+\\.)+', true], ['(a*){20}', true],
+    // bounded repetition of an ambiguous body is still super-linear
+    ['(a+){2}', true], ['(a+){9}$', true], ['(a+){2,9}', true], ['(a{1,5})+$', true], ['([a-z]+ )*', true],
+    // alternation inside a repeated group
+    ['(a|aa)+$', true], ['(ab|cd)+', true],
+    // JavaScript class syntax: [] and [^] close immediately
+    ['[](a+)+$', true], ['[^](a+)+$', true], ['[]|(a+)+$', true], ['[\\]](a+)+', true], ['[^\\]]+(a+)+', true],
+    // two or more wide repetitions on one alternative (polynomial blow-up)
+    ['.*.*x', true], ['.*.*.*x', true], ['\\d+\\d+\\d+$', true], ['a*a*a*b', true], ['a.*b.*c', true],
+    ['.*?.*?x', true], ['(?:.*)(?:.*)x', true], ['(?=.*a)(?=.*b)', true], ['(?:ab)+.*', true],
+    ['a{1,100}a{1,100}$', true], ['[a-z]+\\d+', true], ['x|.*.*y', true],
+  ]) {
+    assert.equal(h.context.isUnsafeBlockPattern(pattern), unsafe, pattern);
+  }
+});
+
+test('every pattern accepted by the regex guard stays fast on adversarial comments', () => {
+  const h = createHarness(true);
+  const accepted = ['^regex-\\d+$', 'owner|c4', '[(a+)]+', '(?:ab)+', '(abc){1,3}', '(a+)?', '.*x', 'a.*|b.*',
+    '\\d{1,3}-\\d{1,3}', '^.{20,}$', 'w{3,}', '(?:ab)+c'];
+  const inputs = ['a'.repeat(5000) + '!', 'ab'.repeat(2500) + '!', 'abc'.repeat(1500) + '!', '1'.repeat(5000) + '!',
+    '1-'.repeat(2500) + '!', 'w'.repeat(5000) + '!'];
+  for (const pattern of accepted) {
+    assert.equal(h.context.isUnsafeBlockPattern(pattern), false, pattern);
+    const regex = new RegExp(pattern, 'i');
+    const started = Date.now();
+    for (const text of inputs) regex.test(text);
+    assert.ok(Date.now() - started < 200, pattern);
+  }
+});
+
+test('a saved polynomial regex is rejected on startup, not only when added', () => {
+  const h = createHarness(true, false, {danmakuBlocklist: '["/.*.*.*x/", "/note \\\\d+/"]', danmakuBlocklistEnabled: true});
+  const p = setPositionSource(h, 'dandanplay', [
+    {t: 100, text: 'a'.repeat(1000) + '!', _commands: []},
+    {t: 200, text: 'note 7', _commands: []},
+  ]);
+  const started = Date.now();
+  assert.deepEqual(h.context.getEffectiveContent(p).map(c => c.content), ['a'.repeat(1000) + '!']);
+  assert.ok(Date.now() - started < 1000);
+  h.emitSidebar('request-state');
+  assert.deepEqual(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.blocklist.invalid, ['/.*.*.*x/']);
+});
+
+test('payloads missing their fields never become settings or requests', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  h.context.pluginState.danmakuFilterDensity = 200;
+  const payloadless = new Set(['toggle-danmaku', 'request-state', 'danmaku-file-add', 'dandanplay-trigger-match']);
+  const before = JSON.stringify(h.context.pluginState);
+  const prefsBefore = JSON.stringify(Array.from(h.preferences));
+  const requests = h.httpRequests.length;
+  for (const [name, handlers] of h.sidebarHandlers) {
+    if (payloadless.has(name)) continue;
+    for (const handler of handlers) {
+      handler({});
+      handler({value: 'yes', enabled: 1, density: '5', color: 'red', mode: 'gpu', scale: -1, keyword: '  ', episodeId: '', bangumiId: null, watch: 'on', word: 42});
+    }
+  }
+  assert.equal(JSON.stringify(h.context.pluginState), before);
+  assert.equal(JSON.stringify(Array.from(h.preferences)), prefsBefore);
+  assert.equal(h.httpRequests.length, requests);
+  assert.equal(h.context.pluginState.danmakuFilterDensity, 200);
+  h.emitSidebar('set-danmaku-filter-density', {density: 0});
+  assert.equal(h.context.pluginState.danmakuFilterDensity, 0, 'an explicit 0 still means unlimited');
+});
+
+test('payloadless intents still run without a message body', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  const enabled = h.context.pluginState.danmakuEnabled;
+  h.sidebarHandlers.get('toggle-danmaku')[0](undefined);
+  assert.equal(h.context.pluginState.danmakuEnabled, !enabled);
+  h.sidebarMessages.length = 0;
+  h.sidebarHandlers.get('request-state')[0](undefined);
+  assert.ok(h.sidebarMessages.some(m => m.name === 'danmaku-state'));
+});
+
+test('messages without a payload are ignored and jump targets are validated', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  for (const name of ['dandanplay-search', 'dandanplay-get-bangumi', 'danmaku-dedupe-set', 'set-danmaku-offset',
+    'danmaku-seek', 'select-danmaku-file', 'danmaku-blocklist-add', 'danmaku-browser-watch', 'set-danmaku-filter-density',
+    'danmaku-position-filter-set', 'set-style-preset']) {
+    for (const handler of h.sidebarHandlers.get(name) || []) assert.doesNotThrow(() => handler(undefined), name);
+  }
+  const seeks = [];
+  h.context.iina.mpv.set = (name, value) => seeks.push([name, value]);
+  for (const data of [undefined, {targetSec: '5'}, {targetSec: NaN}, {targetSec: -1}, {targetSec: 12.5}]) {
+    h.overlayHandlers.get('jump')[0](data);
+  }
+  assert.deepEqual(seeks, [['time-pos', 12.5]]);
+});
+
+test('automatic network matching is opt-in', async () => {
+  assert.equal(require('../Info.json').preferenceDefaults.dandanplayAutoNetwork, false);
+  for (const [saved, expected] of [[false, false], [undefined, false], [null, false], ['true', false], [true, true]]) {
+    const h = createHarness(true, saved);
+    assert.equal(h.context.pluginState.dandanplayAutoNetwork, expected, String(saved));
+  }
+  const h = createHarness(true, undefined);
+  h.setVideo('file:///videos/none/Show - 01.mkv');
+  assert.equal(h.httpRequests.length, 0, 'opening a video sends no match request by default');
+  await flushMicrotasks();
+  assert.equal(h.httpRequests.length, 0, 'no deferred match either');
+  h.emitSidebar('dandanplay-trigger-match');
+  await flushMicrotasks();
+  assert.deepEqual(h.httpRequests.map(r => r.url), ['https://api.dandanplay.net/api/v2/match'], 'manual matching still works');
+});
+
+test('the state snapshot carries the plugin language for the sidebar', () => {
+  const h = createHarness(true);
+  h.emitSidebar('request-state');
+  assert.equal(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.uiLang, 'en');
+});
+
 test('auto offset notice reports the clamped offset', () => {
   const h = createHarness(true, false, {danmakuAutoOffset: true});
   h.setMpv('duration', 720);
@@ -1975,6 +2110,14 @@ test('extractNumberFromName prioritizes explicit episode markers over codec/seas
     ['Show Ep 10bit', null],
     ['Show S01E1080p [05]', 5],
     ['Show Vol.1080p', null],
+    ['Mob Psycho 100 - 07', 7],
+    ['86 - Eighty Six - 03', 3],
+    ['Spy x Family 2 - 04', 4],
+    ['Show - 2023 - 05', 5],
+    ['[SubsPlease] Frieren - 12 (1080p) [ABCD1234]', 12],
+    ['[LoliHouse] Oshi no Ko - 11 [WebRip 1080p HEVC-10bit AAC]', 11],
+    ['[Group] Title [01v2][1080p]', 1],
+    ['Gintama 251', 251],
   ];
   for (const [name, expected] of cases) {
     assert.equal(h.context.extractNumberFromName(name), expected, name);

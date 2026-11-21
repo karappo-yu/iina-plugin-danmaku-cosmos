@@ -2,6 +2,8 @@
   "private": true,
   "description": "No build step; package.json provides the Node test command for the vanilla IINA plugin.",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "check:syntax": "node --check main.js && node --check danmaku-document.js && node --check ipc-transport.js && node --check plugin-i18n.js && node --check episode-matcher.js && node --check ddp-client.js && node --check overlay/main.js && node --check sidebar/index.js",
+    "check": "npm run check:syntax && npm test"
   }
 }

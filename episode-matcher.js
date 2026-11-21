@@ -26,11 +26,20 @@ function extractNumberFromName(name) {
   // numbered suffixes above count; English markers must start a token.
   match = name.match(/(?:^|[^a-z])(?:Episode|Ep\.?)\s*(\d{1,3})(?!\d|p\b|bit\b)/i);
   if (match) return parseInt(match[1], 10);
-  match = name.match(/\[(\d{1,3})\](?!.*\[)/);
+  // Bracketed episode numbers may carry a release revision suffix ([01v2]).
+  match = name.match(/\[(\d{1,3})(?:v\d)?\](?!.*\[)/i);
   if (match) return parseInt(match[1], 10);
-  match = name.match(/\[\d{1,3}\]/g);
+  match = name.match(/\[\d{1,3}(?:v\d)?\]/gi);
   if (match) {
-    match = match[match.length - 1].match(/\[(\d{1,3})\]/);
+    match = match[match.length - 1].match(/\[(\d{1,3})/);
+    if (match) return parseInt(match[1], 10);
+  }
+  // Fansub style "Title - 07": the number after a spaced dash is the episode,
+  // even when the title itself contains numbers (Mob Psycho 100 - 07,
+  // 86 - Eighty Six - 03, Spy x Family 2 - 04). The last such token wins.
+  let dashMatches = name.match(/\s[-\u2013\u2014]\s*\d{1,3}(?:v\d)?(?=$|[\s.\[\]()_\-])/gi);
+  if (dashMatches) {
+    match = dashMatches[dashMatches.length - 1].match(/(\d{1,3})(?:v\d)?$/i);
     if (match) return parseInt(match[1], 10);
   }
   // Vol. 通常指卷/碟号, 优先级低于明确的集数标记和方括号集数 ("Show Vol.2 [05]" 应为第 5 集)。
