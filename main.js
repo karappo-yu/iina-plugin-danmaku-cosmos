@@ -579,6 +579,8 @@ function readRegexQuantifier(pattern, index) {
 //    and bounded repetitions and alternatives inside groups. A short bound
 //    does not stop choices multiplying: a?a?...b, a{0,16}a{0,16}...b.
 //    Fixed {n} has no length choice. Top-level alternatives count separately.
+//    A backreference to a variable-length capture re-matches every length the
+//    group tried, so it counts as one more choice: (.*)\1x is cubic.
 // This is conservative: safe forms such as (ab|cd)+, (a+)? and two bounded
 // numeric fields are also rejected; they fall back to marked literal entries.
 function isUnsafeBlockPattern(pattern) {
@@ -589,9 +591,26 @@ function isUnsafeBlockPattern(pattern) {
     frame.variable += n;
     return frame.variable >= 2;
   };
+  // Capture groups are numbered in opening order; a group is variable when
+  // its body has any length choice. Only closed groups are known: a
+  // reference to an open or later group matches the empty string.
+  let captureCount = 0, captureNames = Object.create(null), variableCaptures = Object.create(null);
   for (let i = 0; i < pattern.length; i++) {
     let ch = pattern.charAt(i);
-    if (ch === '\\') { i++; continue; }
+    if (ch === '\\') {
+      let ref = /^\\(?:([1-9]\d*)|k<([^>]+)>)/.exec(pattern.slice(i, i + 64));
+      if (ref) {
+        let group = ref[1] ? Number(ref[1]) : captureNames[ref[2]];
+        i += ref[0].length - 1;
+        if (group && variableCaptures[group]) {
+          top().ambiguous = true;
+          if (addVariable(top(), 1)) return true;
+        }
+        continue;
+      }
+      i++;
+      continue;
+    }
     if (ch === '[') {
       // JavaScript (no v flag): the first unescaped ] always closes the
       // class, so [] is an empty class and [^] matches any character.
@@ -618,15 +637,24 @@ function isUnsafeBlockPattern(pattern) {
       continue;
     }
     if (ch === '(') {
-      stack.push(newFrame());
+      let frame = newFrame();
+      stack.push(frame);
       if (pattern.charAt(i + 1) === '?') {
         let next = pattern.charAt(i + 2);
         if (next === ':' || next === '=' || next === '!') i += 2;
         else if (next === '<') {
           let after = pattern.charAt(i + 3);
           if (after === '=' || after === '!') i += 3;
-          else { let close = pattern.indexOf('>', i); i = close < 0 ? pattern.length : close; }
+          else {
+            // Named groups (?<name>...) are numbered like plain captures.
+            let close = pattern.indexOf('>', i);
+            frame.capture = ++captureCount;
+            if (close > 0) captureNames[pattern.slice(i + 3, close)] = frame.capture;
+            i = close < 0 ? pattern.length : close;
+          }
         }
+      } else {
+        frame.capture = ++captureCount;
       }
       continue;
     }
@@ -636,8 +664,11 @@ function isUnsafeBlockPattern(pattern) {
       if (quantifier && quantifier.repeats && frame.ambiguous) return true;
       if (frame.ambiguous || quantifier) top().ambiguous = true;
       // Include choices inside the group, its alternatives and its quantifier.
-      let groupVariable = Math.max(frame.maxVariable, frame.variable) + (frame.alternation ? 1 : 0) +
-        (quantifier && quantifier.variable ? 1 : 0);
+      let bodyVariable = Math.max(frame.maxVariable, frame.variable) + (frame.alternation ? 1 : 0);
+      // The captured text has one length per iteration, so the group's own
+      // quantifier does not make a backreference to it variable.
+      if (frame.capture && bodyVariable > 0) variableCaptures[frame.capture] = true;
+      let groupVariable = bodyVariable + (quantifier && quantifier.variable ? 1 : 0);
       if (groupVariable && addVariable(top(), groupVariable)) return true;
       if (quantifier) i += quantifier.length;
       continue;
@@ -1351,7 +1382,8 @@ function registerSidebarHandlers() {
   [
     ['set-opacity', 'canvasOpacity', 'opacity', isNonNegative], ['set-fontscale', 'canvasFontScale', 'scale', isPositive],
     ['set-canvas-mode', 'currentCanvasMode', 'mode', isCanvasMode], ['set-stroke-opacity', 'strokeOpacity', 'opacity', isNonNegative],
-    ['set-stroke-width', 'strokeWidth', 'width', isNonNegative], ['set-comment-limit', 'commentLimit', 'limit', isNonNegative],
+    ['set-stroke-width', 'strokeWidth', 'width', isNonNegative], ['set-stroke-color', 'strokeColor', 'color', isHexColor],
+    ['set-stroke-inversion-color', 'strokeInversionColor', 'color', isHexColor], ['set-comment-limit', 'commentLimit', 'limit', isNonNegative],
     ['set-scroll-speed', 'scrollSpeed', 'speed', isPositive]
   ].forEach(function (entry) {
     sidebarOnMessage(entry[0], function (data) {
@@ -1359,20 +1391,6 @@ function registerSidebarHandlers() {
       let patch = {};
       patch[entry[1]] = data[entry[2]];
       commitState(patch);
-    });
-  });
-
-  [['set-stroke-color', 'strokeColor'], ['set-stroke-inversion-color', 'strokeInversionColor']].forEach(function (entry) {
-    sidebarOnMessage(entry[0], function (data) {
-      if (!isHexColor(data.color)) return;
-      let patch = {};
-      patch[entry[1]] = data.color;
-      commitState(patch);
-      // A no-op still acknowledges this request; value echoes cannot identify
-      // repeated A -> B -> A submissions or confirm an unchanged setting.
-      if (typeof data.requestId === 'string' && data.requestId) sidebarPostMessage('danmaku-color-ack', {
-        requestId: data.requestId, stateKey: entry[1], color: pluginState[entry[1]]
-      });
     });
   });
 

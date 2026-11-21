@@ -256,7 +256,7 @@ test('font state echoes preserve the focused draft, spaces, caret and empty cust
   assert.equal(row.style.display, 'none');
 });
 
-test('speed dragging previews locally and commits one intent on change', () => {
+test('speed dragging applies live and change does not resend the same value', () => {
   const h = createSidebar();
   const speed = h.elements.get('speed-slider');
   speed.fire('pointerdown', {button: 0});
@@ -265,11 +265,9 @@ test('speed dragging previews locally and commits one intent on change', () => {
   speed.focus();
   h.emit('danmaku-state', {scrollSpeed: 1});
   assert.equal(speed.value, '25', 'an unrelated state echo does not overwrite the active drag');
-  assert.equal(h.messages.filter(m => m.name === 'set-scroll-speed').length, 0);
+  assert.deepEqual(h.messages.filter(m => m.name === 'set-scroll-speed').map(m => m.data.speed), [0.9, 0.75, 0.5, 0.25]);
   speed.fire('change');
-  const messages = h.messages.filter(m => m.name === 'set-scroll-speed');
-  assert.equal(messages.length, 1);
-  assert.equal(messages[0].data.speed, 0.25);
+  assert.equal(h.messages.filter(m => m.name === 'set-scroll-speed').length, 4);
 });
 
 test('compositionend commits a final composing-only input once and preserves it through delayed echoes and blur', () => {
@@ -412,7 +410,7 @@ for (const control of gestureSliders) test(control.id + ' accepts preset echoes 
   slider.value = control.draft; slider.fire('input');
   h.emit('danmaku-state', {scrollSpeed: 0.5, danmakuFontWeight: '500'});
   assert.equal(slider.value, control.draft, 'a held pointer keeps its preview');
-  assert.equal(h.messages.filter(m => m.name === control.message).length, 0);
+  assert.equal(h.messages.filter(m => m.name === control.message).length, 1, 'the dragged value applies live');
   slider.fire('change');
   const preset = {dataset: {preset: 'bilibili'}};
   h.elements.get('style-preset-segmented').fire('click', {target: {closest() {return preset;}}});
@@ -439,18 +437,18 @@ test('range drag protection ends on release outside the control, cancellation, c
   }
 });
 
-test('font-weight input previews locally and change submits only the final weight', () => {
+test('font-weight dragging applies live with weight-only patches', () => {
   const h = createSidebar();
   h.emit('danmaku-state', {danmakuFontFamily: 'Helvetica Neue', danmakuFontWeight: '400'});
   const slider = h.elements.get('danmaku-font-weight-slider');
   slider.fire('pointerdown', {button: 0});
   for (const value of ['450', '550', '650', '800']) { slider.value = value; slider.fire('input'); }
   assert.equal(h.elements.get('danmaku-font-weight-value').textContent, '800');
-  assert.equal(h.messages.filter(m => m.name === 'set-danmaku-font').length, 0);
   h.document.fire('pointerup');
-  assert.equal(slider.value, '800', 'pointerup must not overwrite the draft before change');
+  assert.equal(slider.value, '800', 'pointerup must not overwrite the draft');
   slider.fire('change');
-  assert.deepEqual(h.messages.filter(m => m.name === 'set-danmaku-font').map(m => JSON.parse(JSON.stringify(m.data))), [{fontWeight: '800'}]);
+  assert.deepEqual(h.messages.filter(m => m.name === 'set-danmaku-font').map(m => JSON.parse(JSON.stringify(m.data))),
+    [{fontWeight: '450'}, {fontWeight: '550'}, {fontWeight: '650'}, {fontWeight: '800'}]);
 });
 
 test('keyboard range changes and secondary clicks do not leave drag protection active', () => {
@@ -625,124 +623,6 @@ test('a date drag released outside the sidebar ends on the next buttonless move 
   }
 });
 
-test('font scale and stroke sliders preview while dragging and commit once on release', () => {
-  const cases = [
-    ['fontsize-slider', 'fontsize-value', '50', '50%', 'set-fontscale', {scale: 0.5}],
-    ['stroke-opacity-slider', 'stroke-opacity-value', '40', '40%', 'set-stroke-opacity', {opacity: 0.4}],
-    ['stroke-width-slider', 'stroke-width-value', '3', '3px', 'set-stroke-width', {width: 3}],
-  ];
-  for (const [id, label, value, text, message, payload] of cases) {
-    const h = createSidebar();
-    const slider = h.elements.get(id);
-    slider.fire('pointerdown', {button: 0});
-    for (const step of ['10', value]) { slider.value = step; slider.fire('input'); }
-    assert.equal(h.elements.get(label).textContent, text, id);
-    assert.equal(h.messages.filter(m => m.name === message).length, 0, id + ' sends nothing while dragging');
-    slider.fire('change');
-    assert.deepEqual(h.messages.filter(m => m.name === message).map(m => JSON.parse(JSON.stringify(m.data))), [payload], id);
-  }
-});
-
-test('stroke color pickers send only the latest color', () => {
-  const h = createSidebar();
-  const input = h.elements.get('stroke-color');
-  for (const color of ['#111111', '#222222', '#333333']) { input.value = color; input.fire('input'); }
-  assert.equal(h.messages.filter(m => m.name === 'set-stroke-color').length, 0);
-  h.flush();
-  assert.deepEqual(h.messages.filter(m => m.name === 'set-stroke-color').map(m => m.data.color), ['#333333']);
-});
-
-test('A-B-A color submissions only accept the latest request acknowledgment', () => {
-  for (const [id, key, message] of [['stroke-color', 'strokeColor', 'set-stroke-color'],
-    ['stroke-inversion-color', 'strokeInversionColor', 'set-stroke-inversion-color']]) {
-    const h = createSidebar();
-    h.emit('danmaku-state', {[key]: '#000000'});
-    const input = h.elements.get(id);
-    for (const color of ['#111111', '#222222', '#111111']) {
-      input.value = color; input.fire('input'); h.flush();
-    }
-    const requests = h.messages.filter(m => m.name === message);
-    assert.equal(new Set(requests.map(m => m.data.requestId)).size, 3);
-    for (const request of requests.slice(0, 2)) {
-      h.emit('danmaku-state', {[key]: request.data.color});
-      h.emit('danmaku-color-ack', {stateKey: key, ...request.data});
-      assert.equal(input.value, '#111111', 'older replies cannot replace the final A');
-    }
-    input.fire('change');
-    assert.equal(h.messages.filter(m => m.name === message).length, 3, 'closing the picker does not resubmit a stale DOM value');
-    h.emit('danmaku-color-ack', {stateKey: key, ...requests[2].data});
-    h.emit('danmaku-state', {[key]: '#ffffff', stylePreset: 'bilibili'});
-    assert.equal(input.value, '#ffffff', 'the latest acknowledgment releases protection');
-  }
-});
-
-function acknowledgeColorRequest(h, message, index = -1) {
-  const request = h.messages.filter(m => m.name === message).at(index);
-  const stateKey = message === 'set-stroke-color' ? 'strokeColor' : 'strokeInversionColor';
-  h.emit('danmaku-color-ack', {stateKey, ...request.data});
-}
-
-test('a sent color stays protected until main acknowledges its request', () => {
-  for (const [id, key, message] of [['stroke-color', 'strokeColor', 'set-stroke-color'],
-    ['stroke-inversion-color', 'strokeInversionColor', 'set-stroke-inversion-color']]) {
-    const h = createSidebar();
-    h.emit('danmaku-state', {[key]: '#000000'});
-    const input = h.elements.get(id);
-    // two sends in a row: main will echo #111111, then #222222
-    input.value = '#111111'; input.fire('input'); input.fire('change');
-    input.value = '#222222'; input.fire('input'); input.fire('change');
-    assert.deepEqual(h.messages.filter(m => m.name === message).map(m => m.data.color), ['#111111', '#222222']);
-    h.emit('danmaku-state', {[key]: '#111111'});
-    assert.equal(input.value, '#222222', id + ': the echo of an earlier send does not flicker back');
-    h.emit('danmaku-state', {canvasOpacity: 0.3, [key]: '#000000'});
-    assert.equal(input.value, '#222222', id + ': an older snapshot does not replace the awaited value');
-    h.emit('danmaku-state', {[key]: '#222222'});
-    assert.equal(input.value, '#222222');
-    acknowledgeColorRequest(h, message);
-    h.emit('danmaku-state', {stylePreset: 'bilibili', [key]: '#ffffff'});
-    assert.equal(input.value, '#ffffff', id + ': after the acknowledgment, external changes apply again');
-  }
-});
-
-test('an explicit acknowledgment releases an unchanged color request', () => {
-  const h = createSidebar();
-  h.emit('danmaku-state', {strokeColor: '#000000'});
-  const input = h.elements.get('stroke-color');
-  input.value = '#000000'; input.fire('input'); input.fire('change');
-  acknowledgeColorRequest(h, 'set-stroke-color');
-  h.emit('danmaku-state', {stylePreset: 'bilibili', strokeColor: '#ffffff'});
-  assert.equal(input.value, '#ffffff');
-  // A -> back to the original: main still echoes the original after A
-  input.value = '#333333'; input.fire('input'); input.fire('change');
-  input.value = '#ffffff'; input.fire('input'); input.fire('change');
-  h.emit('danmaku-state', {strokeColor: '#333333'});
-  assert.equal(input.value, '#ffffff');
-  h.emit('danmaku-state', {strokeColor: '#ffffff'});
-  acknowledgeColorRequest(h, 'set-stroke-color');
-  h.emit('danmaku-state', {strokeColor: '#444444'});
-  assert.equal(input.value, '#444444', 'protection was released by the latest request acknowledgment');
-});
-
-test('a state echo during the color debounce cannot replace the last picked color', () => {
-  for (const [id, key, message] of [['stroke-color', 'strokeColor', 'set-stroke-color'],
-    ['stroke-inversion-color', 'strokeInversionColor', 'set-stroke-inversion-color']]) {
-    const h = createSidebar();
-    h.emit('danmaku-state', {[key]: '#000000'});
-    const input = h.elements.get(id);
-    input.value = '#123456'; input.fire('input');
-    h.emit('danmaku-state', {canvasOpacity: 0.5, [key]: '#000000'});
-    assert.equal(input.value, '#123456', id + ': the pending value stays in the picker');
-    h.flush();
-    assert.deepEqual(h.messages.filter(m => m.name === message).map(m => m.data.color), ['#123456'], id);
-    input.value = '#abcdef'; input.fire('input');
-    h.emit('danmaku-state', {[key]: '#000000'});
-    input.fire('change');
-    assert.deepEqual(h.messages.filter(m => m.name === message).map(m => m.data.color), ['#123456', '#abcdef'], id + ': change sends the last input');
-    h.emit('danmaku-state', {[key]: '#abcdef'});
-    assert.equal(input.value, '#abcdef');
-  }
-});
-
 test('the danmaku switch stays usable when the video has no source', () => {
   const h = createSidebar();
   h.emit('danmaku-file-list', {xmlFiles: [], jsonFiles: [], selectedPaths: []});
@@ -808,3 +688,25 @@ test('the sidebar follows the plugin language reported by main', () => {
   h.emit('danmaku-state', {uiLang: 'en'});
   assert.equal(h.context.t('unlimited'), 'Unlimited');
 });
+
+test('density applies when a drag pauses and on release, without resending the same value', () => {
+  const h = createSidebar();
+  const slider = h.elements.get('density-slider');
+  const sent = () => h.messages.filter(m => m.name === 'set-danmaku-filter-density').map(m => m.data.density);
+  slider.fire('pointerdown', {button: 0});
+  for (const value of ['500', '400', '300']) { slider.value = value; slider.fire('input'); }
+  assert.equal(h.elements.get('density-value').textContent, '300 /min');
+  assert.deepEqual(sent(), [], 'passing through steps does not reload');
+  h.flush();
+  assert.deepEqual(sent(), [300], 'a pause applies the current step');
+  slider.value = '200'; slider.fire('input');
+  slider.value = '100'; slider.fire('input');
+  h.document.fire('pointerup');
+  slider.fire('change');
+  assert.deepEqual(sent(), [300, 100], 'release sends the final value at once');
+  h.flush();
+  assert.deepEqual(sent(), [300, 100], 'the pending pause timer was cancelled');
+  slider.value = '550'; slider.fire('input'); h.flush(); slider.fire('change');
+  assert.deepEqual(sent(), [300, 100, 0], 'the rightmost step means unlimited and is sent once');
+});
+

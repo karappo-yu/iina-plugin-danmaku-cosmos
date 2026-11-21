@@ -2011,22 +2011,34 @@ test('short variable repetitions cannot multiply backtracking paths', () => {
   assert.deepEqual(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.blocklist.invalid, entries);
 });
 
-test('color requests receive their own acknowledgment even when the value is unchanged', () => {
-  for (const [message, key, color] of [['set-stroke-color', 'strokeColor', '#000000'],
-    ['set-stroke-inversion-color', 'strokeInversionColor', '#ffffff']]) {
-    const h = createHarness(true);
-    h.readyOverlay();
-    h.sidebarMessages.length = 0;
-    h.overlayMessages.length = 0;
-    h.emitSidebar(message, {color, requestId: 'sidebar-session:1'});
-    assert.deepEqual(h.sidebarMessages.map(m => [m.name, m.data]), [
-      ['danmaku-color-ack', {stateKey: key, color, requestId: 'sidebar-session:1'}],
-    ]);
-    assert.equal(h.overlayMessages.length, 0, 'acknowledging a no-op does not rebuild the renderer');
-    h.emitSidebar(message, {color: '#123456', requestId: 'sidebar-session:2'});
-    assert.deepEqual(h.sidebarMessages.at(-1).data, {stateKey: key, color: '#123456', requestId: 'sidebar-session:2'});
-    assert.equal(h.context.pluginState[key], '#123456');
+test('backreferences to variable-length captures count as a length choice', () => {
+  const h = createHarness(true);
+  for (const [pattern, unsafe] of [
+    ['(.*)\\1x', true], ['(.+)\\1x', true], ['(\\w*)\\1\\1x', true], ['(?<w>.*)\\k<w>x', true],
+    ['((a*))\\2x', true], ['((a*))\\1x', true], ['(a|ab)\\1c', true], ['(.*)(?:\\1)+', true], ['(a?)\\1b', true],
+    // fixed-length captures, quantified references and references that match empty
+    ['(.)\\1{5,}', false], ['^(.)\\1+$', false], ['(ab)\\1', false], ['(\\d{3})-\\1', false],
+    ['(?<c>.)\\k<c>', false], ['(a){1,3}\\1', false], ['(.*)x|\\1y', false], ['\\2(a)(.*)', false],
+    ['(.*\\1)x', false], ['[\\1](.*)', false],
+  ]) {
+    assert.equal(h.context.isUnsafeBlockPattern(pattern), unsafe, pattern);
   }
+});
+
+test('a saved backreference regex cannot stall a real long comment-art source', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'ca video test',
+    'Steins;Gate0 ゲームED曲でコメント歌詞PV【コメ直表示版】.json'), 'utf8');
+  const entries = ['/(.*)\\1x/', '/(?<w>.+)\\k<w>x/'];
+  const h = createHarness(true, false, {danmakuBlocklist: JSON.stringify(entries), danmakuBlocklistEnabled: true});
+  for (const entry of entries) assert.equal(h.context.compileBlockEntry(entry).invalid, true, entry);
+  h.setFile('/videos/sg0.json', source);
+  h.emitSidebar('select-danmaku-file', {path: '/videos/sg0.json'});
+  const started = Date.now();
+  const content = h.context.getEffectiveContent('/videos/sg0.json');
+  assert.ok(content.length > 0);
+  assert.ok(Date.now() - started < 2000, 'about 9 s per projection before the fix');
+  h.emitSidebar('request-state');
+  assert.deepEqual(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.blocklist.invalid, entries);
 });
 
 test('payloads missing their fields never become settings or requests', () => {

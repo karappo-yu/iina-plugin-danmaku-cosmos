@@ -583,9 +583,8 @@ function updateUI() {
     cssTextShadowBlurValue.textContent = String(state.cssTextShadowBlur) + 'px';
   }
   updateCssTextShadowMode(state.useCanvasRenderer);
-  // The picker owns its value until the latest request is acknowledged.
-  if (!isColorPending(strokeColorPost)) strokeColorInput.value = state.strokeColor;
-  if (!isColorPending(strokeInversionPost)) strokeInversionInput.value = state.strokeInversionColor;
+  strokeColorInput.value = state.strokeColor;
+  strokeInversionInput.value = state.strokeInversionColor;
   if (!commentLimitSliderDrag.active) {
     commentLimitSlider.value = state.commentLimit > 0 ? state.commentLimit : COMMENT_LIMIT_SLIDER_UNLIMITED;
     commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : t('unlimited');
@@ -796,29 +795,22 @@ opacitySlider.addEventListener("input", function () {
   iina.postMessage("set-opacity", { opacity: val });
 });
 
-// Font scale and stroke changes rebuild the renderer, so these sliders preview
-// their label while dragging and commit once on release (like speed/weight).
 fontsizeSlider.addEventListener("input", function () {
   var val = parseFloat(fontsizeSlider.value) / 100;
   fontsizeValue.textContent = Math.round(val * 100) + "%";
-});
-fontsizeSlider.addEventListener("change", function () {
-  iina.postMessage("set-fontscale", { scale: parseFloat(fontsizeSlider.value) / 100 });
+  iina.postMessage("set-fontscale", { scale: val });
 });
 
 strokeOpacitySlider.addEventListener("input", function () {
   var val = parseFloat(strokeOpacitySlider.value) / 100;
   strokeOpacityValue.textContent = Math.round(val * 100) + "%";
-});
-strokeOpacitySlider.addEventListener("change", function () {
-  iina.postMessage("set-stroke-opacity", { opacity: parseFloat(strokeOpacitySlider.value) / 100 });
+  iina.postMessage("set-stroke-opacity", { opacity: val });
 });
 
 strokeWidthSlider.addEventListener("input", function () {
-  strokeWidthValue.textContent = String(parseFloat(strokeWidthSlider.value)) + 'px';
-});
-strokeWidthSlider.addEventListener("change", function () {
-  iina.postMessage("set-stroke-width", { width: parseFloat(strokeWidthSlider.value) });
+  var val = parseFloat(strokeWidthSlider.value);
+  strokeWidthValue.textContent = String(val) + 'px';
+  iina.postMessage("set-stroke-width", { width: val });
 });
 
 function submitCssTextShadowBlur() {
@@ -831,52 +823,12 @@ function submitCssTextShadowBlur() {
 cssTextShadowBlurSlider.addEventListener('input', submitCssTextShadowBlur);
 cssTextShadowBlurSlider.addEventListener('change', submitCssTextShadowBlur);
 
-// The macOS color panel emits a stream of input events; each one would
-// rebuild the renderer, so send only the latest color after a short pause.
-// The value is captured at each input event, so the color sent is always the
-// last one the user picked, whatever happens to the element before the flush.
-// A page-scoped token also prevents an old WebView's reply acknowledging a
-// new page's first submission. State echoes never acknowledge color requests.
-let colorRequestSession = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
-let colorRequestSerial = 0;
-function debouncedColorPost(input, message, stateKey) {
-  let post = {pending: null, timer: null, awaiting: null, stateKey: stateKey};
-  function flush() {
-    if (post.timer) clearTimeout(post.timer);
-    post.timer = null;
-    if (post.pending === null) return;
-    let color = post.pending;
-    post.pending = null;
-    let requestId = colorRequestSession + ':' + (++colorRequestSerial);
-    post.awaiting = requestId;
-    iina.postMessage(message, { color: color, requestId: requestId });
-  }
-  input.addEventListener("input", function () {
-    post.pending = input.value;
-    if (post.timer) clearTimeout(post.timer);
-    post.timer = setTimeout(flush, 150);
-  });
-  // input owns the draft. A trailing change after the timer has sent it must
-  // not read a possibly echoed DOM value and submit the same edit again.
-  input.addEventListener("change", flush);
-  return post;
-}
+strokeColorInput.addEventListener("input", function () {
+  iina.postMessage("set-stroke-color", { color: strokeColorInput.value });
+});
 
-function isColorPending(post) {
-  return !!post && (post.pending !== null || post.awaiting !== null);
-}
-
-var strokeColorPost = debouncedColorPost(strokeColorInput, "set-stroke-color", 'strokeColor');
-var strokeInversionPost = debouncedColorPost(strokeInversionInput, "set-stroke-inversion-color", 'strokeInversionColor');
-
-onPluginMessage('danmaku-color-ack', function (data) {
-  if (!data || typeof data.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(data.color)) return;
-  let post = data.stateKey === 'strokeColor' ? strokeColorPost :
-    data.stateKey === 'strokeInversionColor' ? strokeInversionPost : null;
-  if (!post || post.awaiting === null || post.awaiting !== data.requestId) return;
-  post.awaiting = null;
-  state[post.stateKey] = data.color;
-  updateUI();
+strokeInversionInput.addEventListener("input", function () {
+  iina.postMessage("set-stroke-inversion-color", { color: strokeInversionInput.value });
 });
 
 commentLimitSlider.addEventListener("input", function () {
@@ -948,23 +900,38 @@ if (fontCustomInput) {
   });
 }
 
+// Weight and speed apply live while dragging. change only sends a value that
+// input has not already sent (keyboard or programmatic changes).
 if (fontWeightSlider) {
+  let lastSentWeight = null;
+  let sendWeight = function () {
+    let weight = fontWeightSlider.value;
+    if (weight === lastSentWeight) return;
+    lastSentWeight = weight;
+    iina.postMessage("set-danmaku-font", { fontWeight: weight });
+  };
   fontWeightSlider.addEventListener("input", function () {
     if (fontWeightValue) fontWeightValue.textContent = fontWeightSlider.value;
+    sendWeight();
   });
-  fontWeightSlider.addEventListener("change", function () {
-    iina.postMessage("set-danmaku-font", { fontWeight: fontWeightSlider.value });
-  });
+  fontWeightSlider.addEventListener("change", sendWeight);
+}
+
+let lastSentSpeed = null;
+function sendScrollSpeed() {
+  let speed = parseFloat(speedSlider.value) / 100;
+  if (speed === lastSentSpeed) return;
+  lastSentSpeed = speed;
+  iina.postMessage("set-scroll-speed", { speed: speed });
 }
 
 speedSlider.addEventListener("input", function () {
   var val = parseFloat(speedSlider.value) / 100;
   speedValue.textContent = Math.round(val * 100) + '%';
+  sendScrollSpeed();
 });
 
-speedSlider.addEventListener("change", function () {
-  iina.postMessage("set-scroll-speed", { speed: parseFloat(speedSlider.value) / 100 });
-});
+speedSlider.addEventListener("change", sendScrollSpeed);
 
 if (stylePresetSegmented) {
   stylePresetSegmented.addEventListener("click", function (e) {
@@ -1090,7 +1057,21 @@ document.addEventListener("mousemove", function (e) {
 document.addEventListener("mouseup", endFilterDrag);
 if (typeof window.addEventListener === 'function') window.addEventListener('blur', endFilterDrag);
 
+// Each density change re-projects and reloads every comment, so a drag applies
+// only when it pauses; release always sends the final value right away.
+var DENSITY_PAUSE_MS = 150;
 if (densitySlider) {
+  let densityTimer = null;
+  let lastSentDensity = null;
+  let sendDensity = function () {
+    if (densityTimer) clearTimeout(densityTimer);
+    densityTimer = null;
+    var val = parseInt(densitySlider.value, 10);
+    var density = val >= DENSITY_SLIDER_OFF ? 0 : val;
+    if (density === lastSentDensity) return;
+    lastSentDensity = density;
+    iina.postMessage("set-danmaku-filter-density", { density: density });
+  };
   densitySlider.addEventListener("input", function () {
     var val = parseInt(densitySlider.value, 10);
     if (val >= DENSITY_SLIDER_OFF) {
@@ -1098,12 +1079,10 @@ if (densitySlider) {
     } else {
       densityValue.textContent = val + ' /min';
     }
+    if (densityTimer) clearTimeout(densityTimer);
+    densityTimer = setTimeout(sendDensity, DENSITY_PAUSE_MS);
   });
-  densitySlider.addEventListener("change", function () {
-    var val = parseInt(densitySlider.value, 10);
-    var density = val >= DENSITY_SLIDER_OFF ? 0 : val;
-    iina.postMessage("set-danmaku-filter-density", { density: density });
-  });
+  densitySlider.addEventListener("change", sendDensity);
 }
 
 onPluginMessage("danmaku-filter-info", function (data) {
