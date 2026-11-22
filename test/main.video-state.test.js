@@ -51,7 +51,7 @@ test('fullscreen state is restored on load and relayed after IINA transitions', 
   assert.equal(h.overlayMessages.findLast(m => m.name === 'set-fullscreen').data.fullscreen, true);
 });
 
-function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {}, weakMessageCallbacks = false) {
+function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {}, weakMessageCallbacks = false, autoDiscoveryTimers = true) {
   const eventHandlers = new Map();
   const overlayHandlers = new Map();
   const sidebarHandlers = new Map();
@@ -62,6 +62,7 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
   const osdMessages = [];
   const throwingReads = new Set();
   let chosenFile = null;
+  let chooseFileHandler = () => Promise.resolve(chosenFile);
   const overlayMessages = [];
   const httpRequests = [];
   const pendingHttp = [];
@@ -92,12 +93,20 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
   }
 
   const overlayVisibility = [];
+  const overlayOpacities = [];
+  const nativeOverlayOperations = [];
+  let nativeOverlayHidden = true;
   const iina = {
     overlay: {
       loadFile() { overlayHandlers.clear(); },
-      show() { overlayVisibility.push('show'); },
-      hide() { overlayVisibility.push('hide'); },
-      postMessage(name, data) { overlayMessages.push({ name, wire: data, data: JSON.parse(data.__encoded ? decodeURIComponent(data.__encoded) : JSON.stringify(data)) }); },
+      show() { nativeOverlayHidden = false; overlayVisibility.push('show'); nativeOverlayOperations.push({name: 'show'}); },
+      hide() { nativeOverlayHidden = true; overlayVisibility.push('hide'); nativeOverlayOperations.push({name: 'hide'}); },
+      setOpacity(value) { overlayOpacities.push(value); nativeOverlayOperations.push({name: 'opacity', value}); },
+      postMessage(name, data) {
+        const payload = JSON.parse(data.__encoded ? decodeURIComponent(data.__encoded) : JSON.stringify(data));
+        overlayMessages.push({name, wire: data, data: payload});
+        nativeOverlayOperations.push({name: 'message', key: name});
+      },
       onMessage(name, handler) { registerMessage(overlayHandlers, name, handler); },
     },
     sidebar: {
@@ -149,7 +158,7 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     },
     utils: {
       preferredLocalizations() { return ['en']; },
-      chooseFile() { return Promise.resolve(chosenFile); },
+      chooseFile() { return chooseFileHandler(); },
       resolvePath(value) { return value; },
       exec(...args) { return execHandler(...args); },
     },
@@ -197,12 +206,21 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     }
   }
 
+  function runTimers(delay) {
+    for (const [id, timer] of Array.from(timers)) {
+      if (timer.delay === delay) { timers.delete(id); timer.callback(); }
+    }
+  }
+
   return {
     context,
     preferences,
     httpRequests,
     overlayMessages,
     overlayVisibility,
+    overlayOpacities,
+    nativeOverlayOperations,
+    isNativeOverlayHidden() { return nativeOverlayHidden; },
     menuItems,
     sidebarMessages,
     sidebarHandlers,
@@ -228,11 +246,22 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     setNetworkResource(value) { iina.core.status.isNetworkResource = value; },
     setVideo(url) {
       iina.core.status.url = url;
+      emit(eventHandlers, 'iina.file-started');
       emit(eventHandlers, 'iina.file-loaded', url);
+      if (autoDiscoveryTimers) runTimers(0);
+    },
+    startVideo(url) {
+      iina.core.status.url = url;
+      emit(eventHandlers, 'iina.file-started');
+    },
+    finishVideo(url = iina.core.status.url) {
+      emit(eventHandlers, 'iina.file-loaded', url);
+      if (autoDiscoveryTimers) runTimers(0);
     },
     readyOverlay() {
       emit(eventHandlers, 'iina.plugin-overlay-loaded');
       emit(overlayHandlers, 'overlay-ready', {});
+      if (autoDiscoveryTimers) runTimers(0);
     },
     emitOverlay(name, data = {}) { emit(overlayHandlers, name, data); },
     ackLoad(success = true) {
@@ -244,14 +273,12 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     setFullscreen(value) { iina.core.window.fullscreen = value; },
     setMpv(name, value) { mpvValues[name] = value; },
     setExec(handler) { execHandler = handler; },
+    setChooseFile(handler) { chooseFileHandler = handler; },
     fileWrites,
     resolveHttp(index, response) { pendingHttp.splice(index, 1)[0].resolve(response); },
     rejectNextHttp(error) { pendingHttp.shift().reject(error); },
-    runTimers(delay) {
-      for (const [id, timer] of Array.from(timers)) {
-        if (timer.delay === delay) { timers.delete(id); timer.callback(); }
-      }
-    },
+    runTimers,
+    pendingTimers(delay) { return Array.from(timers.values()).filter(timer => timer.delay === delay).map(timer => timer.callback); },
     toggleDanmaku() { context.toggleDanmaku(); },
   };
 }
@@ -623,6 +650,401 @@ test('enabling after startup-disabled file load initializes that video', () => {
   assert.deepEqual(loadedComments(harness.overlayMessages).map(s => JSON.parse(s).map(c => c.content).join()), ['B comment']);
 });
 
+test('file-started invalidates A immediately and defers B source I/O by one turn', () => {
+  const h = createHarness(true, false, {}, false, false);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.runTimers(0); h.ackLoad();
+  const oldLoad = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+  h.context.applyDanmakuOffset(2);
+  h.startVideo('file:///videos/B.mp4');
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  assert.equal(h.context.currentVideoUrl, null);
+  assert.equal(h.context.pluginState.danmakuTimeOffsetSec, 0);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), []);
+  const reads = h.fileReads.length, scans = h.directoryReads.length;
+  const loads = loadedComments(h.overlayMessages).length;
+  const visibility = h.overlayVisibility.length;
+  h.emitSidebar('danmaku-dedupe-set', {enabled: true});
+  h.toggleDanmaku(); h.toggleDanmaku();
+  h.emitOverlay('danmaku-load-result', {loadId: oldLoad, success: true});
+  h.finishVideo();
+  assert.equal(h.fileReads.length, reads);
+  assert.equal(h.directoryReads.length, scans);
+  assert.equal(loadedComments(h.overlayMessages).length, loads);
+  assert.equal(h.overlayVisibility.length, visibility);
+  h.runTimers(0);
+  assert.equal(h.fileReads.at(-1), '/videos/B.xml');
+  assert.equal(loadedComments(h.overlayMessages).length, loads + 1);
+  assert.equal(h.overlayOpacities.at(-1), 0, 'queuing B must not reveal the old WebView');
+  h.ackLoad();
+  assert.equal(h.overlayOpacities.at(-1), 1);
+});
+
+test('queued native transparency and clear run before the deferred synchronous discovery', () => {
+  const h = createHarness(true, false, {}, false, false);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.runTimers(0); h.ackLoad();
+  const queue = [], native = h.context.iina.overlay;
+  let clearDelivered = false;
+  for (const method of ['hide', 'show', 'setOpacity', 'postMessage']) {
+    const original = native[method];
+    native[method] = (...args) => queue.push(() => {
+      if (method === 'postMessage' && args[0] === 'clear-danmaku') clearDelivered = true;
+      original(...args);
+    });
+  }
+  const schedule = h.context.setTimeout;
+  h.context.setTimeout = (callback, delay) => schedule(delay === 0 ? () => queue.push(callback) : callback, delay);
+  for (const method of ['list', 'read']) {
+    const original = h.context.iina.file[method];
+    h.context.iina.file[method] = (...args) => {
+      assert.equal(clearDelivered, true, 'the native clear task must precede source I/O');
+      assert.equal(h.overlayOpacities.at(-1), 0, 'the native view must already be transparent');
+      return original(...args);
+    };
+  }
+  const reads = h.fileReads.length, scans = h.directoryReads.length;
+  h.setVideo('file:///videos/B.mp4'); h.runTimers(0);
+  assert.equal(h.fileReads.length, reads);
+  assert.equal(h.directoryReads.length, scans);
+  while (queue.length) queue.shift()();
+  assert.equal(h.fileReads.at(-1), '/videos/B.xml');
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.ackLoad();
+  while (queue.length) queue.shift()();
+  assert.equal(h.overlayOpacities.at(-1), 1);
+});
+
+test('readiness between file-started and file-loaded cannot load the new URL early', () => {
+  const h = createHarness(true, false, {}, false, false);
+  h.startVideo('file:///videos/B.mp4');
+  h.emitEvent('mpv.idle-active.changed', true); // A queued old idle update cannot release B.
+  h.readyOverlay(); h.runTimers(0);
+  h.toggleDanmaku(); h.toggleDanmaku();
+  h.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
+  h.emitSidebar('dandanplay-select-episode', {episodeId: 7});
+  assert.equal(h.fileReads.length, 0);
+  assert.equal(h.directoryReads.length, 0);
+  assert.equal(h.httpRequests.length, 0);
+  assert.equal(loadedComments(h.overlayMessages).length, 0);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.finishVideo(); h.runTimers(0); h.ackLoad();
+  assert.equal(h.fileReads.at(-1), '/videos/B.xml');
+  assert.equal(h.overlayOpacities.at(-1), 1);
+});
+
+test('failed opens release the start gap on idle and the next video loads normally', () => {
+  const h = createHarness(true);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  h.startVideo('file:///videos/missing.mp4');
+  h.context.iina.core.status.idle = true;
+  h.emitEvent('mpv.idle-active.changed', true);
+  h.emitSidebar('select-danmaku-file', {path: '/videos/missing.xml'});
+  assert.equal(h.fileReads.at(-1), '/videos/missing.xml', 'manual input is available again after the failed open');
+  h.toggleDanmaku(); h.toggleDanmaku();
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.context.iina.core.status.idle = false;
+  h.setVideo('file:///videos/B.mp4'); h.ackLoad();
+  assert.equal(h.fileReads.at(-1), '/videos/B.xml');
+  assert.equal(h.overlayOpacities.at(-1), 1);
+});
+
+test('rapid switches and same-URL reloads discard old discovery timers and render replies', () => {
+  const h = createHarness(true, false, {}, false, false);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.runTimers(0); h.ackLoad();
+  const oldLoad = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+  h.setVideo('file:///videos/B.mp4');
+  const [oldTimer] = h.pendingTimers(0);
+  h.setVideo('file:///videos/A.mp4');
+  const [sameUrlTimer] = h.pendingTimers(0);
+  h.setVideo('file:///videos/A.mp4');
+  oldTimer(); sameUrlTimer();
+  h.emitOverlay('danmaku-load-result', {loadId: oldLoad, success: true});
+  assert.equal(loadedComments(h.overlayMessages).length, 1);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.runTimers(0); h.ackLoad();
+  assert.equal(h.fileReads.filter(p => p === '/videos/B.xml').length, 0);
+  assert.equal(h.fileReads.filter(p => p === '/videos/A.xml').length, 2);
+});
+
+test('WebView navigation rejects old render replies and restores only the current source', () => {
+  const h = createHarness(true);
+  h.readyOverlay(); h.setVideo('file:///videos/B.mp4');
+  const oldId = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+  h.emitEvent('iina.window-loaded'); h.emitEvent('iina.plugin-overlay-loaded');
+  h.emitOverlay('danmaku-load-result', {loadId: oldId, success: true});
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.emitOverlay('overlay-ready'); h.ackLoad();
+  assert.equal(h.overlayOpacities.at(-1), 1);
+  assert.equal(h.fileReads.filter(p => p === '/videos/B.xml').length, 1);
+});
+
+test('enabling uses discovered files without rescanning, clearing or resetting the session offset', () => {
+  const h = createHarness(false);
+  h.readyOverlay(); h.setVideo('file:///videos/B.mp4');
+  const scans = h.directoryReads.length;
+  const clears = h.overlayMessages.filter(m => m.name === 'clear-danmaku').length;
+  const files = h.context.pluginState.danmakuFileList;
+  h.context.applyDanmakuOffset(3); h.toggleDanmaku();
+  assert.equal(h.context.pluginState.danmakuTimeOffsetSec, 3);
+  assert.equal(h.directoryReads.length, scans);
+  assert.equal(h.overlayMessages.filter(m => m.name === 'clear-danmaku').length, clears);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.xmlFiles, f => f.path), Array.from(files.xmlFiles, f => f.path));
+  assert.equal(h.fileReads.at(-1), '/videos/B.xml');
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.ackLoad(); assert.equal(h.overlayOpacities.at(-1), 1);
+  h.setVideo('file:///videos/none.mp4');
+  assert.equal(h.overlayOpacities.at(-1), 0);
+});
+
+test('a new render success after disabling stays hidden and the next enable reuses it', () => {
+  const h = createHarness(true);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  h.setVideo('file:///videos/B.mp4'); h.toggleDanmaku(); h.ackLoad();
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  const loads = loadedComments(h.overlayMessages).length;
+  h.toggleDanmaku();
+  assert.equal(loadedComments(h.overlayMessages).length, loads);
+  assert.equal(h.overlayOpacities.at(-1), 1);
+});
+
+test('native transparency keeps the WebView active and remains separate from comment opacity', () => {
+  const h = createHarness(true, false, {danmakuCanvasOpacity: 0.4});
+  h.readyOverlay();
+  const show = h.nativeOverlayOperations.findIndex(op => op.name === 'show');
+  assert.deepEqual(h.nativeOverlayOperations[show - 1], {name: 'opacity', value: 0});
+  assert.equal(h.isNativeOverlayHidden(), false);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  assert.equal(h.overlayOpacities.at(-1), 1);
+  h.emitSidebar('set-opacity', {opacity: 0.25});
+  assert.equal(h.context.pluginState.canvasOpacity, 0.25);
+  assert.equal(h.overlayOpacities.at(-1), 1);
+  h.setVideo('file:///videos/B.mp4');
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  assert.equal(h.isNativeOverlayHidden(), false);
+  assert.equal(h.overlayVisibility.filter(value => value === 'hide').length, 0);
+  assert.equal(h.overlayVisibility.filter(value => value === 'show').length, 1);
+});
+
+for (const action of ['menu', 'toggle', 'source']) {
+  test(`manual hiding followed by ${action} restores an active transparent WebView before B loads`, async () => {
+    const h = createHarness(true);
+    h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+    const oldId = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+    h.menuItems.find(item => item.label === 'Hide Danmaku Overlay').callback();
+    assert.equal(h.isNativeOverlayHidden(), true);
+    h.setVideo('file:///videos/B.mp4');
+    const first = h.nativeOverlayOperations.length;
+    if (action === 'menu') h.menuItems.find(item => item.label === 'Show Danmaku Overlay').callback();
+    else if (action === 'toggle') h.toggleDanmaku();
+    else await h.loadFromMenu('/videos/B.xml');
+    const operations = h.nativeOverlayOperations.slice(first);
+    const show = operations.findIndex(op => op.name === 'show');
+    const load = operations.findIndex(op => op.name === 'message' && op.key === 'load-danmaku');
+    assert.ok(show > 0 && load > show);
+    assert.deepEqual(operations[show - 1], {name: 'opacity', value: 0});
+    assert.equal(h.isNativeOverlayHidden(), false);
+    assert.equal(h.overlayOpacities.at(-1), 0);
+    h.emitOverlay('danmaku-load-result', {loadId: oldId, success: true});
+    assert.equal(h.overlayOpacities.at(-1), 0);
+    h.ackLoad();
+    assert.equal(h.overlayOpacities.at(-1), 1);
+    assert.deepEqual(h.overlayVisibility, ['show', 'hide', 'show']);
+  });
+}
+
+test('main and overlay keep alpha zero through two frames and resume after a manual hide', () => {
+  const h = createHarness(true, false, {}, false, false);
+  const handlers = new Map(), frames = new Map();
+  const canvas = {style: {}}, viewport = {style: {}};
+  let nextId = 0, now = 0;
+  class Renderer {
+    constructor(canvas, comments) {this.comments = comments;}
+    addEventListener() {} removeEventListener() {} resize() {} clear() {} destroy() {}
+    pauseCSS() {} resumeCSS() {} setPlaybackSpeed() {}
+    drawCanvas() {canvas.comments = this.comments;}
+  }
+  const overlay = vm.createContext({
+    iina: {onMessage(name, handler) {handlers.set(name, handler);},
+      postMessage(name, data) {h.emitOverlay(name, data);}},
+    document: {getElementById(id) {return id === 'danmaku-viewport' ? viewport : canvas;}, querySelector() {return null;}},
+    window: {location: {href: 'file:///plugin/overlay/index.html'}, innerWidth: 1280, innerHeight: 720},
+    URL, NiconiComments: Renderer, performance: {now() {return now;}}, console: {log() {}},
+    requestAnimationFrame(callback) {frames.set(++nextId, callback); return nextId;},
+    cancelAnimationFrame(id) {frames.delete(id);}, setTimeout, clearTimeout,
+  });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../overlay/main.js'), 'utf8'), overlay);
+  const post = h.context.iina.overlay.postMessage;
+  h.context.iina.overlay.postMessage = (name, wire) => {
+    post(name, wire);
+    const payload = JSON.parse(wire.__encoded ? decodeURIComponent(wire.__encoded) : JSON.stringify(wire));
+    handlers.get(name)(payload);
+  };
+  function frame() {
+    // Model the native hidden-page suspension; alpha zero alone stays active.
+    if (h.isNativeOverlayHidden()) return;
+    now += 16;
+    for (const [id, callback] of Array.from(frames)) {frames.delete(id); callback(now);}
+  }
+  h.emitEvent('iina.plugin-overlay-loaded'); h.setPaused(true);
+  h.setVideo('file:///videos/A.mp4'); h.runTimers(0);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  frame(); assert.equal(h.overlayOpacities.at(-1), 0);
+  frame(); assert.equal(h.overlayOpacities.at(-1), 1);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  h.setVideo('file:///videos/B.mp4'); h.runTimers(0);
+  assert.equal(h.isNativeOverlayHidden(), false);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  assert.equal(canvas.comments[0].content, 'B comment');
+  frame(); assert.equal(h.overlayOpacities.at(-1), 0);
+  h.menuItems.find(item => item.label === 'Hide Danmaku Overlay').callback();
+  frame(); assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.toggleDanmaku();
+  assert.equal(h.isNativeOverlayHidden(), false);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  frame();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  assert.equal(h.overlayOpacities.at(-1), 1);
+});
+
+test('a manual file selected during the yield wins while discovered candidates remain available', async () => {
+  const h = createHarness(false, false, {}, false, false);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+  await h.loadFromMenu('/videos/B.xml');
+  assert.equal(h.fileReads.at(-1), '/videos/B.xml');
+  assert.equal(h.context.pluginState.danmakuEnabled, true);
+  h.toggleDanmaku(); h.runTimers(0);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['/videos/B.xml']);
+  assert.ok(h.directoryReads.length > 0);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.xmlFiles, f => f.path).sort(), ['/videos/A.xml', '/videos/B.xml']);
+  assert.equal(h.fileReads.filter(p => p === '/videos/A.xml').length, 0);
+  assert.equal(h.context.pluginState.danmakuEnabled, false);
+  h.ackLoad(); assert.equal(h.overlayOpacities.at(-1), 0);
+});
+
+test('a bad manual file during the yield does not enable danmaku or schedule discovery', async () => {
+  for (const enabled of [false, true]) {
+    const h = createHarness(enabled, false, {}, false, false);
+    h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+    h.setFile('/videos/broken.json', '{ broken');
+    const timers = h.pendingTimers(0);
+    for (const path of ['/videos/missing.xml', '/videos/broken.json']) await h.loadFromMenu(path);
+    assert.equal(h.context.pluginState.danmakuEnabled, enabled);
+    assert.equal(h.directoryReads.length, 0);
+    assert.deepEqual(h.pendingTimers(0), timers);
+    assert.equal(loadedComments(h.overlayMessages).length, 0);
+  }
+});
+
+test('a chooser opened for A cannot activate its result after B starts loading', async () => {
+  const h = createHarness(true);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  let resolve;
+  h.setChooseFile(() => new Promise(done => {resolve = done;}));
+  h.loadFromMenu('/videos/A.xml');
+  h.startVideo('file:///videos/B.mp4');
+  resolve('/videos/A.xml'); await flushMicrotasks();
+  h.finishVideo();
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['/videos/B.xml']);
+  assert.equal(h.fileReads.filter(p => p === '/videos/A.xml').length, 1);
+});
+
+test('an A network reply after B starts cannot repopulate caches or activate A', async () => {
+  const h = createHarness(true, true);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); await flushMicrotasks();
+  h.resolveNextHttp({statusCode: 200, data: {isMatched: true, matches: [{episodeId: 1}]}});
+  await flushMicrotasks();
+  h.startVideo('file:///videos/B.mp4');
+  h.resolveNextHttp({statusCode: 200, data: {comments: [{p: '1,1,16777215,u', m: 'old A'}]}});
+  await flushMicrotasks();
+  assert.equal(loadedComments(h.overlayMessages).length, 0);
+  assert.equal(h.fileWrites.length, 0);
+  assert.deepEqual(Object.keys(h.context.danmakuCache), []);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+});
+
+test('a manual episode selected during the yield supersedes automatic matching immediately', async () => {
+  const h = createHarness(false, true, {}, false, false);
+  h.setExec(() => Promise.resolve({status: 0}));
+  h.readyOverlay(); h.setVideo('file:///videos/B.mp4');
+  h.emitSidebar('dandanplay-select-episode', {episodeId: 8, animeTitle: 'Anime', episodeTitle: '8'});
+  await flushMicrotasks(); h.runTimers(0);
+  assert.deepEqual(h.httpRequests.map(r => r.url), ['https://api.dandanplay.net/api/v2/comment/8']);
+  assert.ok(h.directoryReads.length > 0);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.xmlFiles, f => f.path), ['/videos/B.xml']);
+  h.resolveNextHttp({statusCode: 200, data: {comments: [{p: '1,1,16777215,u', m: 'new B'}]}});
+  await flushMicrotasks();
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['dandanplay://8']);
+  assert.equal(JSON.parse(h.fileWrites.at(-1).content).videoPath, 'file:///videos/B.mp4');
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.ackLoad(); assert.equal(h.overlayOpacities.at(-1), 1);
+});
+
+test('a manual DDP failure after the yield can still fall back to discovered local candidates', async () => {
+  const h = createHarness(true, true, {}, false, false);
+  h.readyOverlay(); h.setVideo('file:///videos/B.mp4');
+  h.emitSidebar('dandanplay-select-episode', {episodeId: 8});
+  await flushMicrotasks(); h.runTimers(0);
+  h.rejectNextHttp(new Error('offline')); await flushMicrotasks();
+  assert.equal(h.httpRequests.length, 1);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['/videos/B.xml']);
+  assert.match(loadedComments(h.overlayMessages).at(-1), /B comment/);
+});
+
+test('DDP failure or no match before discovery waits for local candidates instead of stale cache', async () => {
+  for (const outcome of ['error', 'unmatched']) {
+    const h = createHarness(true, true, {}, false, false);
+    const url = 'file:///videos/B.mp4';
+    h.setFile(h.context.ddpCacheFile(url), JSON.stringify({episodeId: 8,
+      cachedAt: Date.now() - 25 * 60 * 60 * 1000, comments: [{t: 100, text: 'stale B'}]}));
+    h.readyOverlay(); h.setVideo(url);
+    h.emitSidebar('dandanplay-trigger-match'); await flushMicrotasks();
+    if (outcome === 'error') h.rejectNextHttp(new Error('offline'));
+    else h.resolveNextHttp({statusCode: 200, data: {success: true, isMatched: false, matches: []}});
+    await flushMicrotasks();
+    assert.equal(loadedComments(h.overlayMessages).length, 0);
+    assert.equal(h.fileReads.length, 0);
+    h.runTimers(0);
+    assert.equal(h.httpRequests.length, 1);
+    assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['/videos/B.xml']);
+    assert.match(loadedComments(h.overlayMessages).at(-1), /B comment/);
+  }
+});
+
+test('cached DDP discovery cannot replace a manual source that finished during the yield', async () => {
+  const h = createHarness(false, true, {}, false, false);
+  const url = 'file:///videos/B.mp4';
+  h.setFile(h.context.ddpCacheFile(url), JSON.stringify({episodeId: 8, cachedAt: Date.now(),
+    animeTitle: 'Old title', comments: [{t: 100, text: 'old cached B'}]}));
+  h.readyOverlay(); h.setVideo(url);
+  h.emitSidebar('dandanplay-select-episode', {episodeId: 8, animeTitle: 'New title'});
+  await flushMicrotasks();
+  h.resolveNextHttp({statusCode: 200, data: {comments: [{p: '1,1,16777215,u', m: 'new manual B'}]}});
+  await flushMicrotasks(); h.runTimers(0);
+  assert.equal(h.httpRequests.length, 1);
+  assert.equal(loadedComments(h.overlayMessages).length, 1);
+  assert.deepEqual(Array.from(h.context.getCurrentProjection().formatted, c => c.content), ['new manual B']);
+  assert.match(h.context.pluginState.danmakuFileList.jsonFiles.find(f => f.type === 'DDP').filename, /New title/);
+  assert.equal(h.context.pluginState.danmakuFileList.xmlFiles[0].path, '/videos/B.xml');
+});
+
+test('an early manual DDP failure on a network URL can still use its stale cache', async () => {
+  const h = createHarness(true, true, {}, false, false);
+  const url = 'https://example.com/video.m3u8';
+  h.setNetworkResource(true);
+  h.setFile(h.context.ddpCacheFile(url), JSON.stringify({episodeId: 8,
+    cachedAt: Date.now() - 25 * 60 * 60 * 1000, comments: [{t: 100, text: 'stale network'}]}));
+  h.readyOverlay(); h.setVideo(url);
+  h.emitSidebar('dandanplay-trigger-match'); await flushMicrotasks();
+  h.rejectNextHttp(new Error('offline')); await flushMicrotasks();
+  assert.equal(loadedComments(h.overlayMessages).length, 0);
+  h.runTimers(0);
+  assert.equal(h.httpRequests.length, 1);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['dandanplay://8']);
+  assert.match(loadedComments(h.overlayMessages).at(-1), /stale network/);
+});
+
 test('startup-disabled network video stays cleared without starting a match', () => {
   const harness = createHarness(false);
   harness.readyOverlay();
@@ -856,12 +1278,15 @@ test('manual exact match loads network danmaku with auto-network off', async () 
   assert.ok(harness.osdMessages.some((message) => message.includes('Network danmaku loaded') && message.includes('EP1')));
 });
 
-test('manual network load before overlay readiness re-enables and flushes the pending source', async () => {
+test('manual network loading before readiness enables and flushes the latest source', async () => {
   const harness = createHarness(false, false);
   harness.setVideo('file:///videos/C.mp4');
 
   harness.emitSidebar('dandanplay-trigger-match');
   await flushMicrotasks();
+  assert.equal(harness.httpRequests.length, 1);
+  assert.equal(harness.fileReads.length, 0);
+  assert.equal(harness.context.pluginState.danmakuEnabled, false);
   harness.resolveNextHttp({
     statusCode: 200,
     data: { success: true, isMatched: true, matches: [{ episodeId: 7, animeTitle: 'Anime', episodeTitle: 'EP1' }] },
@@ -873,10 +1298,9 @@ test('manual network load before overlay readiness re-enables and flushes the pe
   });
   await flushMicrotasks();
 
-  assert.notEqual(harness.context.pendingDanmaku, null);
   assert.equal(harness.context.pluginState.danmakuEnabled, true);
-  assert.deepEqual(loadedComments(harness.overlayMessages), []);
-
+  assert.notEqual(harness.context.pendingDanmaku, null);
+  assert.equal(loadedComments(harness.overlayMessages).length, 0);
   harness.readyOverlay();
   assert.equal(loadedComments(harness.overlayMessages).length, 1);
   harness.ackLoad();
@@ -1063,7 +1487,9 @@ test('manual local selection supersedes a pending automatic match', async () => 
   h.readyOverlay();
   h.setVideo('file:///videos/A.mp4');
   await flushMicrotasks();
+  assert.equal(h.context.pluginState.dandanplayState.status, 'matching');
   await h.addFromSidebar('/videos/A.xml');
+  assert.equal(h.context.pluginState.dandanplayState.status, 'idle');
   h.resolveNextHttp({statusCode: 200, data: {isMatched: true, matches: [{episodeId: 7}]}});
   await flushMicrotasks();
   assert.equal(h.httpRequests.length, 1);

@@ -137,6 +137,10 @@ var currentVideoUrl = null;
 var loadedDanmakuVideoUrl = null;
 // 同一 URL 也可能被重新加载;世代号用于丢弃旧异步 DDP 请求的回调。
 var danmakuLoadGeneration = 0;
+let awaitingFileLoaded = false;
+let overlayAwaitingVideoRender = true;
+let overlayHiddenByUser = false;
+let videoDiscoveryTimer = null;
 let ddpRequestGeneration = 0;
 let ddpSearchGeneration = 0;
 let videoSeekInProgress = false;
@@ -953,6 +957,7 @@ function isManualDdpLoad(origin) {
 }
 
 function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
+  if (awaitingFileLoaded) return;
   let requestGeneration = ++ddpRequestGeneration;
   if (origin === undefined) origin = DDP_LOAD_ORIGIN.AUTO;
   var isManual = isManualDdpLoad(origin);
@@ -1059,6 +1064,7 @@ function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted,
 }
 
 function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin, loadGeneration) {
+  if (awaitingFileLoaded) return;
   let requestGeneration = ++ddpRequestGeneration;
   if (origin === undefined) origin = DDP_LOAD_ORIGIN.AUTO;
   var isManual = isManualDdpLoad(origin);
@@ -1121,6 +1127,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
 }
 
 function ddpFallbackToLocal(allowStale) {
+  if (videoDiscoveryTimer !== null) return;
   if (!pluginState.dandanplayAutoNetwork || !pluginState.danmakuEnabled) return;
   if (pluginState.currentDanmakuStatus.isLoaded) return;
   if (loadFirstLocalDanmaku()) return;
@@ -1136,50 +1143,103 @@ function addDDPToFileList(episodeId, animeTitle, episodeTitle, comments, stale) 
   ddpUpsertFileListEntry(episodeId, animeTitle, episodeTitle, comments, !stale);
 }
 
-function loadDanmakuForVideo(url) {
+function updateOverlayOpacity() {
+  overlay.setOpacity(pluginState.danmakuEnabled && !overlayAwaitingVideoRender ? 1 : 0);
+}
+
+function restoreOverlayAfterManualHide() {
+  if (!overlayHiddenByUser) return;
+  overlay.setOpacity(0);
+  overlay.show();
+  overlayHiddenByUser = false;
+}
+
+function hideOverlayForUser() {
+  overlay.setOpacity(0);
+  overlayHiddenByUser = true;
+  overlay.hide();
+}
+
+function beginVideoReset(resetOffset) {
   setObserver(false);
+  if (videoDiscoveryTimer !== null) clearTimeout(videoDiscoveryTimer);
+  videoDiscoveryTimer = null;
   overlayLoadId += 1;
   danmakuLoadGeneration += 1;
+  overlayAwaitingVideoRender = true;
+  overlay.setOpacity(0);
   videoSeekInProgress = false;
-  var loadGeneration = danmakuLoadGeneration;
   danmakuCache = Object.create(null);
   projectionCache = null;
   lastOverlayProjection = null;
-  currentVideoUrl = url;
+  currentVideoUrl = null;
   pendingDanmaku = null;
   pendingLoadNotice = null;
   loadedDanmakuVideoUrl = null;
   ddpResetState();
-  danmakuNotFound();
-  resetNicoJsonFilterState();
+  resetNicoJsonFilterState({currentDanmakuStatus: {fileType: null, isLoaded: false},
+    danmakuFileList: {xmlFiles: [], jsonFiles: [], selectedPaths: []}});
+  if (resetOffset !== false) applyDanmakuOffset(0);
+  sidebarPostMessage('danmaku-file-list', pluginState.danmakuFileList);
+  sendDanmakuFilterInfo();
+  notifyBrowserDataChanged();
+  if (overlayReady) overlayPostMessage('clear-danmaku', {clearId: overlayLoadId});
+}
 
-  // 视频切换时无条件清掉旧 renderer,即使弹幕当前处于关闭状态。
-  if (overlayReady) overlayPostMessage("clear-danmaku", {});
+function loadDanmakuForVideo(url, resetOffset) {
+  if (!url) return;
+  let needsReset = !awaitingFileLoaded;
+  awaitingFileLoaded = false;
+  if (needsReset) beginVideoReset(resetOffset);
+  currentVideoUrl = url;
+  let loadGeneration = danmakuLoadGeneration;
+  let requestGeneration = ddpRequestGeneration;
+  // Yield to native hide/clear tasks before synchronous source discovery.
+  // This is a scheduling boundary, not a WebView readiness timeout.
+  videoDiscoveryTimer = setTimeout(function () {
+    if (loadGeneration !== danmakuLoadGeneration || currentVideoUrl !== url) return;
+    videoDiscoveryTimer = null;
+    // Preserve an explicit operation while still discovering fallback sources.
+    let activate = !pluginState.danmakuFileList.selectedPaths.length && requestGeneration === ddpRequestGeneration;
+    discoverDanmakuForVideo(url, loadGeneration, activate);
+    if (!activate && !pluginState.danmakuFileList.selectedPaths.length) {
+      let status = pluginState.dandanplayState.status;
+      if (status === 'error' || status === 'matched' || status === 'no-match') ddpFallbackToLocal(status === 'error');
+    }
+    if (overlayReady && loadedDanmakuVideoUrl !== currentVideoUrl) overlayPostMessage('toggle-danmaku', playbackSnapshot());
+    setObserver(true);
+  }, 0);
+}
+
+function discoverDanmakuForVideo(url, loadGeneration, activate) {
+  postVideoAspect();
 
   if (core.status.isNetworkResource) {
     core.osd(t('network_skip_local'));
-    danmakuNotFound();
-    commitState({danmakuFileList: { xmlFiles: [], jsonFiles: [], selectedPaths: [] }});
     sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
     sendDanmakuFilterInfo();
     notifyBrowserDataChanged();
-    if (pluginState.danmakuEnabled && pluginState.dandanplayAutoNetwork) ddpAutoMatchAndLoad(url, DDP_LOAD_ORIGIN.AUTO, loadGeneration);
+    if (activate !== false && pluginState.danmakuEnabled && pluginState.dandanplayAutoNetwork) ddpAutoMatchAndLoad(url, DDP_LOAD_ORIGIN.AUTO, loadGeneration);
     return;
   }
 
   // === Step 1: Build complete file list (local + cached DDP) ===
   var discovered = findDanmakuByEpisode(url);
+  let current = pluginState.danmakuFileList;
+  let mergeFiles = function (found, existing) {
+    let paths = new Set(found.map(function (item) { return item.path; }));
+    return found.concat(existing.filter(function (item) { return !paths.has(item.path); }));
+  };
 
   commitState({danmakuFileList: {
-    xmlFiles: discovered.xmlFiles,
-    jsonFiles: discovered.jsonFiles,
-    selectedPaths: []
+    xmlFiles: mergeFiles(discovered.xmlFiles, current.xmlFiles),
+    jsonFiles: mergeFiles(discovered.jsonFiles, current.jsonFiles),
+    selectedPaths: current.selectedPaths
   }});
 
   var ddpCached = ddpReadVideoCache(url);
   var hasDDPCache = ddpCached && ddpCached.comments && ddpCached.comments.length > 0;
-  var hasFreshDDPCache = hasDDPCache && !ddpCached.stale;
-  if (hasDDPCache) {
+  if (hasDDPCache && current.selectedPaths[0] !== 'dandanplay://' + ddpCached.episodeId) {
     addDDPToFileList(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.document, ddpCached.stale);
   }
 
@@ -1188,9 +1248,17 @@ function loadDanmakuForVideo(url) {
   sendDanmakuFilterInfo();
   notifyBrowserDataChanged();
 
-  // 关闭状态只更新当前视频及其可用文件,不启动本地/网络弹幕加载。
-  // toggleDanmaku() 在重新开启时会根据 loadedDanmakuVideoUrl 补做加载。
+  if (activate !== false) autoLoadDiscoveredDanmaku(url, loadGeneration, ddpCached);
+}
+
+function autoLoadDiscoveredDanmaku(url, loadGeneration, ddpCached) {
   if (!pluginState.danmakuEnabled) return;
+  if (core.status.isNetworkResource) {
+    if (pluginState.dandanplayAutoNetwork) ddpAutoMatchAndLoad(url, DDP_LOAD_ORIGIN.AUTO, loadGeneration);
+    return;
+  }
+  if (ddpCached === undefined) ddpCached = ddpReadVideoCache(url);
+  let hasFreshDDPCache = ddpCached && !ddpCached.stale && ddpCached.comments && ddpCached.comments.length > 0;
 
   // === Step 3: Auto-load to overlay based on autoNetwork setting ===
   if (pluginState.dandanplayAutoNetwork) {
@@ -1218,7 +1286,7 @@ function loadDanmakuForVideo(url) {
 // 本地文件在首次 I/O 时解析,同一视频会话内重选复用 IR。
 // DDP 虚拟条目在加入列表时已写入会话缓存,无需另从磁盘重建。
 function loadDanmakuFile(path, options) {
-  if (!path) return;
+  if (!path || awaitingFileLoaded) return;
   options = options || {};
   let enableDanmaku = !!options.enableDanmaku;
   let loadedMessageKey = options.loadedMessageKey || 'loaded';
@@ -1337,15 +1405,14 @@ function playbackSnapshot() {
 function markOverlayReady() {
   if (overlayReady) return;
   overlayReady = true;
-  overlay.show();
+  updateOverlayOpacity();
   postVideoAspect();
   if (pendingDanmaku) {
     if (!sendCurrentDanmaku(true)) overlayPostMessage("toggle-danmaku", playbackSnapshot());
     pendingDanmaku = null;
     setObserver(true);
-  } else if (pluginState.danmakuEnabled && !core.status.idle && !currentVideoUrl && core.status.url) {
+  } else if (!awaitingFileLoaded && pluginState.danmakuEnabled && !core.status.idle && !currentVideoUrl && core.status.url) {
     loadDanmakuForVideo(core.status.url);
-    if (loadedDanmakuVideoUrl !== currentVideoUrl) overlayPostMessage('toggle-danmaku', playbackSnapshot());
     setObserver(true);
   } else {
     overlayPostMessage("toggle-danmaku", playbackSnapshot());
@@ -1358,7 +1425,7 @@ function setObserver(start) {
   if (windowScaleListenerID) { event.off("mpv.window-scale.changed", windowScaleListenerID); windowScaleListenerID = null; }
   if (speedListenerID) { event.off("mpv.speed.changed", speedListenerID); speedListenerID = null; }
 
-  if (start && overlayReady && pluginState.danmakuEnabled) {
+  if (start && !awaitingFileLoaded && overlayReady && pluginState.danmakuEnabled) {
     timePosListenerID = event.on("mpv.time-pos.changed", function (t) {
       overlayPostMessage("time-update", { time: t });
       if (danmakuBrowserWatch) pushBrowserTime(t);
@@ -1376,19 +1443,24 @@ function setDanmakuEnabled(enabled, options) {
   let next = !!enabled;
   options = options || {};
   if (next === pluginState.danmakuEnabled) {
-    if (next) overlay.show();
-    else if (options.hideOverlay) overlay.hide();
+    if (next) { restoreOverlayAfterManualHide(); updateOverlayOpacity(); }
+    else if (options.hideOverlay) hideOverlayForUser();
     return;
   }
   commitState({danmakuEnabled: next});
   if (next) {
-    overlay.show();
+    restoreOverlayAfterManualHide();
+    updateOverlayOpacity();
+    if (awaitingFileLoaded || videoDiscoveryTimer !== null) {
+      if (options.osd !== false) core.osd(t('danmaku_on'));
+      return;
+    }
     let selectedPath = pluginState.danmakuFileList.selectedPaths[0];
     if (selectedPath && danmakuCache[selectedPath]) {
       if (!sendCurrentDanmaku(false) && overlayReady) overlayPostMessage('toggle-danmaku', playbackSnapshot());
       setObserver(true);
     } else if (currentVideoUrl && loadedDanmakuVideoUrl !== currentVideoUrl) {
-      loadDanmakuForVideo(currentVideoUrl);
+      autoLoadDiscoveredDanmaku(currentVideoUrl, danmakuLoadGeneration);
       if (overlayReady && loadedDanmakuVideoUrl !== currentVideoUrl) overlayPostMessage('toggle-danmaku', playbackSnapshot());
       setObserver(true);
     } else {
@@ -1397,9 +1469,10 @@ function setDanmakuEnabled(enabled, options) {
     }
     if (options.osd !== false) core.osd(t('danmaku_on'));
   } else {
+    updateOverlayOpacity();
     if (overlayReady) overlayPostMessage('toggle-danmaku', playbackSnapshot());
     setObserver(false);
-    if (options.hideOverlay) overlay.hide();
+    if (options.hideOverlay) hideOverlayForUser();
     if (options.osd !== false) core.osd(t('danmaku_off'));
   }
 }
@@ -1411,7 +1484,8 @@ function toggleDanmaku() {
 // Source loads defer playback IPC because their load payload carries the full snapshot.
 function ensureDanmakuEnabled(deferPlayback) {
   commitState({danmakuEnabled: true});
-  overlay.show();
+  restoreOverlayAfterManualHide();
+  updateOverlayOpacity();
   if (!deferPlayback) {
     if (overlayReady) overlayPostMessage('toggle-danmaku', playbackSnapshot());
     setObserver(true);
@@ -1419,7 +1493,9 @@ function ensureDanmakuEnabled(deferPlayback) {
 }
 
 function chooseDanmakuFile() {
+  let generation = danmakuLoadGeneration;
   iina.utils.chooseFile(t('choose_file_title'), { allowedFileTypes: ["json", "xml"] }).then(function (path) {
+    if (generation !== danmakuLoadGeneration) return;
     loadDanmakuFile(path, { enableDanmaku: true, reload: true });
   });
 }
@@ -1676,6 +1752,7 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("dandanplay-select-match", function (data) {
+    if (awaitingFileLoaded) return;
     var match = data.match;
     if (match && isDdpId(match.episodeId)) {
       commitDdpState({matchType: 'filename'});
@@ -1684,6 +1761,7 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("dandanplay-select-episode", function (data) {
+    if (awaitingFileLoaded) return;
     if (!isDdpId(data.episodeId)) return;
     commitDdpState({matchType: 'filename'});
     ddpLoadComments(data.episodeId, data.animeTitle, data.episodeTitle, true, DDP_LOAD_ORIGIN.MANUAL);
@@ -1719,6 +1797,8 @@ function registerSidebarHandlers() {
 event.on("iina.window-loaded", function () {
   overlayReady = false;
   overlayLoadId += 1;
+  overlayAwaitingVideoRender = true;
+  overlay.setOpacity(0);
   updateDanmakuStatus({fileType: pluginState.currentDanmakuStatus.fileType, isLoaded: false});
   lastOverlayProjection = null;
   if (pluginState.danmakuFileList.selectedPaths.length) pendingDanmaku = {};
@@ -1728,17 +1808,26 @@ event.on("iina.window-loaded", function () {
 });
 
 event.on("iina.plugin-overlay-loaded", function () {
+  // Keep the WebView active while transparent so its render-success frames
+  // can run. Explicit user hiding is restored before the next enabled load.
+  overlay.setOpacity(0);
+  overlay.show();
+  overlayHiddenByUser = false;
   registerOverlayHandlers();
   overlayPostMessage("request-overlay-state", {});
-  overlay.show();
+});
+
+event.on('iina.file-started', function () {
+  awaitingFileLoaded = true;
+  beginVideoReset(true);
 });
 
 event.on("iina.file-loaded", function (url) {
-  postVideoAspect();
-  // 偏移量因视频/弹幕文件而异(且不持久化),切换视频时归零并同步 overlay/sidebar
-  applyDanmakuOffset(0);
-  // 无论弹幕开关状态都重置视频相关状态,避免旧 renderer/弹幕残留到新视频。
   loadDanmakuForVideo(url);
+});
+
+event.on('mpv.idle-active.changed', function (idle) {
+  if (idle && awaitingFileLoaded && core.status.idle) awaitingFileLoaded = false;
 });
 
 event.on("mpv.seeking.changed", function (seeking) {
@@ -1777,6 +1866,8 @@ function registerOverlayHandlers() {
       // A failed candidate remains in the list for an explicit retry, but is
       // no longer an active selection. Invalidate later replies from this load.
       overlayLoadId += 1;
+      overlayAwaitingVideoRender = true;
+      overlay.setOpacity(0);
       lastOverlayProjection = null;
       projectionCache = null;
       loadedDanmakuVideoUrl = null;
@@ -1786,7 +1877,7 @@ function registerOverlayHandlers() {
         currentDanmakuStatus: {fileType: null, isLoaded: false},
         danmakuFileList: Object.assign({}, pluginState.danmakuFileList, {selectedPaths: []})
       });
-      overlayPostMessage('clear-danmaku', {});
+      overlayPostMessage('clear-danmaku', {clearId: overlayLoadId});
       sidebarPostMessage('danmaku-file-list', pluginState.danmakuFileList);
       sidebarPostMessage("danmaku-file-error", { path: path, message: t('render_failed') });
       sendDanmakuFilterInfo();
@@ -1794,6 +1885,8 @@ function registerOverlayHandlers() {
       core.osd(t('render_failed'));
     } else {
       updateDanmakuStatus({ fileType: pluginState.currentDanmakuStatus.fileType, isLoaded: true });
+      overlayAwaitingVideoRender = false;
+      updateOverlayOpacity();
       if (pendingLoadNotice && pendingLoadNotice.path === pluginState.danmakuFileList.selectedPaths[0]) {
         osdAfterDanmakuLoad(pendingLoadNotice.fileName, pendingLoadNotice.loadedMessageKey);
         pendingLoadNotice = null;

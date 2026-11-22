@@ -10,6 +10,9 @@ function onPluginMessage(name, callback) {
 let lastTime = null;
 let lastTimeUpdateAt = 0;
 let currentLoadId = 0;
+// Loads and clears share main's monotonic ID, so delayed IPC cannot restore
+// an earlier source or clear a newer renderer after a video switch.
+let latestMessageId = 0;
 let isPaused = false;
 
 let canvasOpacity = 0.8;
@@ -33,6 +36,8 @@ let niconiComments = null;
 let domEmojiRenderer = null;
 let formattedComments = null;
 let canvasRafId = null;
+let loadSuccessFrame = null;
+let loadSuccessGeneration = 0;
 let canvasRebuildTimer = null;
 let canvasRebuildPending = false;
 let canvasVideoAnchorTime = 0;
@@ -210,20 +215,33 @@ function unbindCanvasEvents(instance) {
 }
 
 function disposeCanvasRenderer() {
-  if (domEmojiRenderer) {
-    domEmojiRenderer.destroy();
-    domEmojiRenderer = null;
+  cancelLoadSuccess();
+  const emojiRenderer = domEmojiRenderer;
+  const renderer = niconiComments;
+  domEmojiRenderer = null;
+  niconiComments = null;
+  function cleanup(name, action) {
+    try { action(); }
+    catch (error) { console.log('[overlay] ' + name + ' failed: ' + error); }
   }
-  if (niconiComments) {
-    unbindCanvasEvents(niconiComments);
-    niconiComments.clear();
-    niconiComments.destroy();
-    niconiComments = null;
+  if (emojiRenderer) cleanup('emoji destroy', () => emojiRenderer.destroy());
+  if (renderer) {
+    cleanup('unbind', () => unbindCanvasEvents(renderer));
+    cleanup('renderer clear', () => renderer.clear());
+    cleanup('renderer destroy', () => renderer.destroy());
   }
-  if (canvasNicoMode === 'css') {
+  cleanup('CSS removal', () => {
+    const cssContainer = document.querySelector('[data-dm-css-container]');
+    if (cssContainer) cssContainer.remove();
+  });
+  cleanup('canvas reset', () => {
     const canvas = document.getElementById('niconicomments-canvas');
-    if (canvas) { canvas.width = 1; canvas.height = 1; }
-  }
+    if (!canvas) return;
+    // Reset the backing store independently of engine.clear(), including
+    // mode switches where canvasNicoMode already holds the new mode.
+    canvas.width = canvasNicoMode === 'css' ? 1 : canvas.width;
+    if (canvasNicoMode === 'css') canvas.height = 1;
+  });
 }
 
 var DEFAULT_DANMAKU_FONT_STACKS = {
@@ -263,7 +281,34 @@ function reportCanvasError(error) {
   iina.postMessage("danmaku-load-result", { loadId: currentLoadId, success: false });
 }
 
+function cancelLoadSuccess() {
+  loadSuccessGeneration += 1;
+  if (loadSuccessFrame !== null) cancelAnimationFrame(loadSuccessFrame);
+  loadSuccessFrame = null;
+}
+
+function notifyLoadSuccess() {
+  cancelLoadSuccess();
+  const loadId = currentLoadId;
+  const renderer = niconiComments;
+  const generation = loadSuccessGeneration;
+  if (!renderer) return;
+  const isCurrent = () => generation === loadSuccessGeneration &&
+    loadId === currentLoadId && renderer === niconiComments;
+  // Two frame callbacks give WebKit rendering opportunities after the draw.
+  // They do not confirm compositor presentation, and work while video is paused.
+  loadSuccessFrame = requestAnimationFrame(() => {
+    if (!isCurrent()) return;
+    loadSuccessFrame = requestAnimationFrame(() => {
+      if (!isCurrent()) return;
+      loadSuccessFrame = null;
+      iina.postMessage("danmaku-load-result", {loadId, success: true});
+    });
+  });
+}
+
 function scheduleCanvasRebuild() {
+  cancelLoadSuccess();
   canvasRebuildPending = true;
   if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
   if (!danmakuVisible) { canvasRebuildTimer = null; return; }
@@ -336,6 +381,7 @@ if (typeof window.addEventListener === 'function') {
 }
 
 function initCanvasRenderer(data) {
+  cancelLoadSuccess();
   if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
   canvasRebuildTimer = null;
   formattedComments = data;
@@ -386,7 +432,7 @@ function initCanvasRenderer(data) {
     const cssContainer = document.querySelector('[data-dm-css-container]');
     if (cssContainer) cssContainer.style.opacity = canvasOpacity;
   }
-  iina.postMessage("danmaku-load-result", { loadId: currentLoadId, success: true });
+  notifyLoadSuccess();
 }
 
 function shouldRunCanvasLoop() {
@@ -402,8 +448,10 @@ function drawCanvasAtVpos(vpos, forceRendering) {
 function canvasRenderLoop() {
   canvasRafId = null;
   if (!shouldRunCanvasLoop()) return;
-  drawCanvasAtVpos((getVideoTimeSec() + danmakuTimeOffsetSec) * 100, false);
-  startCanvasLoop();
+  try {
+    drawCanvasAtVpos((getVideoTimeSec() + danmakuTimeOffsetSec) * 100, false);
+    startCanvasLoop();
+  } catch (error) { reportCanvasError(error); }
 }
 
 function startCanvasLoop() {
@@ -470,6 +518,11 @@ onPluginMessage("time-update", (data) => {
 });
 
 onPluginMessage("load-danmaku", (data) => {
+  if (data.loadId !== undefined) {
+    if (!Number.isSafeInteger(data.loadId) || data.loadId <= latestMessageId) return;
+    latestMessageId = data.loadId;
+  }
+  cancelLoadSuccess();
   currentLoadId = data.loadId;
   try {
     applyOverlaySettings(data);
@@ -650,22 +703,26 @@ onPluginMessage("set-danmaku-font", (data) => {
   if (formattedComments) scheduleCanvasRebuild();
 });
 
-onPluginMessage("clear-danmaku", () => {
+onPluginMessage("clear-danmaku", (data) => {
+  const clearId = data && data.clearId;
+  if (clearId !== undefined) {
+    if (!Number.isSafeInteger(clearId) || clearId <= latestMessageId) return;
+    latestMessageId = clearId;
+  }
   currentLoadId = 0;
   canvasRebuildPending = false;
   if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
   canvasRebuildTimer = null;
   stopCanvasLoop();
-  disposeCanvasRenderer();
+  if (canvasViewportFrame !== null) cancelAnimationFrame(canvasViewportFrame);
+  canvasViewportFrame = null;
   lastTime = null;
   lastTimeUpdateAt = 0;
   canvasVideoAnchorTime = 0;
   canvasSystemAnchorTime = 0;
   canvasIsPlaying = false;
-  const cssContainer = document.querySelector('[data-dm-css-container]');
-  if (cssContainer) cssContainer.remove();
   formattedComments = null;
-
+  disposeCanvasRenderer();
 });
 
 function reportOverlayReady() {
