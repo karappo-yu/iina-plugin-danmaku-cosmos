@@ -93,14 +93,19 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
   }
 
   const overlayVisibility = [];
+  const overlayOpacities = [];
+  const nativeOverlayOperations = [];
+  let nativeOverlayHidden = true;
   const iina = {
     overlay: {
       loadFile() { overlayHandlers.clear(); },
-      show() { overlayVisibility.push('show'); },
-      hide() { overlayVisibility.push('hide'); },
+      show() { nativeOverlayHidden = false; overlayVisibility.push('show'); nativeOverlayOperations.push({name: 'show'}); },
+      hide() { nativeOverlayHidden = true; overlayVisibility.push('hide'); nativeOverlayOperations.push({name: 'hide'}); },
+      setOpacity(value) { overlayOpacities.push(value); nativeOverlayOperations.push({name: 'opacity', value}); },
       postMessage(name, data) {
         const payload = JSON.parse(data.__encoded ? decodeURIComponent(data.__encoded) : JSON.stringify(data));
         overlayMessages.push({name, wire: data, data: payload});
+        nativeOverlayOperations.push({name: 'message', key: name});
       },
       onMessage(name, handler) { registerMessage(overlayHandlers, name, handler); },
     },
@@ -213,6 +218,9 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
     httpRequests,
     overlayMessages,
     overlayVisibility,
+    overlayOpacities,
+    nativeOverlayOperations,
+    isNativeOverlayHidden() { return nativeOverlayHidden; },
     menuItems,
     sidebarMessages,
     sidebarHandlers,
@@ -648,7 +656,7 @@ test('file-started invalidates A immediately and defers B source I/O by one turn
   const oldLoad = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
   h.context.applyDanmakuOffset(2);
   h.startVideo('file:///videos/B.mp4');
-  assert.equal(h.overlayVisibility.at(-1), 'hide');
+  assert.equal(h.overlayOpacities.at(-1), 0);
   assert.equal(h.context.currentVideoUrl, null);
   assert.equal(h.context.pluginState.danmakuTimeOffsetSec, 0);
   assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
@@ -667,17 +675,17 @@ test('file-started invalidates A immediately and defers B source I/O by one turn
   h.runTimers(0);
   assert.equal(h.fileReads.at(-1), '/videos/B.xml');
   assert.equal(loadedComments(h.overlayMessages).length, loads + 1);
-  assert.equal(h.overlayVisibility.at(-1), 'hide', 'queuing B must not reveal the old WebView');
+  assert.equal(h.overlayOpacities.at(-1), 0, 'queuing B must not reveal the old WebView');
   h.ackLoad();
-  assert.equal(h.overlayVisibility.at(-1), 'show');
+  assert.equal(h.overlayOpacities.at(-1), 1);
 });
 
-test('queued native hide and clear run before the deferred synchronous discovery', () => {
+test('queued native transparency and clear run before the deferred synchronous discovery', () => {
   const h = createHarness(true, false, {}, false, false);
   h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.runTimers(0); h.ackLoad();
   const queue = [], native = h.context.iina.overlay;
   let clearDelivered = false;
-  for (const method of ['hide', 'show', 'postMessage']) {
+  for (const method of ['hide', 'show', 'setOpacity', 'postMessage']) {
     const original = native[method];
     native[method] = (...args) => queue.push(() => {
       if (method === 'postMessage' && args[0] === 'clear-danmaku') clearDelivered = true;
@@ -690,7 +698,7 @@ test('queued native hide and clear run before the deferred synchronous discovery
     const original = h.context.iina.file[method];
     h.context.iina.file[method] = (...args) => {
       assert.equal(clearDelivered, true, 'the native clear task must precede source I/O');
-      assert.equal(h.overlayVisibility.at(-1), 'hide', 'the native view must already be hidden');
+      assert.equal(h.overlayOpacities.at(-1), 0, 'the native view must already be transparent');
       return original(...args);
     };
   }
@@ -700,10 +708,10 @@ test('queued native hide and clear run before the deferred synchronous discovery
   assert.equal(h.directoryReads.length, scans);
   while (queue.length) queue.shift()();
   assert.equal(h.fileReads.at(-1), '/videos/B.xml');
-  assert.equal(h.overlayVisibility.at(-1), 'hide');
+  assert.equal(h.overlayOpacities.at(-1), 0);
   h.ackLoad();
   while (queue.length) queue.shift()();
-  assert.equal(h.overlayVisibility.at(-1), 'show');
+  assert.equal(h.overlayOpacities.at(-1), 1);
 });
 
 test('readiness between file-started and file-loaded cannot load the new URL early', () => {
@@ -718,10 +726,10 @@ test('readiness between file-started and file-loaded cannot load the new URL ear
   assert.equal(h.directoryReads.length, 0);
   assert.equal(h.httpRequests.length, 0);
   assert.equal(loadedComments(h.overlayMessages).length, 0);
-  assert.equal(h.overlayVisibility.at(-1), 'hide');
+  assert.equal(h.overlayOpacities.at(-1), 0);
   h.finishVideo(); h.runTimers(0); h.ackLoad();
   assert.equal(h.fileReads.at(-1), '/videos/B.xml');
-  assert.equal(h.overlayVisibility.at(-1), 'show');
+  assert.equal(h.overlayOpacities.at(-1), 1);
 });
 
 test('failed opens release the start gap on idle and the next video loads normally', () => {
@@ -733,11 +741,11 @@ test('failed opens release the start gap on idle and the next video loads normal
   h.emitSidebar('select-danmaku-file', {path: '/videos/missing.xml'});
   assert.equal(h.fileReads.at(-1), '/videos/missing.xml', 'manual input is available again after the failed open');
   h.toggleDanmaku(); h.toggleDanmaku();
-  assert.equal(h.overlayVisibility.at(-1), 'hide');
+  assert.equal(h.overlayOpacities.at(-1), 0);
   h.context.iina.core.status.idle = false;
   h.setVideo('file:///videos/B.mp4'); h.ackLoad();
   assert.equal(h.fileReads.at(-1), '/videos/B.xml');
-  assert.equal(h.overlayVisibility.at(-1), 'show');
+  assert.equal(h.overlayOpacities.at(-1), 1);
 });
 
 test('rapid switches and same-URL reloads discard old discovery timers and render replies', () => {
@@ -752,7 +760,7 @@ test('rapid switches and same-URL reloads discard old discovery timers and rende
   oldTimer(); sameUrlTimer();
   h.emitOverlay('danmaku-load-result', {loadId: oldLoad, success: true});
   assert.equal(loadedComments(h.overlayMessages).length, 1);
-  assert.equal(h.overlayVisibility.at(-1), 'hide');
+  assert.equal(h.overlayOpacities.at(-1), 0);
   h.runTimers(0); h.ackLoad();
   assert.equal(h.fileReads.filter(p => p === '/videos/B.xml').length, 0);
   assert.equal(h.fileReads.filter(p => p === '/videos/A.xml').length, 2);
@@ -764,9 +772,9 @@ test('WebView navigation rejects old render replies and restores only the curren
   const oldId = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
   h.emitEvent('iina.window-loaded'); h.emitEvent('iina.plugin-overlay-loaded');
   h.emitOverlay('danmaku-load-result', {loadId: oldId, success: true});
-  assert.equal(h.overlayVisibility.at(-1), 'hide');
+  assert.equal(h.overlayOpacities.at(-1), 0);
   h.emitOverlay('overlay-ready'); h.ackLoad();
-  assert.equal(h.overlayVisibility.at(-1), 'show');
+  assert.equal(h.overlayOpacities.at(-1), 1);
   assert.equal(h.fileReads.filter(p => p === '/videos/B.xml').length, 1);
 });
 
@@ -782,22 +790,122 @@ test('enabling uses discovered files without rescanning, clearing or resetting t
   assert.equal(h.overlayMessages.filter(m => m.name === 'clear-danmaku').length, clears);
   assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.xmlFiles, f => f.path), Array.from(files.xmlFiles, f => f.path));
   assert.equal(h.fileReads.at(-1), '/videos/B.xml');
-  assert.equal(h.overlayVisibility.at(-1), 'hide');
-  h.ackLoad(); assert.equal(h.overlayVisibility.at(-1), 'show');
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.ackLoad(); assert.equal(h.overlayOpacities.at(-1), 1);
   h.setVideo('file:///videos/none.mp4');
-  assert.equal(h.overlayVisibility.at(-1), 'hide');
+  assert.equal(h.overlayOpacities.at(-1), 0);
 });
 
 test('a new render success after disabling stays hidden and the next enable reuses it', () => {
   const h = createHarness(true);
   h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
   h.setVideo('file:///videos/B.mp4'); h.toggleDanmaku(); h.ackLoad();
-  assert.equal(h.overlayVisibility.at(-1), 'hide');
+  assert.equal(h.overlayOpacities.at(-1), 0);
   assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
   const loads = loadedComments(h.overlayMessages).length;
   h.toggleDanmaku();
   assert.equal(loadedComments(h.overlayMessages).length, loads);
-  assert.equal(h.overlayVisibility.at(-1), 'show');
+  assert.equal(h.overlayOpacities.at(-1), 1);
+});
+
+test('native transparency keeps the WebView active and remains separate from comment opacity', () => {
+  const h = createHarness(true, false, {danmakuCanvasOpacity: 0.4});
+  h.readyOverlay();
+  const show = h.nativeOverlayOperations.findIndex(op => op.name === 'show');
+  assert.deepEqual(h.nativeOverlayOperations[show - 1], {name: 'opacity', value: 0});
+  assert.equal(h.isNativeOverlayHidden(), false);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  assert.equal(h.overlayOpacities.at(-1), 1);
+  h.emitSidebar('set-opacity', {opacity: 0.25});
+  assert.equal(h.context.pluginState.canvasOpacity, 0.25);
+  assert.equal(h.overlayOpacities.at(-1), 1);
+  h.setVideo('file:///videos/B.mp4');
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  assert.equal(h.isNativeOverlayHidden(), false);
+  assert.equal(h.overlayVisibility.filter(value => value === 'hide').length, 0);
+  assert.equal(h.overlayVisibility.filter(value => value === 'show').length, 1);
+});
+
+for (const action of ['menu', 'toggle', 'source']) {
+  test(`manual hiding followed by ${action} restores an active transparent WebView before B loads`, async () => {
+    const h = createHarness(true);
+    h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+    const oldId = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+    h.menuItems.find(item => item.label === 'Hide Danmaku Overlay').callback();
+    assert.equal(h.isNativeOverlayHidden(), true);
+    h.setVideo('file:///videos/B.mp4');
+    const first = h.nativeOverlayOperations.length;
+    if (action === 'menu') h.menuItems.find(item => item.label === 'Show Danmaku Overlay').callback();
+    else if (action === 'toggle') h.toggleDanmaku();
+    else await h.loadFromMenu('/videos/B.xml');
+    const operations = h.nativeOverlayOperations.slice(first);
+    const show = operations.findIndex(op => op.name === 'show');
+    const load = operations.findIndex(op => op.name === 'message' && op.key === 'load-danmaku');
+    assert.ok(show > 0 && load > show);
+    assert.deepEqual(operations[show - 1], {name: 'opacity', value: 0});
+    assert.equal(h.isNativeOverlayHidden(), false);
+    assert.equal(h.overlayOpacities.at(-1), 0);
+    h.emitOverlay('danmaku-load-result', {loadId: oldId, success: true});
+    assert.equal(h.overlayOpacities.at(-1), 0);
+    h.ackLoad();
+    assert.equal(h.overlayOpacities.at(-1), 1);
+    assert.deepEqual(h.overlayVisibility, ['show', 'hide', 'show']);
+  });
+}
+
+test('main and overlay keep alpha zero through two frames and resume after a manual hide', () => {
+  const h = createHarness(true, false, {}, false, false);
+  const handlers = new Map(), frames = new Map();
+  const canvas = {style: {}}, viewport = {style: {}};
+  let nextId = 0, now = 0;
+  class Renderer {
+    constructor(canvas, comments) {this.comments = comments;}
+    addEventListener() {} removeEventListener() {} resize() {} clear() {} destroy() {}
+    pauseCSS() {} resumeCSS() {} setPlaybackSpeed() {}
+    drawCanvas() {canvas.comments = this.comments;}
+  }
+  const overlay = vm.createContext({
+    iina: {onMessage(name, handler) {handlers.set(name, handler);},
+      postMessage(name, data) {h.emitOverlay(name, data);}},
+    document: {getElementById(id) {return id === 'danmaku-viewport' ? viewport : canvas;}, querySelector() {return null;}},
+    window: {location: {href: 'file:///plugin/overlay/index.html'}, innerWidth: 1280, innerHeight: 720},
+    URL, NiconiComments: Renderer, performance: {now() {return now;}}, console: {log() {}},
+    requestAnimationFrame(callback) {frames.set(++nextId, callback); return nextId;},
+    cancelAnimationFrame(id) {frames.delete(id);}, setTimeout, clearTimeout,
+  });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../overlay/main.js'), 'utf8'), overlay);
+  const post = h.context.iina.overlay.postMessage;
+  h.context.iina.overlay.postMessage = (name, wire) => {
+    post(name, wire);
+    const payload = JSON.parse(wire.__encoded ? decodeURIComponent(wire.__encoded) : JSON.stringify(wire));
+    handlers.get(name)(payload);
+  };
+  function frame() {
+    // Model the native hidden-page suspension; alpha zero alone stays active.
+    if (h.isNativeOverlayHidden()) return;
+    now += 16;
+    for (const [id, callback] of Array.from(frames)) {frames.delete(id); callback(now);}
+  }
+  h.emitEvent('iina.plugin-overlay-loaded'); h.setPaused(true);
+  h.setVideo('file:///videos/A.mp4'); h.runTimers(0);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  frame(); assert.equal(h.overlayOpacities.at(-1), 0);
+  frame(); assert.equal(h.overlayOpacities.at(-1), 1);
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  h.setVideo('file:///videos/B.mp4'); h.runTimers(0);
+  assert.equal(h.isNativeOverlayHidden(), false);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  assert.equal(canvas.comments[0].content, 'B comment');
+  frame(); assert.equal(h.overlayOpacities.at(-1), 0);
+  h.menuItems.find(item => item.label === 'Hide Danmaku Overlay').callback();
+  frame(); assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+  h.toggleDanmaku();
+  assert.equal(h.isNativeOverlayHidden(), false);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  frame();
+  assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+  assert.equal(h.overlayOpacities.at(-1), 1);
 });
 
 test('a manual file selected during the yield wins while discovered candidates remain available', async () => {
@@ -812,7 +920,7 @@ test('a manual file selected during the yield wins while discovered candidates r
   assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.xmlFiles, f => f.path).sort(), ['/videos/A.xml', '/videos/B.xml']);
   assert.equal(h.fileReads.filter(p => p === '/videos/A.xml').length, 0);
   assert.equal(h.context.pluginState.danmakuEnabled, false);
-  h.ackLoad(); assert.equal(h.overlayVisibility.at(-1), 'hide');
+  h.ackLoad(); assert.equal(h.overlayOpacities.at(-1), 0);
 });
 
 test('a bad manual file during the yield does not enable danmaku or schedule discovery', async () => {
@@ -853,7 +961,7 @@ test('an A network reply after B starts cannot repopulate caches or activate A',
   assert.equal(loadedComments(h.overlayMessages).length, 0);
   assert.equal(h.fileWrites.length, 0);
   assert.deepEqual(Object.keys(h.context.danmakuCache), []);
-  assert.equal(h.overlayVisibility.at(-1), 'hide');
+  assert.equal(h.overlayOpacities.at(-1), 0);
 });
 
 test('a manual episode selected during the yield supersedes automatic matching immediately', async () => {
@@ -869,8 +977,8 @@ test('a manual episode selected during the yield supersedes automatic matching i
   await flushMicrotasks();
   assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['dandanplay://8']);
   assert.equal(JSON.parse(h.fileWrites.at(-1).content).videoPath, 'file:///videos/B.mp4');
-  assert.equal(h.overlayVisibility.at(-1), 'hide');
-  h.ackLoad(); assert.equal(h.overlayVisibility.at(-1), 'show');
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.ackLoad(); assert.equal(h.overlayOpacities.at(-1), 1);
 });
 
 test('a manual DDP failure after the yield can still fall back to discovered local candidates', async () => {

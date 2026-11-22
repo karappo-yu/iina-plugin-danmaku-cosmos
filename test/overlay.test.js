@@ -52,6 +52,94 @@ function harness() {
 
 const comment = (text, commands, owner = false, user = 'u') => ({t: 100, text, _commands: commands, _isOwner: owner, _dateSec: 1767196800, _userId: user});
 const load = (h, data) => h.send('load-danmaku', {danmakuType: 'dandanplay', comments: formatted(data), canvasMode: 'css'});
+const loadResults = h => h.messages.filter(message => message.name === 'danmaku-load-result');
+const successes = h => loadResults(h).filter(message => message.data.success);
+
+for (const mode of ['css', 'default']) for (const paused of [false, true]) {
+  test(`load success waits for two frame callbacks after drawing (${mode}, paused=${paused})`, () => {
+    const h = harness();
+    h.send('load-danmaku', {loadId: 1, comments: formatted([comment('new video', [])]), canvasMode: mode,
+      playback: {enabled: true, time: 2, paused, speed: 1}});
+    assert.deepEqual(h.instances[0].draws, [200], 'initial draw completes synchronously');
+    assert.equal(successes(h).length, 0, 'drawing does not synchronously report success');
+    assert.equal(h.frames.size, paused ? 1 : 2, 'notifier does not depend on the playback loop');
+    h.flushFrames();
+    assert.equal(successes(h).length, 0, 'the first frame callback only schedules the second');
+    h.flushFrames();
+    assert.deepEqual(successes(h).map(message => ({...message.data})), [{loadId: 1, success: true}]);
+    assert.equal(h.read('loadSuccessFrame'), null);
+    if (paused) assert.deepEqual(h.instances[0].draws, [200], 'paused success requires no playback draw');
+  });
+}
+
+for (const completedFrames of [0, 1]) {
+  test(`new load invalidates an older success even when frame cancellation fails (stage ${completedFrames + 1})`, () => {
+    const h = harness();
+    const data = {comments: formatted([comment('video', [])]), playback: {enabled: true, time: 1, paused: true, speed: 1}};
+    h.send('load-danmaku', {...data, loadId: 1});
+    if (completedFrames) h.flushFrames();
+    const staleCallback = h.frames.get(h.read('loadSuccessFrame'));
+    h.context.cancelAnimationFrame = () => {};
+    h.send('load-danmaku', {...data, loadId: 2});
+    h.flushFrames();
+    assert.equal(successes(h).length, 0);
+    h.flushFrames();
+    assert.deepEqual(successes(h).map(message => message.data.loadId), [2]);
+    staleCallback();
+    assert.deepEqual(successes(h).map(message => message.data.loadId), [2], 'obsolete callbacks cannot revive a completed load');
+  });
+}
+
+test('clear and renderer failure cancel pending success and reject callbacks that were already queued', () => {
+  const h = harness();
+  const data = {comments: formatted([comment('video', [])]), playback: {enabled: true, time: 1, paused: true, speed: 1}};
+  h.send('load-danmaku', {...data, loadId: 1}); h.flushFrames();
+  const clearedCallback = h.frames.get(h.read('loadSuccessFrame'));
+  h.send('clear-danmaku', {clearId: 2});
+  assert.equal(h.frames.size, 0);
+  assert.equal(h.read('loadSuccessFrame'), null);
+  clearedCallback();
+  assert.equal(successes(h).length, 0);
+  h.send('load-danmaku', {...data, loadId: 3}); h.flushFrames();
+  const failedCallback = h.frames.get(h.read('loadSuccessFrame'));
+  h.context.reportCanvasError(new Error('render failed'));
+  assert.equal(h.frames.size, 0);
+  assert.equal(h.read('loadSuccessFrame'), null);
+  failedCallback();
+  assert.deepEqual(loadResults(h).map(message => ({...message.data})), [{loadId: 3, success: false}]);
+  h.send('load-danmaku', {...data, loadId: 4}); h.flushFrames(); h.flushFrames();
+  assert.deepEqual(successes(h).map(message => message.data.loadId), [4], 'a later renderer can settle normally');
+});
+
+test('a playing draw failure during the two-frame window reports failure and cancels success', () => {
+  const h = harness();
+  h.send('load-danmaku', {loadId: 1, comments: formatted([comment('video', [])]),
+    playback: {enabled: true, time: 1, paused: false, speed: 1}});
+  h.instances[0].drawCanvas = () => {throw new Error('frame failed');};
+  assert.doesNotThrow(() => h.flushFrames());
+  h.flushFrames();
+  assert.deepEqual(loadResults(h).map(message => ({...message.data})), [{loadId: 1, success: false}]);
+  assert.equal(h.frames.size, 0);
+  assert.equal(h.read('niconiComments'), null);
+});
+
+test('a pending style rebuild invalidates the old success despite retaining its load ID', () => {
+  const h = harness();
+  h.send('load-danmaku', {loadId: 1, comments: formatted([comment('video', [])]),
+    playback: {enabled: true, time: 1, paused: true, speed: 1}});
+  h.flushFrames();
+  const staleCallback = h.frames.get(h.read('loadSuccessFrame'));
+  h.send('set-fontscale', {scale: 0.5});
+  assert.equal(h.frames.size, 0, 'scheduling replacement cancels the old success');
+  staleCallback();
+  assert.equal(successes(h).length, 0);
+  h.flush();
+  assert.equal(h.instances.length, 2);
+  staleCallback(); h.flushFrames();
+  assert.equal(successes(h).length, 0, 'old identity cannot acknowledge the replacement');
+  h.flushFrames();
+  assert.deepEqual(successes(h).map(message => message.data.loadId), [1]);
+});
 
 test('bundled CSS measurement renderer keeps pixels small while resizing its logical viewport', () => {
   const previousDocument = global.document;
@@ -265,6 +353,8 @@ for (const mode of ['css', 'default']) for (const nextMode of ['css', 'default']
     assert.equal(h.instances.length, 2);
     assert.deepEqual(h.instances[1].draws, [200]);
     assert.equal(h.read('formattedComments')[0].content, 'new video');
+    assert.equal(successes(h).length, 0);
+    h.flushFrames(); h.flushFrames();
     assert.equal(h.messages.at(-1).data.loadId, 3);
     assert.equal(h.messages.at(-1).data.success, true);
     assert.equal(h.canvas.width, nextMode === 'css' ? 1 : 1920);
@@ -508,6 +598,10 @@ test('a hidden load retains its data and reports success only when enabled and c
   h.send('toggle-danmaku', {enabled: true, time: 3, paused: true, speed: 1});
   assert.equal(h.instances.length, 1);
   assert.deepEqual(h.instances[0].draws, [300]);
+  assert.equal(loadResults(h).length, 0);
+  h.flushFrames();
+  assert.equal(loadResults(h).length, 0);
+  h.flushFrames();
   assert.equal(h.messages.filter(m => m.name === 'danmaku-load-result').length, 1);
   assert.equal(h.messages.at(-1).data.loadId, 7);
   assert.equal(h.messages.at(-1).data.success, true);
