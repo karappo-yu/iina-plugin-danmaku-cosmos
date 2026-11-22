@@ -2098,12 +2098,65 @@ test('a failed explicit file refresh keeps the cached active document', async ()
 test('completed mpv seeks explicitly synchronize even sub-threshold forward movement', () => {
   const h = createHarness(true); h.readyOverlay();
   h.overlayMessages.length = 0;
-  h.emitEvent('mpv.seeking.changed', false);
+  h.emitEvent('mpv.playback-restart');
   assert.equal(h.overlayMessages.length, 0);
-  h.emitEvent('mpv.seeking.changed', true);
+  h.emitEvent('mpv.seek');
   h.setMpv('time-pos', 10.05);
-  h.emitEvent('mpv.seeking.changed', false);
+  h.emitEvent('mpv.playback-restart');
   assert.deepEqual(h.overlayMessages.at(-1).data, {time: 10.05, seek: true});
+});
+
+test('paused seeks forward only the landing frame time, not the seek target', () => {
+  const h = createHarness(true); h.readyOverlay();
+  h.setPaused(true);
+  h.overlayMessages.length = 0;
+  const timeUpdates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => m.data);
+  // mpv publishes the requested target first, then the landing frame's time.
+  h.emitEvent('mpv.seek');
+  h.emitEvent('mpv.time-pos.changed', 30);
+  assert.deepEqual(timeUpdates(), [], 'the seek target is not drawn');
+  h.setMpv('time-pos', 30.033);
+  h.emitEvent('mpv.playback-restart');
+  h.emitEvent('mpv.time-pos.changed', 30.033);
+  assert.deepEqual(timeUpdates(), [{time: 30.033, seek: true}, {time: 30.033}]);
+  // Paused frame steps after the seek keep repainting.
+  h.emitEvent('mpv.time-pos.changed', 30.066);
+  assert.deepEqual(timeUpdates().at(-1), {time: 30.066});
+});
+
+test('dragging while paused follows each seek target live and lands on the real frame', () => {
+  const h = createHarness(true); h.readyOverlay();
+  h.setPaused(true);
+  h.overlayMessages.length = 0;
+  const timeUpdates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => m.data);
+  h.emitEvent('mpv.seek');
+  h.emitEvent('mpv.time-pos.changed', 20);
+  assert.deepEqual(timeUpdates(), [], 'a lone seek target waits for the landing frame');
+  // Further seeks before playback restarts: the slider is being dragged.
+  h.emitEvent('mpv.seek');
+  h.emitEvent('mpv.time-pos.changed', 25);
+  h.emitEvent('mpv.seek');
+  h.emitEvent('mpv.time-pos.changed', 30);
+  assert.deepEqual(timeUpdates(), [{time: 25}, {time: 30}]);
+  h.setMpv('time-pos', 30.033);
+  h.emitEvent('mpv.playback-restart');
+  assert.deepEqual(timeUpdates().at(-1), {time: 30.033, seek: true});
+  // The next click seek is a lone seek again.
+  h.emitEvent('mpv.seek');
+  h.emitEvent('mpv.time-pos.changed', 50);
+  assert.deepEqual(timeUpdates().at(-1), {time: 30.033, seek: true});
+});
+
+test('seeks during playback keep forwarding time-pos', () => {
+  const h = createHarness(true); h.readyOverlay();
+  h.setPaused(false);
+  h.overlayMessages.length = 0;
+  h.emitEvent('mpv.seek');
+  h.emitEvent('mpv.time-pos.changed', 30);
+  assert.deepEqual(h.overlayMessages.filter(m => m.name === 'time-update').map(m => m.data), [{time: 30}]);
+  // Ignore the property callback argument: IINA delivers flags as 0.
+  h.emitEvent('mpv.seeking.changed', 0);
+  assert.equal(h.overlayMessages.filter(m => m.name === 'time-update').length, 1);
 });
 
 test('an unchanged renderer status does not echo a second UI update', () => {
