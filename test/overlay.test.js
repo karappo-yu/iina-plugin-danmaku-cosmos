@@ -242,6 +242,7 @@ test('small seeks while paused repaint at the offset-adjusted position without a
   h.send('set-danmaku-offset',{offset:-2});
   h.send('pause-state',{paused:true});
   h.send('time-update',{time:10.25});
+  h.flushFrames();
   assert.equal(h.instances.at(-1).draws.at(-1), 825);
   h.send('time-update',{time:NaN});
   assert.equal(h.context.getVideoTimeSec(), 10.25);
@@ -489,6 +490,7 @@ test('high playback speed follows expected clock drift without clearing active c
   h.send('time-update', {time: 18});
   assert.equal(renderer.clears || 0, clears);
   h.send('time-update', {time: 17.8});
+  h.flushFrames();
   assert.equal(renderer.clears, clears + 1, 'backward seek below the old 1.5s threshold clears');
 });
 
@@ -507,6 +509,7 @@ test('atomic enabling and repeated pause/speed changes keep offset out of the vi
   assert.equal(h.context.getVideoTimeSec(), 45);
   assert.equal(h.read('canvasVideoAnchorTime'), 45);
   h.send('time-update', {time: 44.75});
+  h.flushFrames();
   assert.equal(h.instances[0].draws.at(-1), 4175);
 });
 
@@ -515,9 +518,11 @@ test('small forward seeks correct CSS position while ordinary high-speed progres
   h.send('toggle-danmaku', {enabled: true, time: 10, paused: false, speed: 1});
   const renderer = h.instances[0]; const before = renderer.clears || 0;
   h.advance(100); h.send('time-update', {time: 10.6});
+  h.flushFrames();
   assert.equal(renderer.clears, before + 1);
   assert.equal(renderer.draws.at(-1), 1060);
   h.advance(100); h.send('time-update', {time: 10.75, seek: true});
+  h.flushFrames();
   assert.equal(renderer.clears, before + 2);
   assert.equal(renderer.draws.at(-1), 1075);
   h.send('playback-speed', {speed: 8});
@@ -682,13 +687,15 @@ test('repeated-emoji tiles add vertical padding for stroke and shadow without al
   const textNode = {nodeType: 3, textContent: '🌀'.repeat(8)};
   const commentEl = {
     nodeType: 1,
-    closest(sel) { return sel === '[data-dm-comment]' ? this : null; },
-    replaceChild(next, prev) { replaced.push({next, prev}); },
+    hasAttribute(name) { return name === 'data-dm-comment'; },
+    closest() { throw new Error('emoji scanning must not match style-synchronizing selectors'); },
+    replaceChild(next, prev) { replaced.push({next, prev}); next.parentElement = this; prev.parentElement = null; },
   };
   textNode.parentElement = commentEl;
   const container = {
-    contains(el) { return el === commentEl; },
+    contains(el) { for (let current = el; current; current = current.parentElement) if (current === this) return true; return false; },
   };
+  commentEl.parentElement = container;
   const ctxCalls = [];
   const sandbox = vm.createContext({
     iina: {onMessage() {}, postMessage() {}},
@@ -712,7 +719,8 @@ test('repeated-emoji tiles add vertical padding for stroke and shadow without al
           tileCanvases.push(c);
           return c;
         }
-        return {attrs: {}, style: {}, setAttribute(k, v) { this.attrs[k] = v; }};
+        return {nodeType: 1, attrs: {}, style: {}, setAttribute(k, v) { this.attrs[k] = v; },
+          hasAttribute(k) { return Object.hasOwn(this.attrs, k); }, closest() { throw new Error('selectors must not run'); }};
       },
     },
     window: {location: {href: 'file:///plugin/overlay/index.html'}, innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1},
@@ -746,4 +754,102 @@ test('repeated-emoji tiles add vertical padding for stroke and shadow without al
   assert.equal(ctxCalls[0].op, 'stroke');
   assert.equal(ctxCalls[0].h, 152);
   assert.equal(ctxCalls[0].y, 116);
+  const existingTileText = {nodeType: 3, textContent: textNode.textContent, parentElement: span};
+  const detachedText = {nodeType: 3, textContent: textNode.textContent, parentElement: null};
+  const outsideComment = {parentElement: container, hasAttribute() { return false; }, closest() { throw new Error('selectors must not run'); }};
+  const outsideText = {nodeType: 3, textContent: textNode.textContent, parentElement: outsideComment};
+  observerCb([{addedNodes: [span, existingTileText, detachedText, outsideText]}]);
+  assert.equal(replaced.length, 1, 'tiles, detached text and text outside comments are not transformed');
 });
+
+for (const mode of ['css', 'default']) for (const paused of [false, true]) {
+  test(`seek bursts draw only the latest anchor on one frame (${mode}, paused=${paused})`, () => {
+    const h = harness();
+    h.send('load-danmaku', {loadId: 1, comments: formatted([comment('test', [])]), canvasMode: mode,
+      playback: {enabled: true, time: 10, paused, speed: 1}});
+    h.flushFrames(); h.flushFrames();
+    h.send('set-danmaku-offset', {offset: -2});
+    const renderer = h.instances[0], initialDraws = renderer.draws.length, initialClears = renderer.clears || 0;
+    for (let id = 1; id <= 600; id++) h.send('time-update', {
+      time: id % 2 ? 60 : 20, seek: true, sourceId: 1, timeId: id,
+    });
+    assert.equal(renderer.draws.length, initialDraws, 'IPC callbacks do not draw');
+    assert.equal(renderer.clears || 0, initialClears, 'IPC callbacks do not remove DOM');
+    assert.equal(h.frames.size, 1, 'playing and paused updates share the same pending frame');
+    assert.equal(h.messages.filter(m => m.name === 'time-update-ack').length, 600);
+    h.flushFrames();
+    assert.equal(renderer.draws.length, initialDraws + 1);
+    assert.equal(renderer.draws.at(-1), 1800, 'the latest video anchor receives the offset once');
+    assert.equal(renderer.clears, initialClears + 1);
+    assert.equal(h.frames.size, paused ? 0 : 1);
+  });
+}
+
+test('explicit progress does not turn native receipt delay into seeks', () => {
+  const h = harness();
+  h.send('load-danmaku', {loadId: 1, comments: formatted([comment('test', [])]),
+    playback: {enabled: true, time: 10, paused: false, speed: 1}});
+  const renderer = h.instances[0], clears = renderer.clears || 0;
+  for (let id = 1; id <= 100; id++) {
+    h.advance(400);
+    h.send('time-update', {time: 10 + id / 30, seek: false, sourceId: 1, timeId: id});
+    h.flushFrames();
+  }
+  assert.equal(renderer.clears || 0, clears);
+  assert.equal(h.messages.filter(m => m.name === 'time-update-ack').length, 100);
+});
+
+test('stale source and duplicate time updates are acknowledged without changing the anchor', () => {
+  const h = harness();
+  h.send('load-danmaku', {loadId: 3, comments: formatted([comment('new', [])]),
+    playback: {enabled: true, time: 10, paused: true, speed: 1}});
+  h.send('time-update', {time: 50, seek: true, sourceId: 2, timeId: 1});
+  assert.equal(h.context.getVideoTimeSec(), 10);
+  h.send('time-update', {time: 12, seek: true, sourceId: 3, timeId: 2});
+  h.send('time-update', {time: 80, seek: true, sourceId: 3, timeId: 2});
+  assert.equal(h.context.getVideoTimeSec(), 12);
+  h.flushFrames();
+  assert.equal(h.instances[0].draws.at(-1), 1200);
+  assert.deepEqual(h.messages.filter(m => m.name === 'time-update-ack').map(m => ({...m.data})), [
+    {timeId: 1, sourceId: 2}, {timeId: 2, sourceId: 3}, {timeId: 2, sourceId: 3},
+  ]);
+});
+
+test('paused landing and its repeated progress echo require only one draw', () => {
+  const h = harness();
+  h.send('load-danmaku', {loadId: 1, comments: formatted([comment('test', [])]),
+    playback: {enabled: true, time: 10, paused: true, speed: 1}});
+  const renderer = h.instances[0], before = renderer.draws.length;
+  h.send('time-update', {time: 30.033, seek: true, sourceId: 1, timeId: 1});
+  h.send('pause-state', {paused: true});
+  h.send('time-update', {time: 30.033, seek: false, sourceId: 1, timeId: 2});
+  assert.equal(renderer.draws.length, before);
+  h.flushFrames();
+  assert.equal(renderer.draws.length, before + 1);
+  h.send('time-update', {time: 30.033, seek: false, sourceId: 1, timeId: 3});
+  h.flushFrames();
+  assert.equal(renderer.draws.length, before + 1, 'unchanged paused echoes remain idle');
+});
+
+for (const action of ['clear', 'disable', 'replacement', 'failure']) {
+  test(`pending seek frame cannot survive ${action}, even if native cancellation fails`, () => {
+    const h = harness();
+    h.send('load-danmaku', {loadId: 1, comments: formatted([comment('old', [])]),
+      playback: {enabled: true, time: 10, paused: true, speed: 1}});
+    h.flushFrames(); h.flushFrames();
+    const old = h.instances[0];
+    h.send('time-update', {time: 30, seek: true, sourceId: 1, timeId: 1});
+    const queued = h.frames.get(h.read('canvasRafId'));
+    h.context.cancelAnimationFrame = () => {};
+    if (action === 'clear') h.send('clear-danmaku', {clearId: 2});
+    else if (action === 'disable') h.send('toggle-danmaku', {enabled: false, time: 30, paused: true, speed: 1});
+    else if (action === 'replacement') h.send('load-danmaku', {loadId: 2, comments: formatted([comment('new', [])]),
+      playback: {enabled: true, time: 4, paused: true, speed: 1}});
+    else h.context.reportCanvasError(new Error('failed'));
+    const draws = old.draws.length, replacement = h.instances.at(-1), replacementDraws = replacement.draws.length;
+    queued();
+    assert.equal(old.draws.length, draws);
+    assert.equal(replacement.draws.length, replacementDraws);
+    assert.equal(h.read('canvasForceDrawPending'), false);
+  });
+}

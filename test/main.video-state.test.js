@@ -269,6 +269,11 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
       assert.ok(last, 'a source was dispatched');
       emit(overlayHandlers, 'danmaku-load-result', {loadId: last.data.loadId, success});
     },
+    ackTimeUpdate() {
+      const last = overlayMessages.findLast(message => message.name === 'time-update');
+      assert.ok(last, 'a time update was dispatched');
+      emit(overlayHandlers, 'time-update-ack', {timeId: last.data.timeId, sourceId: last.data.sourceId});
+    },
     setPaused(value) { iina.core.status.paused = value; },
     setFullscreen(value) { iina.core.window.fullscreen = value; },
     setMpv(name, value) { mpvValues[name] = value; },
@@ -2103,14 +2108,17 @@ test('completed mpv seeks explicitly synchronize even sub-threshold forward move
   h.emitEvent('mpv.seek');
   h.setMpv('time-pos', 10.05);
   h.emitEvent('mpv.playback-restart');
-  assert.deepEqual(h.overlayMessages.at(-1).data, {time: 10.05, seek: true});
+  const data = h.overlayMessages.at(-1).data;
+  assert.deepEqual({time: data.time, seek: data.seek}, {time: 10.05, seek: true});
+  assert.ok(Number.isSafeInteger(data.timeId) && data.timeId > 0);
+  assert.ok(Number.isSafeInteger(data.sourceId));
 });
 
 test('paused seeks forward only the landing frame time, not the seek target', () => {
   const h = createHarness(true); h.readyOverlay();
   h.setPaused(true);
   h.overlayMessages.length = 0;
-  const timeUpdates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => m.data);
+  const timeUpdates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => ({time: m.data.time, seek: m.data.seek}));
   // mpv publishes the requested target first, then the landing frame's time.
   h.emitEvent('mpv.seek');
   h.emitEvent('mpv.time-pos.changed', 30);
@@ -2118,17 +2126,18 @@ test('paused seeks forward only the landing frame time, not the seek target', ()
   h.setMpv('time-pos', 30.033);
   h.emitEvent('mpv.playback-restart');
   h.emitEvent('mpv.time-pos.changed', 30.033);
-  assert.deepEqual(timeUpdates(), [{time: 30.033, seek: true}, {time: 30.033}]);
+  assert.deepEqual(timeUpdates(), [{time: 30.033, seek: true}], 'matching ordinary progress does not redraw the landing twice');
+  h.ackTimeUpdate();
   // Paused frame steps after the seek keep repainting.
   h.emitEvent('mpv.time-pos.changed', 30.066);
-  assert.deepEqual(timeUpdates().at(-1), {time: 30.066});
+  assert.deepEqual(timeUpdates().at(-1), {time: 30.066, seek: false});
 });
 
 test('dragging while paused follows each seek target live and lands on the real frame', () => {
   const h = createHarness(true); h.readyOverlay();
   h.setPaused(true);
   h.overlayMessages.length = 0;
-  const timeUpdates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => m.data);
+  const timeUpdates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => ({time: m.data.time, seek: m.data.seek}));
   h.emitEvent('mpv.seek');
   h.emitEvent('mpv.time-pos.changed', 20);
   assert.deepEqual(timeUpdates(), [], 'a lone seek target waits for the landing frame');
@@ -2137,9 +2146,12 @@ test('dragging while paused follows each seek target live and lands on the real 
   h.emitEvent('mpv.time-pos.changed', 25);
   h.emitEvent('mpv.seek');
   h.emitEvent('mpv.time-pos.changed', 30);
-  assert.deepEqual(timeUpdates(), [{time: 25}, {time: 30}]);
+  assert.deepEqual(timeUpdates(), [{time: 25, seek: true}], 'one target stays in flight during a drag');
+  h.ackTimeUpdate();
+  assert.deepEqual(timeUpdates().at(-1), {time: 30, seek: true}, 'the next delivery follows the latest target');
   h.setMpv('time-pos', 30.033);
   h.emitEvent('mpv.playback-restart');
+  h.ackTimeUpdate();
   assert.deepEqual(timeUpdates().at(-1), {time: 30.033, seek: true});
   // The next click seek is a lone seek again.
   h.emitEvent('mpv.seek');
@@ -2153,10 +2165,138 @@ test('seeks during playback keep forwarding time-pos', () => {
   h.overlayMessages.length = 0;
   h.emitEvent('mpv.seek');
   h.emitEvent('mpv.time-pos.changed', 30);
-  assert.deepEqual(h.overlayMessages.filter(m => m.name === 'time-update').map(m => m.data), [{time: 30}]);
+  assert.deepEqual(h.overlayMessages.filter(m => m.name === 'time-update').map(m => ({time: m.data.time, seek: m.data.seek})), [{time: 30, seek: true}]);
   // Ignore the property callback argument: IINA delivers flags as 0.
   h.emitEvent('mpv.seeking.changed', 0);
   assert.equal(h.overlayMessages.filter(m => m.name === 'time-update').length, 1);
+});
+
+test('a busy overlay receives one time evaluation and then only the latest pending progress', () => {
+  const h = createHarness(true); h.readyOverlay();
+  h.overlayMessages.length = 0;
+  const updates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => m.data);
+  for (let time = 0; time <= 1000; time++) h.emitEvent('mpv.time-pos.changed', time);
+  assert.equal(updates().length, 1, 'native time evaluations cannot grow with the incoming burst');
+  assert.deepEqual({time: updates()[0].time, seek: updates()[0].seek}, {time: 0, seek: false});
+  h.ackTimeUpdate();
+  assert.equal(updates().length, 2);
+  assert.deepEqual({time: updates()[1].time, seek: updates()[1].seek}, {time: 1000, seek: false});
+  assert.equal(updates()[1].timeId, updates()[0].timeId + 1);
+  assert.equal(updates()[1].sourceId, updates()[0].sourceId);
+  h.ackTimeUpdate();
+  assert.equal(updates().length, 2, 'draining an empty pending slot sends nothing');
+});
+
+test('coalescing retains a seek until the latest anchor is delivered', () => {
+  const h = createHarness(true); h.readyOverlay();
+  h.overlayMessages.length = 0;
+  const updates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => m.data);
+  h.emitEvent('mpv.time-pos.changed', 10);
+  h.emitEvent('mpv.seek');
+  h.emitEvent('mpv.time-pos.changed', 20);
+  h.setMpv('time-pos', 30);
+  h.emitEvent('mpv.playback-restart');
+  h.emitEvent('mpv.time-pos.changed', 31);
+  assert.equal(updates().length, 1);
+  h.ackTimeUpdate();
+  assert.deepEqual({time: updates()[1].time, seek: updates()[1].seek}, {time: 31, seek: true});
+  h.ackTimeUpdate();
+  h.emitEvent('mpv.time-pos.changed', 32);
+  assert.deepEqual({time: updates()[2].time, seek: updates()[2].seek}, {time: 32, seek: false}, 'ordinary progress carries an explicit non-seek signal');
+});
+
+test('returning to the in-flight time replaces an intermediate pending seek', () => {
+  const h = createHarness(true); h.readyOverlay();
+  h.overlayMessages.length = 0;
+  h.emitEvent('mpv.time-pos.changed', 10);
+  h.emitEvent('mpv.seek');
+  h.emitEvent('mpv.time-pos.changed', 20);
+  h.setMpv('time-pos', 30);
+  h.emitEvent('mpv.playback-restart');
+  h.emitEvent('mpv.time-pos.changed', 10);
+  h.ackTimeUpdate();
+  const updates = h.overlayMessages.filter(m => m.name === 'time-update').map(m => m.data);
+  assert.deepEqual(updates.map(data => ({time: data.time, seek: data.seek})), [
+    {time: 10, seek: false}, {time: 10, seek: true}
+  ], 'deduping a matching in-flight value must not keep an obsolete intermediate target');
+});
+
+test('invalid, stale and repeated time acknowledgments cannot release a newer evaluation', () => {
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+  h.overlayMessages.length = 0;
+  const updates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => m.data);
+  h.emitEvent('mpv.time-pos.changed', 10);
+  h.emitEvent('mpv.time-pos.changed', 11);
+  const first = updates()[0];
+  for (const data of [undefined, {}, {timeId: first.timeId + 1, sourceId: first.sourceId},
+    {timeId: first.timeId, sourceId: first.sourceId + 1}, {timeId: String(first.timeId), sourceId: first.sourceId}]) {
+    h.emitOverlay('time-update-ack', data);
+  }
+  assert.equal(updates().length, 1);
+  h.ackTimeUpdate();
+  h.emitEvent('mpv.time-pos.changed', 12);
+  h.emitOverlay('time-update-ack', {timeId: first.timeId, sourceId: first.sourceId});
+  assert.equal(updates().length, 2, 'an old reply cannot drain pending work behind a new in-flight update');
+  h.ackTimeUpdate();
+  assert.equal(updates().at(-1).time, 12);
+});
+
+test('video reset drops old pending time without waiting for its acknowledgment', () => {
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+  h.overlayMessages.length = 0;
+  h.emitEvent('mpv.time-pos.changed', 10);
+  h.emitEvent('mpv.time-pos.changed', 11);
+  const old = h.overlayMessages.findLast(m => m.name === 'time-update').data;
+  h.startVideo('file:///videos/B.mp4');
+  h.emitEvent('mpv.seek'); h.setMpv('time-pos', 20); h.emitEvent('mpv.playback-restart');
+  assert.equal(h.overlayMessages.filter(m => m.name === 'time-update').length, 1, 'the pre-URL gap cannot publish a new anchor');
+  h.finishVideo();
+  h.emitEvent('mpv.time-pos.changed', 2);
+  h.emitEvent('mpv.time-pos.changed', 3);
+  const current = h.overlayMessages.findLast(m => m.name === 'time-update').data;
+  assert.ok(current.sourceId > old.sourceId);
+  assert.ok(current.timeId > old.timeId);
+  assert.equal(current.time, 2, 'B can send immediately despite A never replying');
+  h.emitOverlay('time-update-ack', {timeId: old.timeId, sourceId: old.sourceId});
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'time-update').data.time, 2);
+  h.ackTimeUpdate();
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'time-update').data.time, 3);
+});
+
+test('source replacement, disabling and render failure invalidate pending time', async () => {
+  for (const transition of ['source', 'disable', 'failure', 'webview']) {
+    const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+    const loadId = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+    h.overlayMessages.length = 0;
+    h.emitEvent('mpv.time-pos.changed', 10);
+    h.emitEvent('mpv.time-pos.changed', 11);
+    const old = h.overlayMessages.findLast(m => m.name === 'time-update').data;
+    if (transition === 'source') await h.loadFromMenu('/videos/B.xml');
+    else if (transition === 'disable') { h.toggleDanmaku(); h.toggleDanmaku(); }
+    else if (transition === 'failure') h.emitOverlay('danmaku-load-result', {loadId, success: false});
+    else { h.emitEvent('iina.window-loaded'); h.readyOverlay(); }
+    h.emitEvent('mpv.time-pos.changed', 2);
+    h.emitEvent('mpv.time-pos.changed', 3);
+    const current = h.overlayMessages.findLast(m => m.name === 'time-update').data;
+    assert.equal(current.time, 2, transition + ' lets its latest session start a fresh delivery');
+    assert.ok(current.timeId > old.timeId);
+    h.emitOverlay('time-update-ack', {timeId: old.timeId, sourceId: old.sourceId});
+    assert.equal(h.overlayMessages.findLast(m => m.name === 'time-update').data.time, 2);
+    h.ackTimeUpdate();
+    assert.equal(h.overlayMessages.findLast(m => m.name === 'time-update').data.time, 3);
+  }
+});
+
+test('time delivery rejects invalid values and remains idle until overlay readiness', () => {
+  const h = createHarness(true);
+  h.context.queueOverlayTimeUpdate(10, true);
+  assert.equal(h.overlayMessages.filter(m => m.name === 'time-update').length, 0);
+  h.readyOverlay();
+  h.overlayMessages.length = 0;
+  for (const value of [NaN, Infinity, -Infinity, '10', null, undefined]) h.emitEvent('mpv.time-pos.changed', value);
+  assert.equal(h.overlayMessages.filter(m => m.name === 'time-update').length, 0);
+  h.emitEvent('mpv.time-pos.changed', 10);
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'time-update').data.time, 10);
 });
 
 test('an unchanged renderer status does not echo a second UI update', () => {
