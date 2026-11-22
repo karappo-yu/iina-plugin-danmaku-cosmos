@@ -1124,18 +1124,42 @@ test('XML attributes, CDATA and numeric entities have the same text in filters a
   assert.equal(h.context.getEffectiveContent(p).length, 0);
 });
 
-test('simplification operates on decoded text and preserves metadata and literal entity text', () => {
+test('Nico XML preserves decoded text and metadata with forced simplification enabled', () => {
   const h = createHarness(true);
   h.context.pluginState.danmakuForceSimplified = true;
-  h.context.openccSimplifier = text => text.replace(/體/g, '体');
+  h.context.openccSimplifier = () => {throw new Error('Nico text must not be converted');};
   const source = '<packet><chat user_id="體" mail="font:體" vpos="-10">&#x9ad4; &amp;lt;</chat></packet>';
   const p = setPositionSource(h, 'nico-xml', source);
   const effective = h.context.getEffectiveContent(p);
   assert.equal(h.context.danmakuCache[p].comments[0].userId, '體');
   assert.deepEqual(Array.from(effective[0].mail), ['font:體']);
-  assert.equal(effective[0].content, '体 &lt;');
-  assert.equal(h.context.buildDanmakuBrowserList()[0].text, '体 &lt;');
+  assert.equal(effective[0].content, '體 &lt;');
+  assert.equal(h.context.buildDanmakuBrowserList()[0].text, '體 &lt;');
   assert.equal(h.context.buildDanmakuBrowserList()[0].t, -10);
+});
+
+test('a saved simplification setting skips Nico and resumes for Chinese sources', () => {
+  const h = createHarness(true, false, {danmakuForceSimplified: true});
+  h.readyOverlay();
+  const sources = [
+    ['/videos/v1.json', JSON.stringify([{fork: 'main', comments: [{body: '繁體字幕', vposMs: 1000, commands: []}]}])],
+    ['/videos/legacy.json', JSON.stringify([{chat: {content: '繁體字幕', vpos: 100, user_id: 'viewer'}}])],
+    ['/videos/nico.xml', '<packet><chat vpos="100" user_id="viewer">繁體字幕</chat></packet>'],
+  ];
+  for (const [path, source] of sources) {
+    h.setFile(path, source);
+    h.emitSidebar('select-danmaku-file', {path});
+    assert.equal(h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.comments[0].content, '繁體字幕');
+    assert.equal(h.context.buildDanmakuBrowserList()[0].text, '繁體字幕');
+    assert.equal(h.context.openccSimplifier, null, 'loading Nico does not construct OpenCC');
+    assert.equal(h.context.pluginState.danmakuForceSimplified, true);
+  }
+  h.setFile('/videos/bili.xml', '<i><d p="1,1,25,16777215,0,0,viewer,1">繁體字幕</d></i>');
+  h.emitSidebar('select-danmaku-file', {path: '/videos/bili.xml'});
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.comments[0].content, '繁体字幕');
+  h.emitSidebar('select-danmaku-file', {path: '/videos/nico.xml'});
+  assert.equal(h.context.getEffectiveContent('/videos/nico.xml')[0].content, '繁體字幕', 'returning to cached Nico retains native text');
+  assert.equal(h.preferences.get('danmakuForceSimplified'), true, 'source switches retain the saved preference');
 });
 
 test('real legacy JSON density and blocking preserve owners and match the bundled parser', () => {
@@ -1928,6 +1952,274 @@ test('saved /.../ blocklist regexes still block after a restart', () => {
   assert.deepEqual(h.context.getEffectiveContent(p).map(c => c.content), ['ordinary should stay']);
 });
 
+test('catastrophic blocklist regexes fall back to literals and are reported as invalid', () => {
+  const h = createHarness(true);
+  const items = [
+    {t: 100, text: 'a'.repeat(40) + '!', _commands: []},
+    {t: 200, text: 'contains /(a+)+$/ literally', _commands: []},
+    {t: 300, text: 'note 42', _commands: []},
+  ];
+  const p = setPositionSource(h, 'dandanplay', items);
+  for (const word of ['/(a+)+$/', '/(?:x|y*)*z/', '/note \\d+/']) h.emitSidebar('danmaku-blocklist-add', {word});
+  h.emitSidebar('danmaku-blocklist-set-enabled', {enabled: true});
+  const started = Date.now();
+  assert.deepEqual(h.context.getEffectiveContent(p).map(c => c.content), ['a'.repeat(40) + '!']);
+  assert.ok(Date.now() - started < 1000, 'no catastrophic backtracking');
+  const state = h.sidebarMessages.findLast(m => m.name === 'danmaku-state' && m.data.blocklist).data;
+  assert.deepEqual(state.blocklist.invalid, ['/(a+)+$/', '/(?:x|y*)*z/']);
+  for (const [pattern, unsafe] of [
+    ['^regex-\\d+$', false], ['owner|c4', false], ['[(a+)]+', false], ['(?:ab)+', false], ['(abc){1,3}', false],
+    ['(a+){1}', false], ['^.*x', false], ['^a.*|^b.*', false], ['\\d{3}-\\d{3}', false],
+    ['a?', false], ['a{0,16}', false], ['a?|b?', false], ['(?:ab|cd)', false],
+    ['^.{20,}$', false], ['w{3,}', false], ['(?:ab)+c', false],
+    ['(\\d+\\.)+', true], ['(a*){20}', true],
+    // bounded repetition of an ambiguous body is still super-linear
+    ['(a+){2}', true], ['(a+){9}$', true], ['(a+){2,9}', true], ['(a{1,5})+$', true], ['([a-z]+ )*', true],
+    // alternation inside a repeated group
+    ['(a|aa)+$', true], ['(ab|cd)+', true],
+    // JavaScript class syntax: [] and [^] close immediately
+    ['[](a+)+$', true], ['[^](a+)+$', true], ['[]|(a+)+$', true], ['[\\]](a+)+', true], ['[^\\]]+(a+)+', true],
+    // two or more wide repetitions on one alternative (polynomial blow-up)
+    ['.*.*x', true], ['.*.*.*x', true], ['\\d+\\d+\\d+$', true], ['a*a*a*b', true], ['a.*b.*c', true],
+    ['.*?.*?x', true], ['(?:.*)(?:.*)x', true], ['(?=.*a)(?=.*b)', true], ['(?:ab)+.*', true],
+    ['a{1,100}a{1,100}$', true], ['[a-z]+\\d+', true], ['x|.*.*y', true],
+    // Short choices also multiply; exact counts add no length choice.
+    ['a?a?b', true], ['a{0,16}a{0,16}b', true], ['\\d{1,3}-\\d{1,3}', true], ['(a+)?', true],
+    ['(?:a?)(?:a?)b', true], ['(a|aa)(a|aa)b', true], ['a{16}a{16}b', false],
+  ]) {
+    assert.equal(h.context.isUnsafeBlockPattern(pattern), unsafe, pattern);
+  }
+});
+
+test('accepted blocklist patterns preserve matching behavior without wall-clock limits', () => {
+  const h = createHarness(true);
+  for (const [pattern, matching, failing] of [
+    ['^regex-\\d+$', 'regex-42', 'regex-x'], ['owner|c4', 'owner', 'ordinary'],
+    ['[(a+)]+', '(a+)', 'xyz'], ['(?:ab)+', 'abab', 'xyz'], ['(abc){1,3}', 'abcabc', 'xyz'],
+    ['^a?$', 'a', 'aa'], ['^.*x', 'prefix x', 'a'.repeat(5000) + '!'],
+    ['^a.*|^b.*', 'alpha', 'gamma'], ['\\d{3}-\\d{3}', '123-456', '1-2'],
+    ['^.{20,}$', 'a'.repeat(20), 'short'], ['w{3,}', 'wwww!', 'ww!'],
+    ['^(?:ab)+c', 'ababc', 'ab'.repeat(2500) + '!'],
+    ['a{16}a{16}b', 'a'.repeat(32) + 'b', 'a'.repeat(31) + 'b'], ['(?:ab|cd)', 'cd', 'ef'],
+  ]) {
+    const matcher = h.context.compileBlockEntry('/' + pattern + '/');
+    assert.ok(matcher.regex, pattern);
+    assert.equal(matcher.regex.test(matching), true, pattern);
+    assert.equal(matcher.regex.test(failing), false, pattern);
+  }
+});
+
+test('unanchored variable wildcards fall back to literals while anchored alternatives remain usable', () => {
+  const h = createHarness(true);
+  for (const pattern of ['.*x', '.+x', 'prefix.*x', '(?:.*)x', '^x|.*y', 'a.*|b.*']) {
+    assert.equal(h.context.compileBlockEntry('/' + pattern + '/').invalid, true, pattern);
+  }
+  for (const pattern of ['^.*x', '^.+x', '^(?:.*)x', '^a.*|^b.*']) {
+    assert.ok(h.context.compileBlockEntry('/' + pattern + '/').regex, pattern);
+  }
+  assert.equal(h.context.compileBlockEntry('/^.*x/ms').invalid, true, 'line restarts plus dot-all are also conservative');
+  assert.ok(h.context.compileBlockEntry('/^.*x/m').regex);
+  assert.ok(h.context.compileBlockEntry('/^.*x/s').regex);
+});
+
+test('named backreferences resolve long and Unicode-escaped capture names', () => {
+  const h = createHarness(true);
+  const longName = 'a'.repeat(64);
+  for (const pattern of [
+    '^(?<' + longName + '>a*)\\k<' + longName + '>x',
+    '^(?<a>a*)\\k<\\u0061>x', '^(?<\\u0061>a*)\\k<a>x',
+    '^(?<\\u{61}>a*)\\k<a>x', '^(?<a>a*)\\k<\\u{61}>x',
+    '^(?<\\u{10400}>a*)\\k<\uD801\uDC00>x',
+    '^(?<\\u{110000}>a*)x', '^(?<a>a*)\\k<\\u{zz}>x',
+  ]) {
+    assert.equal(h.context.isUnsafeBlockPattern(pattern), true, pattern);
+    assert.equal(h.context.compileBlockEntry('/' + pattern + '/').invalid, true, pattern);
+  }
+  for (const pattern of ['(?<\\u0061>.)\\k<a>', '(?<a>.)\\k<\\u{61}>']) {
+    const matcher = h.context.compileBlockEntry('/' + pattern + '/');
+    assert.ok(matcher.regex, pattern);
+    assert.equal(matcher.regex.test('aa'), true);
+    assert.equal(matcher.regex.test('ab'), false);
+  }
+  const literal = h.context.compileBlockEntry('/(\\u{61})+/u');
+  assert.ok(literal.regex, 'a Unicode literal is not a nested quantifier');
+  assert.equal(literal.regex.test('aaa'), true);
+});
+
+test('a saved polynomial regex is rejected on startup, not only when added', () => {
+  const h = createHarness(true, false, {danmakuBlocklist: '["/.*.*.*x/", "/note \\\\d+/"]', danmakuBlocklistEnabled: true});
+  const p = setPositionSource(h, 'dandanplay', [
+    {t: 100, text: 'a'.repeat(1000) + '!', _commands: []},
+    {t: 200, text: 'note 7', _commands: []},
+  ]);
+  const started = Date.now();
+  assert.deepEqual(h.context.getEffectiveContent(p).map(c => c.content), ['a'.repeat(1000) + '!']);
+  assert.ok(Date.now() - started < 1000);
+  h.emitSidebar('request-state');
+  assert.deepEqual(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.blocklist.invalid, ['/.*.*.*x/']);
+});
+
+test('short variable repetitions cannot multiply backtracking paths', () => {
+  const entries = ['/' + 'a?'.repeat(30) + 'b/', '/' + 'a{0,16}'.repeat(6) + 'b/'];
+  const h = createHarness(true, false, {danmakuBlocklist: JSON.stringify(entries), danmakuBlocklistEnabled: true});
+  for (const entry of entries) {
+    assert.equal(h.context.compileBlockEntry(entry).invalid, true, entry);
+  }
+  const p = setPositionSource(h, 'dandanplay', [
+    {t: 100, text: 'a'.repeat(5000) + '!', _commands: []},
+    {t: 200, text: entries[0], _commands: []},
+    {t: 300, text: entries[1], _commands: []},
+  ]);
+  assert.deepEqual(h.context.getEffectiveContent(p).map(c => c.content), ['a'.repeat(5000) + '!']);
+  h.emitSidebar('request-state');
+  assert.deepEqual(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.blocklist.invalid, entries);
+});
+
+test('backreferences to variable-length captures count as a length choice', () => {
+  const h = createHarness(true);
+  for (const [pattern, unsafe] of [
+    ['(.*)\\1x', true], ['(.+)\\1x', true], ['(\\w*)\\1\\1x', true], ['(?<w>.*)\\k<w>x', true],
+    ['((a*))\\2x', true], ['((a*))\\1x', true], ['(a|ab)\\1c', true], ['(.*)(?:\\1)+', true], ['(a?)\\1b', true],
+    // fixed-length captures, quantified references and references that match empty
+    ['(.)\\1{5,}', false], ['^(.)\\1+$', false], ['(ab)\\1', false], ['(\\d{3})-\\1', false],
+    ['(?<c>.)\\k<c>', false], ['(a){1,3}\\1', false], ['^(.*)x|\\1y', false], ['^\\2(a)(.*)', false],
+    ['^(.*\\1)x', false], ['^[\\1](.*)', false],
+  ]) {
+    assert.equal(h.context.isUnsafeBlockPattern(pattern), unsafe, pattern);
+  }
+});
+
+test('a saved backreference regex cannot stall a real long comment-art source', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'ca video test',
+    'Steins;Gate0 ゲームED曲でコメント歌詞PV【コメ直表示版】.json'), 'utf8');
+  const entries = ['/(.*)\\1x/', '/(?<w>.+)\\k<w>x/'];
+  const h = createHarness(true, false, {danmakuBlocklist: JSON.stringify(entries), danmakuBlocklistEnabled: true});
+  for (const entry of entries) assert.equal(h.context.compileBlockEntry(entry).invalid, true, entry);
+  h.setFile('/videos/sg0.json', source);
+  h.emitSidebar('select-danmaku-file', {path: '/videos/sg0.json'});
+  const started = Date.now();
+  const content = h.context.getEffectiveContent('/videos/sg0.json');
+  assert.ok(content.length > 0);
+  assert.ok(Date.now() - started < 2000, 'about 9 s per projection before the fix');
+  h.emitSidebar('request-state');
+  assert.deepEqual(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.blocklist.invalid, entries);
+});
+
+test('payloads missing their fields never become settings or requests', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  h.context.pluginState.danmakuFilterDensity = 200;
+  const payloadless = new Set(['toggle-danmaku', 'request-state', 'danmaku-file-add', 'dandanplay-trigger-match']);
+  const before = JSON.stringify(h.context.pluginState);
+  const prefsBefore = JSON.stringify(Array.from(h.preferences));
+  const requests = h.httpRequests.length;
+  for (const [name, handlers] of h.sidebarHandlers) {
+    if (payloadless.has(name)) continue;
+    for (const handler of handlers) {
+      handler({});
+      handler({value: 'yes', enabled: 1, density: '5', color: 'red', mode: 'gpu', scale: -1, keyword: '  ', episodeId: '', bangumiId: null, watch: 'on', word: 42});
+    }
+  }
+  assert.equal(JSON.stringify(h.context.pluginState), before);
+  assert.equal(JSON.stringify(Array.from(h.preferences)), prefsBefore);
+  assert.equal(h.httpRequests.length, requests);
+  assert.equal(h.context.pluginState.danmakuFilterDensity, 200);
+  h.emitSidebar('set-danmaku-filter-density', {density: 0});
+  assert.equal(h.context.pluginState.danmakuFilterDensity, 0, 'an explicit 0 still means unlimited');
+});
+
+test('invalid and unchanged date selections do not rebuild or push the comment list', () => {
+  const h = createHarness(true); h.readyOverlay();
+  const day = calendarDay('2026-01-01');
+  loadDateFixture(h, [{fork: 'main', comments: [1, 2, 3].map(d => ({
+    body: 'day' + d, vposMs: d * 1000, no: d, postedAt: '2026-01-0' + d + 'T00:00:00+09:00', commands: []
+  }))}]);
+  h.emitSidebar('danmaku-browser-watch', {watch: true});
+  h.sidebarMessages.length = 0; h.overlayMessages.length = 0;
+  for (const data of [{startDay: day + 1, endDay: day}, {startDay: day + 0.5, endDay: day + 1},
+    {startDay: String(day), endDay: day + 1}, {}]) h.emitSidebar('set-danmaku-filter', data);
+  assert.equal(h.sidebarMessages.length, 0);
+  assert.equal(h.overlayMessages.length, 0);
+  h.emitSidebar('set-danmaku-filter', {startDay: day, endDay: day});
+  assert.equal(h.sidebarMessages.filter(m => m.name === 'danmaku-browser-data').length, 1);
+  h.sidebarMessages.length = 0; h.overlayMessages.length = 0;
+  h.emitSidebar('set-danmaku-filter', {startDay: day, endDay: day});
+  assert.equal(h.sidebarMessages.length, 0);
+  assert.equal(h.overlayMessages.length, 0);
+});
+
+test('opacity bounds, offset types and match IDs reject invalid intents before mutation', () => {
+  const h = createHarness(true); h.readyOverlay();
+  const before = JSON.stringify(h.context.pluginState);
+  h.sidebarMessages.length = 0; h.overlayMessages.length = 0;
+  for (const [name, data] of [
+    ['set-opacity', {opacity: 1.1}], ['set-stroke-opacity', {opacity: 1.1}],
+    ['set-danmaku-offset', {offset: '5'}], ['dandanplay-select-match', {match: {episodeId: {bad: true}}}],
+    ['dandanplay-select-match', {match: {episodeId: Infinity}}],
+  ]) h.emitSidebar(name, data);
+  assert.equal(JSON.stringify(h.context.pluginState), before);
+  assert.equal(h.httpRequests.length, 0);
+  assert.equal(h.sidebarMessages.length, 0);
+  assert.equal(h.overlayMessages.length, 0);
+  h.emitSidebar('set-opacity', {opacity: 0});
+  h.emitSidebar('set-stroke-opacity', {opacity: 0.5});
+  h.emitSidebar('set-danmaku-offset', {offset: 5});
+  assert.equal(h.context.pluginState.canvasOpacity, 0);
+  assert.equal(h.context.pluginState.strokeOpacity, 0.5);
+  assert.equal(h.context.pluginState.danmakuTimeOffsetSec, 5);
+  h.emitSidebar('dandanplay-select-match', {match: {episodeId: '99', animeTitle: 'A', episodeTitle: '1'}});
+  assert.equal(h.httpRequests.length, 1);
+});
+
+test('payloadless intents still run without a message body', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  const enabled = h.context.pluginState.danmakuEnabled;
+  h.sidebarHandlers.get('toggle-danmaku')[0](undefined);
+  assert.equal(h.context.pluginState.danmakuEnabled, !enabled);
+  h.sidebarMessages.length = 0;
+  h.sidebarHandlers.get('request-state')[0](undefined);
+  assert.ok(h.sidebarMessages.some(m => m.name === 'danmaku-state'));
+});
+
+test('messages without a payload are ignored and jump targets are validated', () => {
+  const h = createHarness(true);
+  h.readyOverlay();
+  for (const name of ['dandanplay-search', 'dandanplay-get-bangumi', 'danmaku-dedupe-set', 'set-danmaku-offset',
+    'danmaku-seek', 'select-danmaku-file', 'danmaku-blocklist-add', 'danmaku-browser-watch', 'set-danmaku-filter-density',
+    'danmaku-position-filter-set', 'set-style-preset']) {
+    for (const handler of h.sidebarHandlers.get(name) || []) assert.doesNotThrow(() => handler(undefined), name);
+  }
+  const seeks = [];
+  h.context.iina.mpv.set = (name, value) => seeks.push([name, value]);
+  for (const data of [undefined, {targetSec: '5'}, {targetSec: NaN}, {targetSec: -1}, {targetSec: 12.5}]) {
+    h.overlayHandlers.get('jump')[0](data);
+  }
+  assert.deepEqual(seeks, [['time-pos', 12.5]]);
+});
+
+test('automatic network matching is opt-in', async () => {
+  assert.equal(require('../Info.json').preferenceDefaults.dandanplayAutoNetwork, false);
+  for (const [saved, expected] of [[false, false], [undefined, false], [null, false], ['true', false], [true, true]]) {
+    const h = createHarness(true, saved);
+    assert.equal(h.context.pluginState.dandanplayAutoNetwork, expected, String(saved));
+  }
+  const h = createHarness(true, undefined);
+  h.setVideo('file:///videos/none/Show - 01.mkv');
+  assert.equal(h.httpRequests.length, 0, 'opening a video sends no match request by default');
+  await flushMicrotasks();
+  assert.equal(h.httpRequests.length, 0, 'no deferred match either');
+  h.emitSidebar('dandanplay-trigger-match');
+  await flushMicrotasks();
+  assert.deepEqual(h.httpRequests.map(r => r.url), ['https://api.dandanplay.net/api/v2/match'], 'manual matching still works');
+});
+
+test('the state snapshot carries the plugin language for the sidebar', () => {
+  const h = createHarness(true);
+  h.emitSidebar('request-state');
+  assert.equal(h.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.uiLang, 'en');
+});
+
 test('auto offset notice reports the clamped offset', () => {
   const h = createHarness(true, false, {danmakuAutoOffset: true});
   h.setMpv('duration', 720);
@@ -1975,6 +2267,18 @@ test('extractNumberFromName prioritizes explicit episode markers over codec/seas
     ['Show Ep 10bit', null],
     ['Show S01E1080p [05]', 5],
     ['Show Vol.1080p', null],
+    ['Mob Psycho 100 - 07', 7],
+    ['Show - 05 - 10-bit', 5],
+    ['Show - 05 - 2.0 AAC', 5],
+    ['Mob Psycho 100 - 07 - 10-bit', 7],
+    ['Show - 05v2 - 2.0 AAC', 5],
+    ['86 - Eighty Six - 03', 3],
+    ['Spy x Family 2 - 04', 4],
+    ['Show - 2023 - 05', 5],
+    ['[SubsPlease] Frieren - 12 (1080p) [ABCD1234]', 12],
+    ['[LoliHouse] Oshi no Ko - 11 [WebRip 1080p HEVC-10bit AAC]', 11],
+    ['[Group] Title [01v2][1080p]', 1],
+    ['Gintama 251', 251],
   ];
   for (const [name, expected] of cases) {
     assert.equal(h.context.extractNumberFromName(name), expected, name);

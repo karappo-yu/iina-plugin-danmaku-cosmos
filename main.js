@@ -49,6 +49,8 @@ pluginState.danmakuBlocklistEnabled = !!preferences.get("danmakuBlocklistEnabled
 pluginState.danmakuBlockTopEnabled = !!preferences.get("danmakuBlockTopEnabled");
 pluginState.danmakuBlockBottomEnabled = !!preferences.get("danmakuBlockBottomEnabled");
 var blockRegexes = []; // 编译缓存(列表变化时重建)
+// /.../ 词条中编译失败、超长或可能灾难性回溯的条目(按普通文字匹配,侧栏标记提示)
+var blockInvalidEntries = [];
 // 正则长度上限必须在启动重建之前赋值: 函数声明会提升, var 赋值不会,
 // 否则启动时已保存的 /.../ 词条会因 undefined 比较退化为字面量匹配。
 var BLOCK_REGEX_MAX_LENGTH = 200;
@@ -82,7 +84,9 @@ var preferencesSyncTimer = null;
 var DDP_APP_ID = preferences.get("dandanplayAppId") || 't43832ky57';
 var DDP_APP_SECRET = preferences.get("dandanplayAppSecret") || 'IDnPEdEKDIziKeYVxm6VcaJE4Bv2fnzT';
 
-pluginState.dandanplayAutoNetwork = preferences.get("dandanplayAutoNetwork") !== false;
+// Off by default: automatic matching hashes every opened video and calls the
+// DanDanPlay API. Only an explicit opt-in (true) enables it.
+pluginState.dandanplayAutoNetwork = preferences.get("dandanplayAutoNetwork") === true;
 
 pluginState.dandanplayState = {
   status: 'idle',
@@ -186,9 +190,16 @@ function stateSnapshot() {
     enabled: pluginState.danmakuEnabled, canvasMode: pluginState.currentCanvasMode,
     danmakuFileType: pluginState.currentDanmakuStatus.fileType,
     danmakuLoaded: pluginState.currentDanmakuStatus.isLoaded,
-    blocklist: {enabled: pluginState.danmakuBlocklistEnabled, words: pluginState.danmakuBlocklist.slice()},
+    blocklist: blocklistPayload(),
     dedupe: {enabled: pluginState.danmakuDedupeEnabled, window: pluginState.danmakuDedupeWindow},
+    uiLang: pluginLang,
   });
+}
+
+function blocklistPayload() {
+  let payload = {enabled: pluginState.danmakuBlocklistEnabled, words: pluginState.danmakuBlocklist.slice()};
+  if (blockInvalidEntries.length) payload.invalid = blockInvalidEntries.slice();
+  return payload;
 }
 
 // Presets are one state transaction, including their motion/layout settings.
@@ -240,6 +251,7 @@ function commitState(patch, notify) {
       persist = true;
     }
   }
+  if ('danmakuBlocklist' in changed) rebuildBlockRegexes();
   if (persist) syncPreferencesSoon();
   if (overlayReady) {
     let atomicStyle = Object.prototype.hasOwnProperty.call(patch, 'stylePreset') &&
@@ -270,9 +282,7 @@ function commitState(patch, notify) {
     changed.danmakuFileType = pluginState.currentDanmakuStatus.fileType;
     changed.danmakuLoaded = pluginState.currentDanmakuStatus.isLoaded;
   }
-  if ('danmakuBlocklist' in changed || 'danmakuBlocklistEnabled' in changed) changed.blocklist = {
-    enabled: pluginState.danmakuBlocklistEnabled, words: pluginState.danmakuBlocklist.slice()
-  };
+  if ('danmakuBlocklist' in changed || 'danmakuBlocklistEnabled' in changed) changed.blocklist = blocklistPayload();
   if ('danmakuDedupeEnabled' in changed || 'danmakuDedupeWindow' in changed) changed.dedupe = {
     enabled: pluginState.danmakuDedupeEnabled, window: pluginState.danmakuDedupeWindow
   };
@@ -286,14 +296,44 @@ function commitDdpState(patch) {
   commitState({dandanplayState: Object.assign({}, pluginState.dandanplayState, patch)}, false);
 }
 
+// Intents that carry no payload by design. Every other message is dropped
+// unless its payload is an object; each handler then validates its own fields,
+// so a missing field never becomes a setting (undefined/false/0).
+const PAYLOADLESS_MESSAGES = Object.freeze({
+  'toggle-danmaku': true, 'request-state': true, 'danmaku-file-add': true, 'dandanplay-trigger-match': true,
+  'overlay-ready': true, 'seek-disable': true, 'seek-enable': true,
+});
+
+function withPayload(name, callback) {
+  return function (data) {
+    let isObject = !!data && typeof data === 'object' && !Array.isArray(data);
+    if (!isObject && !PAYLOADLESS_MESSAGES[name]) return;
+    return callback(isObject ? data : {});
+  };
+}
+
+function isFiniteNumber(value) {
+  return typeof value === 'number' && isFinite(value);
+}
+
+function isHexColor(value) {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+function isDdpId(value) {
+  return (typeof value === 'string' && value.trim() !== '') || isFiniteNumber(value);
+}
+
 function sidebarOnMessage(name, callback) {
-  sidebarMessageHandlers[name] = callback;
-  sidebar.onMessage(name, callback);
+  let handler = withPayload(name, callback);
+  sidebarMessageHandlers[name] = handler;
+  sidebar.onMessage(name, handler);
 }
 
 function overlayOnMessage(name, callback) {
-  overlayMessageHandlers[name] = callback;
-  overlay.onMessage(name, callback);
+  let handler = withPayload(name, callback);
+  overlayMessageHandlers[name] = handler;
+  overlay.onMessage(name, handler);
 }
 
 function sidebarPostMessage(key, data) {
@@ -462,10 +502,8 @@ function resetNicoJsonFilterState(extra) {
 }
 
 function applyDanmakuFilter(startDay, endDay) {
-  if (startDay === null && endDay === null) {
-    commitState({danmakuFilterStartDay: null, danmakuFilterEndDay: null});
-  } else {
-    if (!Number.isInteger(startDay) || !Number.isInteger(endDay) || startDay > endDay || pluginState.nicoJsonDateInfo.firstDay === null) return;
+  if (startDay !== null || endDay !== null) {
+    if (!Number.isInteger(startDay) || !Number.isInteger(endDay) || startDay > endDay || pluginState.nicoJsonDateInfo.firstDay === null) return false;
     let days = pluginState.nicoJsonDateInfo.dayCounts;
     let startIndex = 0;
     while (startIndex < days.length - 1 && days[startIndex][0] < startDay) startIndex += 1;
@@ -474,9 +512,12 @@ function applyDanmakuFilter(startDay, endDay) {
     startDay = days[startIndex][0];
     endDay = days[endIndex][0];
     let fullRange = startDay === pluginState.nicoJsonDateInfo.firstDay && endDay === pluginState.nicoJsonDateInfo.lastDay;
-    commitState({danmakuFilterStartDay: fullRange ? null : startDay, danmakuFilterEndDay: fullRange ? null : endDay});
+    if (fullRange) { startDay = null; endDay = null; }
   }
+  if (startDay === pluginState.danmakuFilterStartDay && endDay === pluginState.danmakuFilterEndDay) return false;
+  commitState({danmakuFilterStartDay: startDay, danmakuFilterEndDay: endDay});
   refreshDanmakuFilters();
+  return true;
 }
 
 function refreshDanmakuFilters() {
@@ -515,39 +556,228 @@ function ensureSimplifier() {
 // 普通词按大小写不敏感纯文本匹配,避免 ".", "+", "()" 等触发误匹配或 ReDoS;
 // 仅当词条以 /.../ (可选 i/m/s/u 修饰符) 包裹时才作为正则编译并限制最大长度(BLOCK_REGEX_MAX_LENGTH 在文件头部初始化)。
 
+// Reads a quantifier at pattern[index]. `repeats` is true when the item can
+// occur more than once (*, +, {n,}, {n,m}/{n} with a maximum above 1).
+// `variable` means its length can change; an exact {n} adds no length choice.
+function readRegexQuantifier(pattern, index) {
+  let ch = pattern.charAt(index);
+  let length = 0, min = 0, max = 0;
+  if (ch === '*' || ch === '+') { length = 1; min = ch === '+' ? 1 : 0; max = Infinity; }
+  else if (ch === '?') { length = 1; max = 1; }
+  else if (ch === '{') {
+    let m = /^\{(\d+)(,(\d*))?\}/.exec(pattern.slice(index));
+    if (!m) return null;
+    length = m[0].length;
+    min = Number(m[1]);
+    max = m[2] === undefined ? Number(m[1]) : m[3] === '' ? Infinity : Number(m[3]);
+  } else return null;
+  if (pattern.charAt(index + length) === '?') length++; // lazy form
+  return {length: length, repeats: max > 1, variable: min !== max};
+}
+
+function readRegexUnicodeEscape(pattern, index, allowCodePoint) {
+  let match = /^\\u(?:\{([0-9a-fA-F]+)\}|([0-9a-fA-F]{4}))/.exec(pattern.slice(index));
+  if (!match || (match[1] && !allowCodePoint)) return null;
+  let code = parseInt(match[1] || match[2], 16);
+  if (!Number.isFinite(code) || code > 0x10FFFF) return null;
+  return {length: match[0].length, code: code};
+}
+
+function normalizeRegexGroupName(name) {
+  let normalized = '';
+  for (let i = 0; i < name.length; i++) {
+    if (name.charAt(i) !== '\\') { normalized += name.charAt(i); continue; }
+    let escape = readRegexUnicodeEscape(name, i, true);
+    if (!escape) return null;
+    normalized += String.fromCodePoint(escape.code);
+    i += escape.length - 1;
+  }
+  return normalized || null;
+}
+
+// A synchronous RegExp cannot be interrupted, and a saved catastrophic entry
+// would freeze every load after a restart. Three shapes are rejected:
+// 1. a group that can repeat (any maximum above 1, bounded or not) while its
+//    body is ambiguous, i.e. contains a quantifier or an alternation:
+//    (a+)+, (a+){9}, (a{1,5})+, (a|aa)+ (exponential);
+// 2. two or more variable choices along one alternative, including optional
+//    and bounded repetitions and alternatives inside groups. A short bound
+//    does not stop choices multiplying: a?a?...b, a{0,16}a{0,16}...b.
+//    Fixed {n} has no length choice. Top-level alternatives count separately.
+//    A backreference to a variable-length capture re-matches every length the
+//    group tried, so it counts as one more choice: (.*)\1x is cubic.
+// 3. variable wildcards without a preceding start anchor on their alternative:
+//    .*x restarts from every character on failure. ^.*x remains usable unless
+//    both m and s allow repeated line starts to consume the entire remainder.
+// This is conservative: safe forms such as (ab|cd)+, (a+)? and two bounded
+// numeric fields are also rejected; they fall back to marked literal entries.
+function isUnsafeBlockPattern(pattern, flags) {
+  flags = flags || '';
+  let unicode = flags.indexOf('u') !== -1;
+  let multilineDotAll = flags.indexOf('m') !== -1 && flags.indexOf('s') !== -1;
+  let newFrame = function (anchor) { return {ambiguous: false, variable: 0, maxVariable: 0,
+    alternation: false, anchored: !!anchor, inheritedAnchor: !!anchor}; };
+  let stack = [newFrame()];
+  let top = function () { return stack[stack.length - 1]; };
+  let addVariable = function (frame, n) {
+    frame.variable += n;
+    return frame.variable >= 2;
+  };
+  // Capture groups are numbered in opening order; a group is variable when
+  // its body has any length choice. Only closed groups are known: a
+  // reference to an open or later group matches the empty string.
+  let captureCount = 0, captureNames = Object.create(null), variableCaptures = Object.create(null);
+  for (let i = 0; i < pattern.length; i++) {
+    let ch = pattern.charAt(i);
+    if (ch === '\\') {
+      let group, refEnd = null;
+      if (pattern.slice(i, i + 3) === '\\k<') {
+        refEnd = pattern.indexOf('>', i + 3);
+        if (refEnd < 0) return true;
+        let name = normalizeRegexGroupName(pattern.slice(i + 3, refEnd));
+        if (name === null) return true;
+        group = captureNames[name];
+      } else {
+        let ref = /^\\([1-9]\d*)/.exec(pattern.slice(i));
+        if (ref) { group = Number(ref[1]); refEnd = i + ref[0].length - 1; }
+      }
+      if (refEnd !== null) {
+        i = refEnd;
+        if (group && variableCaptures[group]) {
+          top().ambiguous = true;
+          if (addVariable(top(), 1)) return true;
+        }
+        continue;
+      }
+      let escape = readRegexUnicodeEscape(pattern, i, unicode);
+      if (escape) { i += escape.length - 1; continue; }
+      let hex = /^\\x[0-9a-fA-F]{2}/.exec(pattern.slice(i));
+      if (hex) { i += hex[0].length - 1; continue; }
+      i++;
+      continue;
+    }
+    if (ch === '^') { top().anchored = true; continue; }
+    if (ch === '.') {
+      let quantifier = readRegexQuantifier(pattern, i + 1);
+      if (quantifier && quantifier.variable && (!top().anchored || multilineDotAll)) return true;
+      continue;
+    }
+    if (ch === '[') {
+      // JavaScript (no v flag): the first unescaped ] always closes the
+      // class, so [] is an empty class and [^] matches any character.
+      i++;
+      if (pattern.charAt(i) === '^') i++;
+      while (i < pattern.length && pattern.charAt(i) !== ']') {
+        if (pattern.charAt(i) === '\\') i++;
+        i++;
+      }
+      let quantifier = readRegexQuantifier(pattern, i + 1);
+      if (quantifier) {
+        top().ambiguous = true;
+        if (quantifier.variable && addVariable(top(), 1)) return true;
+        i += quantifier.length;
+      }
+      continue;
+    }
+    if (ch === '|') {
+      let frame = top();
+      frame.ambiguous = true;
+      frame.alternation = true;
+      frame.maxVariable = Math.max(frame.maxVariable, frame.variable);
+      frame.variable = 0;
+      frame.anchored = frame.inheritedAnchor;
+      continue;
+    }
+    if (ch === '(') {
+      let frame = newFrame(top().anchored);
+      stack.push(frame);
+      if (pattern.charAt(i + 1) === '?') {
+        let next = pattern.charAt(i + 2);
+        if (next === ':' || next === '=' || next === '!') i += 2;
+        else if (next === '<') {
+          let after = pattern.charAt(i + 3);
+          if (after === '=' || after === '!') i += 3;
+          else {
+            // Named groups (?<name>...) are numbered like plain captures.
+            let close = pattern.indexOf('>', i);
+            frame.capture = ++captureCount;
+            if (close < 0) return true;
+            let name = normalizeRegexGroupName(pattern.slice(i + 3, close));
+            if (name === null) return true;
+            captureNames[name] = frame.capture;
+            i = close;
+          }
+        }
+      } else {
+        frame.capture = ++captureCount;
+      }
+      continue;
+    }
+    if (ch === ')') {
+      let frame = stack.length > 1 ? stack.pop() : newFrame();
+      let quantifier = readRegexQuantifier(pattern, i + 1);
+      if (quantifier && quantifier.repeats && frame.ambiguous) return true;
+      if (frame.ambiguous || quantifier) top().ambiguous = true;
+      // Include choices inside the group, its alternatives and its quantifier.
+      let bodyVariable = Math.max(frame.maxVariable, frame.variable) + (frame.alternation ? 1 : 0);
+      // The captured text has one length per iteration, so the group's own
+      // quantifier does not make a backreference to it variable.
+      if (frame.capture && bodyVariable > 0) variableCaptures[frame.capture] = true;
+      let groupVariable = bodyVariable + (quantifier && quantifier.variable ? 1 : 0);
+      if (groupVariable && addVariable(top(), groupVariable)) return true;
+      if (quantifier) i += quantifier.length;
+      continue;
+    }
+    let quantifier = readRegexQuantifier(pattern, i);
+    if (quantifier) {
+      top().ambiguous = true;
+      if (quantifier.variable && addVariable(top(), 1)) return true;
+      i += quantifier.length - 1;
+    }
+  }
+  return false;
+}
+
+// Returns {regex} for valid /.../ entries, otherwise a pre-lowered literal.
 function compileBlockEntry(entry) {
   if (!entry) return null;
   var regexMatch = /^\/([\s\S]+)\/([imsu]*)$/.exec(entry);
   if (regexMatch) {
     var pattern = regexMatch[1];
     var rawFlags = regexMatch[2];
-    if (pattern.length <= BLOCK_REGEX_MAX_LENGTH) {
+    if (pattern.length <= BLOCK_REGEX_MAX_LENGTH && !isUnsafeBlockPattern(pattern, rawFlags)) {
       var flags = rawFlags.indexOf('i') === -1 ? rawFlags + 'i' : rawFlags;
       try {
-        return new RegExp(pattern, flags);
+        return {regex: new RegExp(pattern, flags)};
       } catch (e) {}
     }
+    return {literal: entry.toLowerCase(), invalid: true};
   }
-  var lower = entry.toLowerCase();
-  return {
-    test: function (text) {
-      return String(text).toLowerCase().indexOf(lower) !== -1;
-    }
-  };
+  return {literal: entry.toLowerCase()};
 }
 
 function rebuildBlockRegexes() {
   blockRegexes = [];
+  blockInvalidEntries = [];
   for (var i = 0; i < pluginState.danmakuBlocklist.length; i++) {
     var matcher = compileBlockEntry(pluginState.danmakuBlocklist[i]);
-    if (matcher) blockRegexes.push(matcher);
+    if (!matcher) continue;
+    if (matcher.invalid) blockInvalidEntries.push(pluginState.danmakuBlocklist[i]);
+    blockRegexes.push(matcher);
   }
 }
 
 function isBlockedText(text) {
   if (!text || blockRegexes.length === 0) return false;
+  var lower = null; // lower-case the comment once for all literal entries
   for (var i = 0; i < blockRegexes.length; i++) {
-    if (blockRegexes[i].test(text)) return true;
+    var matcher = blockRegexes[i];
+    if (matcher.regex) {
+      if (matcher.regex.test(text)) return true;
+    } else {
+      if (lower === null) lower = String(text).toLowerCase();
+      if (lower.indexOf(matcher.literal) !== -1) return true;
+    }
   }
   return false;
 }
@@ -567,10 +797,11 @@ function getCurrentProjection() {
   let path = pluginState.danmakuFileList.selectedPaths[0];
   let doc = path && danmakuCache[path];
   if (!doc) return null;
+  let forceSimplified = pluginState.danmakuForceSimplified && danmakuDocument.canSimplifySource(doc.sourceType);
   let settings = {
     startDay: pluginState.danmakuFilterStartDay, endDay: pluginState.danmakuFilterEndDay,
-    density: pluginState.danmakuFilterDensity, forceSimplified: pluginState.danmakuForceSimplified,
-    simplify: pluginState.danmakuForceSimplified && ensureSimplifier() ? openccSimplifier : null,
+    density: pluginState.danmakuFilterDensity, forceSimplified: forceSimplified,
+    simplify: forceSimplified && ensureSimplifier() ? openccSimplifier : null,
     dedupeWindow: pluginState.danmakuDedupeEnabled ? pluginState.danmakuDedupeWindow * 100 : 0,
     blockTop: pluginState.danmakuBlockTopEnabled, blockBottom: pluginState.danmakuBlockBottomEnabled,
     blockEnabled: pluginState.danmakuBlocklistEnabled, regexes: blockRegexes,
@@ -1200,15 +1431,20 @@ function isValidCssTextShadowBlur(value) {
 function registerSidebarHandlers() {
   sidebarOnMessage("toggle-danmaku", function () { toggleDanmaku(); });
 
-  // [message, state property, payload field]. Persistence lives in commitState.
+  // [message, state property, payload field, validator]. Persistence lives in commitState.
+  let isCanvasMode = function (value) { return value === 'css' || value === 'default'; };
+  let isNonNegative = function (value) { return isFiniteNumber(value) && value >= 0; };
+  let isPositive = function (value) { return isFiniteNumber(value) && value > 0; };
+  let isOpacity = function (value) { return isFiniteNumber(value) && value >= 0 && value <= 1; };
   [
-    ['set-opacity', 'canvasOpacity', 'opacity'], ['set-fontscale', 'canvasFontScale', 'scale'],
-    ['set-canvas-mode', 'currentCanvasMode', 'mode'], ['set-stroke-opacity', 'strokeOpacity', 'opacity'],
-    ['set-stroke-width', 'strokeWidth', 'width'], ['set-stroke-color', 'strokeColor', 'color'],
-    ['set-stroke-inversion-color', 'strokeInversionColor', 'color'], ['set-comment-limit', 'commentLimit', 'limit'],
-    ['set-scroll-speed', 'scrollSpeed', 'speed']
+    ['set-opacity', 'canvasOpacity', 'opacity', isOpacity], ['set-fontscale', 'canvasFontScale', 'scale', isPositive],
+    ['set-canvas-mode', 'currentCanvasMode', 'mode', isCanvasMode], ['set-stroke-opacity', 'strokeOpacity', 'opacity', isOpacity],
+    ['set-stroke-width', 'strokeWidth', 'width', isNonNegative], ['set-stroke-color', 'strokeColor', 'color', isHexColor],
+    ['set-stroke-inversion-color', 'strokeInversionColor', 'color', isHexColor], ['set-comment-limit', 'commentLimit', 'limit', isNonNegative],
+    ['set-scroll-speed', 'scrollSpeed', 'speed', isPositive]
   ].forEach(function (entry) {
     sidebarOnMessage(entry[0], function (data) {
+      if (!entry[3](data[entry[2]])) return;
       let patch = {};
       patch[entry[1]] = data[entry[2]];
       commitState(patch);
@@ -1220,7 +1456,8 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("set-danmaku-force-simplified", function (data) {
-    commitState({danmakuForceSimplified: !!data.value});
+    if (typeof data.value !== 'boolean') return;
+    commitState({danmakuForceSimplified: data.value});
 
     // 当前已加载弹幕时重新驱动加载管道（内容经 getEffectiveContent 单源转换）
     resendDanmakuToOverlay();
@@ -1229,7 +1466,8 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("set-danmaku-auto-offset", function (data) {
-    commitState({danmakuAutoOffset: !!data.value});
+    if (typeof data.value !== 'boolean') return;
+    commitState({danmakuAutoOffset: data.value});
 
     if (pluginState.danmakuAutoOffset && pluginState.currentDanmakuStatus.fileType === 'nico-json') {
       var selectedPath = pluginState.danmakuFileList.selectedPaths.length > 0 ? pluginState.danmakuFileList.selectedPaths[0] : null;
@@ -1240,11 +1478,15 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("set-danmaku-offset", function (data) {
+    if (!isFiniteNumber(data.offset)) return;
     applyDanmakuOffset(data.offset);
   });
 
   sidebarOnMessage("set-danmaku-font", function (data) {
-    applyDanmakuFont(data.fontFamily, data.fontWeight);
+    let family = typeof data.fontFamily === 'string' ? data.fontFamily : undefined;
+    let weight = typeof data.fontWeight === 'string' || isFiniteNumber(data.fontWeight) ? String(data.fontWeight) : undefined;
+    if (family === undefined && weight === undefined) return;
+    applyDanmakuFont(family, weight);
   });
 
   sidebarOnMessage("set-style-preset", function (data) {
@@ -1253,19 +1495,22 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("set-danmaku-filter", function (data) {
-    applyDanmakuFilter(data.startDay, data.endDay);
-    notifyBrowserDataChanged(); // 范围切片变化 → 列表与 overlay 同步重建
+    if (data.startDay === undefined || data.endDay === undefined) return;
+    if (applyDanmakuFilter(data.startDay, data.endDay)) notifyBrowserDataChanged();
   });
 
   sidebarOnMessage("set-danmaku-filter-density", function (data) {
-    applyDanmakuFilterDensity(data.density || 0);
+    // 0 is the explicit "unlimited" value; a missing field is not.
+    if (!isFiniteNumber(data.density) || data.density < 0) return;
+    applyDanmakuFilterDensity(data.density);
     notifyBrowserDataChanged(); // 密度过滤变化 → 列表与 overlay 同步重建
   });
 
   // ── 屏蔽词 ──
 
   sidebarOnMessage("danmaku-blocklist-set-enabled", function (data) {
-    commitState({danmakuBlocklistEnabled: !!data.enabled});
+    if (typeof data.enabled !== 'boolean') return;
+    commitState({danmakuBlocklistEnabled: data.enabled});
 
     // 屏蔽词为零时开关不影响弹幕内容,跳过重建以省性能
     if (pluginState.danmakuBlocklist.length > 0) {
@@ -1275,12 +1520,12 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("danmaku-blocklist-add", function (data) {
-    var w = String(data.word || '').trim();
+    if (typeof data.word !== 'string') return;
+    var w = data.word.trim();
     if (!w) return;
     if (pluginState.danmakuBlocklist.indexOf(w) !== -1) return;
     commitState({danmakuBlocklist: pluginState.danmakuBlocklist.concat(w)});
 
-    rebuildBlockRegexes();
     notifyBrowserDataChanged();
     resendDanmakuToOverlay();
   });
@@ -1292,7 +1537,6 @@ function registerSidebarHandlers() {
     if (idx < 0) return;
     commitState({danmakuBlocklist: pluginState.danmakuBlocklist.filter(function (_, i) { return i !== idx; })});
 
-    rebuildBlockRegexes();
     notifyBrowserDataChanged();
     resendDanmakuToOverlay();
   });
@@ -1326,20 +1570,21 @@ function registerSidebarHandlers() {
 
   sidebarOnMessage("danmaku-dedupe-set", function (data) {
     let patch = {};
-    if (data.enabled !== undefined) patch.danmakuDedupeEnabled = !!data.enabled;
+    if (typeof data.enabled === 'boolean') patch.danmakuDedupeEnabled = data.enabled;
     if (data.window !== undefined) {
       var w = parseFloat(data.window);
       if (isFinite(w) && w >= 1 && w <= 5) patch.danmakuDedupeWindow = w;
     }
 
+    if (!Object.keys(patch).length) return;
     commitState(patch);
     notifyBrowserDataChanged();
     resendDanmakuToOverlay();
   });
 
   sidebarOnMessage("danmaku-browser-vis-set", function (data) {
-    if (data && data.visible !== undefined) {
-      commitState({danmakuBrowserVisible: !!data.visible});
+    if (typeof data.visible === 'boolean') {
+      commitState({danmakuBrowserVisible: data.visible});
 
       if (pluginState.danmakuBrowserVisible && browserDataPending) {
         browserDataPending = false;
@@ -1361,23 +1606,25 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("select-danmaku-file", function (data) {
-    if (data && data.path) loadDanmakuFile(data.path, { enableDanmaku: true });
+    if (typeof data.path === 'string' && data.path) loadDanmakuFile(data.path, { enableDanmaku: true });
   });
 
   sidebarOnMessage("danmaku-file-add", chooseDanmakuFile);
 
   sidebarOnMessage("dandanplay-set-auto-network", function (data) {
-    commitState({dandanplayAutoNetwork: !!data.autoNetwork});
+    if (typeof data.autoNetwork !== 'boolean') return;
+    commitState({dandanplayAutoNetwork: data.autoNetwork});
 
     ddpSyncState();
   });
 
   sidebarOnMessage("dandanplay-search", function (data) {
+    // Validate before advancing generations: an empty request must not cancel a real one.
+    if (typeof data.keyword !== 'string' || !data.keyword.trim()) return;
     let generation = ++ddpSearchGeneration;
     ddpBangumiGeneration += 1;
     let searchId = data.searchId;
     var keyword = data.keyword;
-    if (!keyword) return;
     ddpSearchAnime(keyword).then(function(res) {
       if (generation !== ddpSearchGeneration) return;
       if (res && res.statusCode === 403) {
@@ -1402,6 +1649,7 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("dandanplay-get-bangumi", function (data) {
+    if (!isDdpId(data.bangumiId)) return;
     let generation = ++ddpBangumiGeneration;
     let searchGeneration = ddpSearchGeneration;
     var bangumiId = data.bangumiId;
@@ -1429,13 +1677,14 @@ function registerSidebarHandlers() {
 
   sidebarOnMessage("dandanplay-select-match", function (data) {
     var match = data.match;
-    if (match && match.episodeId) {
+    if (match && isDdpId(match.episodeId)) {
       commitDdpState({matchType: 'filename'});
       ddpLoadComments(match.episodeId, match.animeTitle, match.episodeTitle, true, DDP_LOAD_ORIGIN.MANUAL);
     }
   });
 
   sidebarOnMessage("dandanplay-select-episode", function (data) {
+    if (!isDdpId(data.episodeId)) return;
     commitDdpState({matchType: 'filename'});
     ddpLoadComments(data.episodeId, data.animeTitle, data.episodeTitle, true, DDP_LOAD_ORIGIN.MANUAL);
   });
@@ -1456,7 +1705,8 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("danmaku-browser-watch", function (data) {
-    danmakuBrowserWatch = !!data.watch;
+    if (typeof data.watch !== 'boolean') return;
+    danmakuBrowserWatch = data.watch;
     if (danmakuBrowserWatch) {
       var t = mpv.getNumber("time-pos");
       // force: 播种锚点必须送达——若被 300ms 节流吞掉,暂停播放时不再有
@@ -1555,8 +1805,9 @@ function registerOverlayHandlers() {
   overlayOnMessage("seek-enable", function () { core.osd(t('seek_enable')); });
 
   overlayOnMessage("jump", function (data) {
-    if (data.targetSec !== undefined && data.targetSec !== null) {
-      mpv.set("time-pos", data.targetSec);
+    let targetSec = typeof data.targetSec === 'number' ? data.targetSec : NaN;
+    if (isFinite(targetSec) && targetSec >= 0) {
+      mpv.set("time-pos", targetSec);
       if (data.message) core.osd(t('jump') + data.message);
     }
   });

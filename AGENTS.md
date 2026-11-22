@@ -31,7 +31,7 @@ Danmaku Cosmos/
 ├── episode-matcher.js        # Local danmaku discovery and episode-number heuristics
 ├── ddp-client.js             # DanDanPlay HTTP client, macOS MD5 hasher, versioned disk cache I/O
 ├── lib/                      # Third-party runtime libraries for main.js
-│   └── opencc.min.js         # opencc-js v1.4.2 UMD t2cn bundle; loaded once from main through package-local require, converter (tw→cn) constructed lazily; conversion memoized on IR nodes for all source formats
+│   └── opencc.min.js         # opencc-js v1.4.2 UMD t2cn bundle; loaded once from main through package-local require, converter (tw→cn) constructed lazily; conversion memoized on Bilibili/DDP IR nodes; Niconico sources retain original text
 ├── overlay/                  # Danmaku render layer (WebView container)
 │   ├── index.html            # Entry point
 │   ├── index.css             # Render styles
@@ -91,7 +91,7 @@ Based on the original niconicomments library. Supports Auto mode only (HTML5 and
 
 ## Danmaku Appearance Customization
 
-All controls live in the sidebar. General settings (top): Style Preset. Advanced settings: render mode, force-simplified, time offset, font family/weight, comment limit, stroke, scroll speed.
+All controls live in the sidebar. General settings (top): Style Preset. Advanced settings: render mode, force-simplified, time offset, font family/weight, comment limit, stroke, scroll speed. Force-simplified applies only to Bilibili XML and Dandanplay; hide its complete row for Niconico JSON/XML without resetting the saved preference.
 
 ### Style Presets
 
@@ -228,7 +228,7 @@ Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-
 
 - `danmaku-document.js` is loaded by main with package-local `require`. `parseDanmakuSource()` is the only XML/JSON/DDP normalization entry; invalid/empty comments are dropped there. XML format detection skips the prolog and reads only the root tag; body/CDATA text never selects the format. Only `premium="1"` marks Nico XML as premium; Bilibili/DDP still allow their supplied RGB colors. IR includes sourceType, duration, dates, decoded text and native rendering metadata. Source fields are immutable; only `simplifiedText` is a lazy memo.
 - `danmakuCache[path]` contains a document, never encoded text. List selections reuse the cached IR; an explicit file-dialog selection rereads disk, preserving the old source if the refresh fails. A new video clears the session cache. Reselecting an unchanged active/in-flight document uses a lightweight branch: preserve date selection, acknowledgment and success-notice state, resume if disabled, and send data only when the projection changed.
-- `projectDanmaku(doc, settings)` performs date slicing → density → optional simplification → blocking → shared dedupe, and returns formatted comments, list rows and counts. Main caches the current projection for all consumers. Skip overlay reload when the formatted projection is unchanged. Preserve owner control text (`/`, `@`, `＠` prefixes) during simplification. Do not parse or serialize source content in filters or UI code.
+- `projectDanmaku(doc, settings)` performs date slicing → density → optional simplification (Bilibili XML/DDP only; Niconico JSON/XML always retain native text) → blocking → shared dedupe, and returns formatted comments, list rows and counts. Main caches the current projection for all consumers. Skip overlay reload when the formatted projection is unchanged. Preserve owner control text (`/`, `@`, `＠` prefixes) during simplification. Do not parse or serialize source content in filters or UI code.
 - Disabled rendering: keep settings and pending style changes, but do not send filtered-source reloads or construct/draw hidden renderers. On enable compare the latest projection and apply it once; do not lose a pre-handshake source selection.
 - Overlay script order is `niconicomments.min.js → main.js`. Overlay consumes only `load-danmaku.comments` (formatted arrays); `input.js` has been removed.
 - OpenCC's package module is loaded while the main entry is executing. IINA's require resolver uses the current script stack, so do not call it from later native callbacks. Converter creation remains lazy. No WebView-supplied paths, persisted plugin roots or eval.

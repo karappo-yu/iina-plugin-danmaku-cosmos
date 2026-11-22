@@ -10,6 +10,7 @@ function onPluginMessage(name, callback) {
 var toggleDanmaku = document.getElementById("toggle-danmaku");
 var canvasRendererToggle = document.getElementById("canvas-renderer-toggle");
 var danmakuForceSimplifiedToggle = document.getElementById("danmaku-force-simplified-toggle"); 
+let danmakuForceSimplifiedRow = document.getElementById("danmaku-force-simplified-row");
 var danmakuAutoOffsetToggle = document.getElementById("danmaku-auto-offset-toggle"); 
 let danmakuAutoOffsetRow = document.getElementById("danmaku-auto-offset-row");
 let blockTopToggle = document.getElementById("danmaku-block-top-toggle");
@@ -54,6 +55,8 @@ var densityValue = document.getElementById("density-value");
 var densityCount = document.getElementById("density-count");
 // 滑块最右端不是密度值, 而是"无限制"哨兵; 与 index.html 的 max 必须一致
 var DENSITY_SLIDER_OFF = 550;
+let pendingDensityValue = null;
+let endDensityInputEdit = function () {};
 var tabBasic = document.getElementById("tab-basic");
 var tabAdvanced = document.getElementById("tab-advanced");
 var tabFilter = document.getElementById("tab-filter");
@@ -83,7 +86,7 @@ var ddpState = {
   error: null,
   matches: null,
   matchType: '',
-  autoNetwork: true
+  autoNetwork: false
 };
 
 var settingsSections = [
@@ -184,10 +187,10 @@ function renderFileList() {
   }
 }
 
+// The switch stays usable without a source: turning it on makes main rescan
+// local files and run network matching for the current video.
 function updateDanmakuInfoUI() {
-  var hasDanmaku = state.danmakuLoaded || fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0;
-  toggleDanmaku.disabled = !hasDanmaku;
-  if (!hasDanmaku) toggleDanmaku.checked = false;
+  toggleDanmaku.disabled = false;
 }
 
 function updateEnabledUI() {
@@ -266,7 +269,8 @@ var i18n = {
     block_top: "Block Top Danmaku",
     block_bottom: "Block Bottom Danmaku",
     dedupe_title: "Deduplicate",
-    dedupe_window: "Window (sec)"
+    dedupe_window: "Window (sec)",
+    blocklist_invalid: "Invalid or potentially slow regex; matched as plain text"
   },
   ja: {
     font_default: "\u65e2\u5b9a",
@@ -332,7 +336,8 @@ var i18n = {
     block_top: "\u4e0a\u90e8\u30b3\u30e1\u30f3\u30c8\u3092\u30d6\u30ed\u30c3\u30af",
     block_bottom: "\u4e0b\u90e8\u30b3\u30e1\u30f3\u30c8\u3092\u30d6\u30ed\u30c3\u30af",
     dedupe_title: "\u91cd\u8907\u30b3\u30e1\u30f3\u30c8\u5408\u4f75",
-    dedupe_window: "\u5408\u4f75\u7bc4\u56f2 (\u79d2)"
+    dedupe_window: "\u5408\u4f75\u7bc4\u56f2 (\u79d2)",
+    blocklist_invalid: "\u7121\u52b9\u307e\u305f\u306f\u51e6\u7406\u304c\u91cd\u3044\u6b63\u898f\u8868\u73fe\u306e\u305f\u3081\u3001\u901a\u5e38\u306e\u6587\u5b57\u5217\u3068\u3057\u3066\u7167\u5408\u3057\u307e\u3059"
   },
   zh: {
     font_default: "\u9ed8\u8ba4",
@@ -398,7 +403,8 @@ var i18n = {
     block_top: "\u5c4f\u853d\u9876\u90e8\u5f39\u5e55",
     block_bottom: "\u5c4f\u853d\u5e95\u90e8\u5f39\u5e55",
     dedupe_title: "\u5f39\u5e55\u53bb\u91cd",
-    dedupe_window: "\u53bb\u91cd\u533a\u95f4 (\u79d2)"
+    dedupe_window: "\u53bb\u91cd\u533a\u95f4 (\u79d2)",
+    blocklist_invalid: "\u6b63\u5219\u65e0\u6548\u6216\u53ef\u80fd\u5bfc\u81f4\u5361\u987f\uff0c\u5df2\u6309\u666e\u901a\u6587\u5b57\u5339\u914d"
   }
 };
 
@@ -409,14 +415,18 @@ function getBrowserLang() {
   return "en";
 }
 
+// main sends its language with the state snapshot so OSD and sidebar agree;
+// the WebView locale is only the initial guess.
+var uiLang = getBrowserLang();
+
 function t(key) {
-  var dict = i18n[getBrowserLang()] || i18n.en;
+  var dict = i18n[uiLang] || i18n.en;
   return dict[key] || i18n.en[key] || key;
 }
 
 function applyI18n() {
-  var lang = getBrowserLang();
-  var dict = i18n[lang];
+  var lang = uiLang;
+  var dict = i18n[lang] || i18n.en;
   document.querySelectorAll("[data-i18n]").forEach(function(el) {
     var key = el.getAttribute("data-i18n");
     if (dict[key]) el.textContent = dict[key];
@@ -511,6 +521,8 @@ const strokeWidthSliderDrag = trackSliderDrag(strokeWidthSlider);
 const speedSliderDrag = trackSliderDrag(speedSlider);
 const fontWeightSliderDrag = trackSliderDrag(fontWeightSlider);
 const cssTextShadowBlurSliderDrag = trackSliderDrag(cssTextShadowBlurSlider);
+const commentLimitSliderDrag = trackSliderDrag(commentLimitSlider);
+const densitySliderDrag = trackSliderDrag(densitySlider);
 
 // View-only edit state: an empty Custom choice is not a preference change.
 let fontCustomEmptyChoice = false;
@@ -551,8 +563,8 @@ function updateUI() {
   if (state.enabled === undefined) return;
   var hasFiles = fileListState.xmlFiles.length > 0 || fileListState.jsonFiles.length > 0;
   var hasDanmaku = state.danmakuLoaded || hasFiles;
-  toggleDanmaku.checked = state.enabled && hasDanmaku;
-  toggleDanmaku.disabled = !hasDanmaku;
+  toggleDanmaku.checked = !!state.enabled;
+  toggleDanmaku.disabled = false;
   if (!opacitySliderDrag.active) {
     opacitySlider.value = state.canvasOpacity;
     opacityValue.textContent = Math.round(state.canvasOpacity * 100) + "%";
@@ -576,14 +588,16 @@ function updateUI() {
   updateCssTextShadowMode(state.useCanvasRenderer);
   strokeColorInput.value = state.strokeColor;
   strokeInversionInput.value = state.strokeInversionColor;
-  commentLimitSlider.value = state.commentLimit > 0 ? state.commentLimit : COMMENT_LIMIT_SLIDER_UNLIMITED;
-  commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : t('unlimited');
+  if (!commentLimitSliderDrag.active) {
+    commentLimitSlider.value = state.commentLimit > 0 ? state.commentLimit : COMMENT_LIMIT_SLIDER_UNLIMITED;
+    commentLimitValue.textContent = state.commentLimit > 0 ? String(state.commentLimit) : t('unlimited');
+  }
   if (!speedSliderDrag.active) {
     speedSlider.value = Math.round(state.scrollSpeed * 100);
     speedValue.textContent = Math.round(state.scrollSpeed * 100) + '%';
   }
   if (canvasRendererToggle) canvasRendererToggle.checked = state.useCanvasRenderer;
-  if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified; 
+  updateForceSimplifiedUI();
   if (danmakuAutoOffsetToggle) danmakuAutoOffsetToggle.checked = state.danmakuAutoOffset; 
   if (danmakuAutoOffsetRow) {
     let showAutoOffset = (state.danmakuLoaded || fileListState.selectedPaths.length > 0) && state.danmakuType === 'nico-json' && state.nicoJsonHasDuration;
@@ -594,6 +608,12 @@ function updateUI() {
   updateFontUI();
   syncStylePresetUI();
   updateFilterUI();
+}
+
+function updateForceSimplifiedUI() {
+  if (danmakuForceSimplifiedToggle) danmakuForceSimplifiedToggle.checked = state.danmakuForceSimplified;
+  let isNico = typeof state.danmakuType === 'string' && state.danmakuType.indexOf('nico-') === 0;
+  if (danmakuForceSimplifiedRow) danmakuForceSimplifiedRow.style.display = isNico ? 'none' : '';
 }
 
 function updateCssTextShadowMode(useCanvas) {
@@ -622,7 +642,10 @@ function updateFilterUI() {
 function updateDensitySlider() {
   if (!densitySlider || !densityValue) return;
   var density = state.danmakuFilterDensity || 0;
-  if (density > 0) {
+  if (densitySliderDrag.active || pendingDensityValue !== null) {
+    // Keep the captured preview while a pause is pending, including keyboard
+    // edits and interrupted drags; only the count below follows main.
+  } else if (density > 0) {
     densitySlider.value = density;
     densityValue.textContent = density + ' /min';
   } else {
@@ -717,14 +740,17 @@ function updateRangeSelector() {
 }
 
 toggleDanmaku.addEventListener("change", function () {
-  if (toggleDanmaku.disabled) { toggleDanmaku.checked = false; return; }
   iina.postMessage("toggle-danmaku");
 });
+
+var activeTabName = 'basic';
 
 if (tabButtons.length) {
   tabButtons.forEach(function (tab) {
     tab.addEventListener("click", function () {
       var name = tab.dataset.tab;
+      if (name !== activeTabName) endDensityInputEdit();
+      activeTabName = name;
       tabButtons.forEach(function (t) {
         t.classList.toggle("active", t === tab);
       });
@@ -798,15 +824,17 @@ strokeWidthSlider.addEventListener("input", function () {
   iina.postMessage("set-stroke-width", { width: val });
 });
 
-function submitCssTextShadowBlur() {
+function previewCssTextShadowBlur() {
   if (cssTextShadowBlurSlider.disabled) return;
   let blur = parseFloat(cssTextShadowBlurSlider.value);
   cssTextShadowBlurValue.textContent = String(blur) + 'px';
-  iina.postMessage('set-css-text-shadow-blur', {blur: blur});
 }
 
-cssTextShadowBlurSlider.addEventListener('input', submitCssTextShadowBlur);
-cssTextShadowBlurSlider.addEventListener('change', submitCssTextShadowBlur);
+cssTextShadowBlurSlider.addEventListener('input', previewCssTextShadowBlur);
+cssTextShadowBlurSlider.addEventListener('change', previewCssTextShadowBlur);
+bindLiveRangePost(cssTextShadowBlurSlider, 'set-css-text-shadow-blur', 'blur', function () {
+  return cssTextShadowBlurSlider.disabled ? null : parseFloat(cssTextShadowBlurSlider.value);
+});
 
 strokeColorInput.addEventListener("input", function () {
   iina.postMessage("set-stroke-color", { color: strokeColorInput.value });
@@ -885,13 +913,33 @@ if (fontCustomInput) {
   });
 }
 
+// Every input is a new intent, even when a preset restored another value.
+// Suppress only the matching change at the end of this input edit.
+function bindLiveRangePost(slider, message, field, readValue) {
+  let lastInputValue = null;
+  let post = function (value) {
+    if (value === null) return; // A disabled control may decline the edit.
+    let payload = {};
+    payload[field] = value;
+    iina.postMessage(message, payload);
+  };
+  slider.addEventListener('input', function () {
+    lastInputValue = readValue();
+    post(lastInputValue);
+  });
+  slider.addEventListener('change', function () {
+    let value = readValue();
+    let previousInput = lastInputValue;
+    lastInputValue = null;
+    if (value !== previousInput) post(value);
+  });
+}
+
 if (fontWeightSlider) {
   fontWeightSlider.addEventListener("input", function () {
     if (fontWeightValue) fontWeightValue.textContent = fontWeightSlider.value;
   });
-  fontWeightSlider.addEventListener("change", function () {
-    iina.postMessage("set-danmaku-font", { fontWeight: fontWeightSlider.value });
-  });
+  bindLiveRangePost(fontWeightSlider, 'set-danmaku-font', 'fontWeight', function () { return fontWeightSlider.value; });
 }
 
 speedSlider.addEventListener("input", function () {
@@ -899,9 +947,7 @@ speedSlider.addEventListener("input", function () {
   speedValue.textContent = Math.round(val * 100) + '%';
 });
 
-speedSlider.addEventListener("change", function () {
-  iina.postMessage("set-scroll-speed", { speed: parseFloat(speedSlider.value) / 100 });
-});
+bindLiveRangePost(speedSlider, 'set-scroll-speed', 'speed', function () { return parseFloat(speedSlider.value) / 100; });
 
 if (stylePresetSegmented) {
   stylePresetSegmented.addEventListener("click", function (e) {
@@ -1010,19 +1056,45 @@ document.addEventListener("keydown", function (e) {
   }
 });
 
-document.addEventListener("mousemove", function (e) {
-  if (filterDragMode) {
-    applyFilterDrag(e.clientX);
-  }
-});
-
-document.addEventListener("mouseup", function () {
+function endFilterDrag() {
   if (!filterDragMode) return;
   filterDragMode = null;
   flushFilterChange();
+}
+
+document.addEventListener("mousemove", function (e) {
+  if (!filterDragMode) return;
+  // A release outside the WebView never reaches this document; the next move
+  // with no button held ends the drag instead of continuing it.
+  if (e.buttons === 0) { endFilterDrag(); return; }
+  applyFilterDrag(e.clientX);
 });
 
+document.addEventListener("mouseup", endFilterDrag);
+if (typeof window.addEventListener === 'function') window.addEventListener('blur', endFilterDrag);
+
+// Each density change re-projects and reloads every comment, so a drag applies
+// only when it pauses; release always sends the final value right away.
+var DENSITY_PAUSE_MS = 150;
 if (densitySlider) {
+  let densityTimer = null;
+  let densityInputValue = null;
+  // End input/change pairing without dropping a captured pending setting.
+  endDensityInputEdit = function () { densityInputValue = null; };
+  document.addEventListener('pointercancel', endDensityInputEdit);
+  if (typeof window.addEventListener === 'function') window.addEventListener('blur', endDensityInputEdit);
+  let readDensity = function () {
+    let value = parseInt(densitySlider.value, 10);
+    return value >= DENSITY_SLIDER_OFF ? 0 : value;
+  };
+  let sendDensity = function () {
+    if (densityTimer) clearTimeout(densityTimer);
+    densityTimer = null;
+    if (pendingDensityValue === null) return;
+    let density = pendingDensityValue;
+    pendingDensityValue = null;
+    iina.postMessage("set-danmaku-filter-density", { density: density });
+  };
   densitySlider.addEventListener("input", function () {
     var val = parseInt(densitySlider.value, 10);
     if (val >= DENSITY_SLIDER_OFF) {
@@ -1030,11 +1102,20 @@ if (densitySlider) {
     } else {
       densityValue.textContent = val + ' /min';
     }
+    densityInputValue = readDensity();
+    pendingDensityValue = densityInputValue;
+    if (densityTimer) clearTimeout(densityTimer);
+    densityTimer = setTimeout(sendDensity, DENSITY_PAUSE_MS);
   });
   densitySlider.addEventListener("change", function () {
-    var val = parseInt(densitySlider.value, 10);
-    var density = val >= DENSITY_SLIDER_OFF ? 0 : val;
-    iina.postMessage("set-danmaku-filter-density", { density: density });
+    // A timer may already have sent this input. Do not turn an echoed DOM
+    // value into a new edit; change-only operations still submit normally.
+    if (densityInputValue === null) {
+      let density = readDensity();
+      if (pendingDensityValue !== null || density !== state.danmakuFilterDensity) pendingDensityValue = density;
+    }
+    densityInputValue = null;
+    sendDensity();
   });
 }
 
@@ -1050,10 +1131,17 @@ onPluginMessage("danmaku-filter-info", function (data) {
   filterDateAxis = buildFilterDateAxis(state.dateInfo);
   state.danmakuFilterDensity = data.filterDensity || 0;
   state.filteredCount = data.filteredCount || 0;
+  updateForceSimplifiedUI();
   updateFilterUI();
 });
 
 onPluginMessage("danmaku-state", function (data) {
+  if (typeof data.uiLang === 'string' && i18n[data.uiLang] && data.uiLang !== uiLang) {
+    uiLang = data.uiLang;
+    applyI18n();
+    renderFileList();
+    renderBlocklist();
+  }
   if (data.enabled !== undefined) state.enabled = data.enabled;
   if (data.canvasMode !== undefined) state.useCanvasRenderer = data.canvasMode === 'default';
   if (data.canvasOpacity !== undefined) state.canvasOpacity = data.canvasOpacity;
@@ -1061,8 +1149,12 @@ onPluginMessage("danmaku-state", function (data) {
   if (data.strokeOpacity !== undefined) state.strokeOpacity = data.strokeOpacity;
   if (data.strokeWidth !== undefined) state.strokeWidth = data.strokeWidth;
   if (data.cssTextShadowBlur !== undefined) state.cssTextShadowBlur = data.cssTextShadowBlur;
-  if (data.strokeColor !== undefined) state.strokeColor = data.strokeColor;
-  if (data.strokeInversionColor !== undefined) state.strokeInversionColor = data.strokeInversionColor;
+  if (data.strokeColor !== undefined) {
+    state.strokeColor = data.strokeColor;
+  }
+  if (data.strokeInversionColor !== undefined) {
+    state.strokeInversionColor = data.strokeInversionColor;
+  }
   if (data.commentLimit !== undefined) state.commentLimit = data.commentLimit;
   if (data.scrollSpeed !== undefined) state.scrollSpeed = data.scrollSpeed;
   if (data.danmakuTimeOffsetSec !== undefined) state.danmakuOffsetSeconds = data.danmakuTimeOffsetSec;
@@ -1098,6 +1190,7 @@ onPluginMessage("danmaku-file-list", function (data) {
     }
   }
   if ((fileListState.selectedPaths[0] || '') !== ((data.selectedPaths || [])[0] || '')) {
+    endDensityInputEdit();
     if (filterTimer) clearTimeout(filterTimer);
     filterTimer = null;
     filterDragMode = null;
@@ -1216,12 +1309,24 @@ if (ddpSearchResultsToggle) {
 
 var ddpSearchTimer = null;
 let ddpSearchId = 0;
+// main answers only the newest bangumi request, so an older row still waiting
+// must be released when another row is clicked or it stays "loading" forever.
+let ddpPendingBangumiItem = null;
+
+function releasePendingBangumiItem(except) {
+  let item = ddpPendingBangumiItem;
+  if (!item || item === except) return;
+  ddpPendingBangumiItem = null;
+  item._epLoading = false;
+  if (item._epSub) item._epSub.textContent = t('click_load_episodes');
+}
 
 function ddpDoSearch() {
   var keyword = ddpSearchInput ? ddpSearchInput.value.trim() : '';
   debugLog('ddpDoSearch called, keyword="' + keyword + '"');
   if (!keyword) return;
   let searchId = ++ddpSearchId;
+  ddpPendingBangumiItem = null;
   if (ddpSearchTimer) clearTimeout(ddpSearchTimer);
   if (ddpSearchResults) {
     ddpSearchResults.innerHTML = '';
@@ -1261,7 +1366,10 @@ onPluginMessage("dandanplay-status", function (data) {
     // 新视频加载时 main.js 会 ddpResetState() 推送 status='idle':
     // 复位为闭合,避免新视频残留上一个视频的展开状态(列表为空却展开,
     // 用户要收起再展开才能触发匹配)。展开头部时会自动触发匹配
-    if (data.status === 'idle') ddpMatchesExpanded = false;
+    if (data.status === 'idle') {
+      ddpMatchesExpanded = false;
+      releasePendingBangumiItem();
+    }
     if (data.animeTitle !== undefined) ddpState.animeTitle = data.animeTitle;
     if (data.episodeTitle !== undefined) ddpState.episodeTitle = data.episodeTitle;
     if (data.episodeId !== undefined) ddpState.episodeId = data.episodeId;
@@ -1328,6 +1436,7 @@ onPluginMessage("dandanplay-search-result", function (data) {
 
         item.appendChild(title);
         item.appendChild(sub);
+        item._epSub = sub;
 
         item.addEventListener('click', function () {
           if (item._epList) {
@@ -1335,7 +1444,9 @@ onPluginMessage("dandanplay-search-result", function (data) {
             return;
           }
           if (item._epLoading) return;
+          releasePendingBangumiItem(item);
           item._epLoading = true;
+          ddpPendingBangumiItem = item;
           sub.textContent = t('loading_episodes');
           iina.postMessage("dandanplay-get-bangumi", { bangumiId: String(anime.animeId), animeTitle: anime.animeTitle, searchId: ddpSearchId });
         });
@@ -1371,6 +1482,7 @@ onPluginMessage("dandanplay-bangumi-result", function (data) {
       (function(item) {
         if (item.dataset.animeId !== String(data.bangumiId)) return;
         item._epLoading = false;
+        if (ddpPendingBangumiItem === item) ddpPendingBangumiItem = null;
         debugLog('bangumi-result: matched item, episodes=' + episodes.length);
 
         var subEl = item.querySelector('.dandanplay-search-result-episodes');
@@ -1677,6 +1789,19 @@ if (browserFollowBtn) {
 // 侧栏初始在基础 tab: 显式关掉监听,清除 main.js 侧可能残留的 watch 状态
 iina.postMessage("danmaku-browser-watch", { watch: false });
 
+// Closing the sidebar on the Filter tab sends no tab switch; pause the
+// playback-time push while hidden and resume it when shown again.
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === 'hidden') endDensityInputEdit();
+  if (activeTabName !== 'filter') return;
+  if (document.visibilityState === 'hidden') {
+    iina.postMessage("danmaku-browser-watch", { watch: false });
+  } else if (document.visibilityState === 'visible') {
+    iina.postMessage("danmaku-browser-request", {});
+    iina.postMessage("danmaku-browser-watch", { watch: true });
+  }
+});
+
 // 弹幕列表显示开关: 隐藏列表区域(数据保留,重开即恢复);状态持久化在 main
 var browserVisToggle = document.getElementById("danmaku-browser-vis-toggle");
 var browserListWrap = document.querySelector(".danmaku-browser-list-wrap");
@@ -1702,6 +1827,7 @@ var blocklistToggle = document.getElementById("danmaku-blocklist-toggle");
 var blocklistPanel = document.getElementById("danmaku-blocklist-panel");
 var blocklistList = document.getElementById("danmaku-blocklist-list");
 var blocklistWords = [];
+var blocklistInvalid = [];
 let blocklistEdit = null;
 
 function renderBlocklist() {
@@ -1710,10 +1836,12 @@ function renderBlocklist() {
   blocklistList.innerHTML = '';
   for (var i = 0; i < blocklistWords.length; i++) {
     var item = document.createElement("div");
-    item.className = "danmaku-blocklist-item";
+    var invalid = blocklistInvalid.indexOf(blocklistWords[i]) !== -1;
+    item.className = "danmaku-blocklist-item" + (invalid ? " invalid" : "");
     var label = document.createElement("span");
     label.className = "danmaku-blocklist-item-text";
     label.textContent = blocklistWords[i];
+    if (invalid) label.title = t('blocklist_invalid');
     var x = document.createElement("button");
     x.className = "danmaku-blocklist-item-x";
     x.textContent = "\u00d7";
@@ -1790,6 +1918,7 @@ function applyBlocklistState(state) {
   }
   if (Array.isArray(state.words)) {
     blocklistWords = state.words.slice();
+    blocklistInvalid = Array.isArray(state.invalid) ? state.invalid.slice() : [];
     renderBlocklist();
   }
 }

@@ -15,6 +15,7 @@ function createSidebar() {
   const messages = [];
   const handlers = new Map();
   const timers = new Map();
+  const tabs = [];
   let timerId = 0;
   function element(tagName = 'DIV', attributes = {}) {
     const events = new Map();
@@ -75,6 +76,7 @@ function createSidebar() {
     }
     if (rootStack.length) rootStack.at(-1).appendChild(el);
     if (attrs.id) elements.set(attrs.id, el);
+    if (el.dataset.tab && el.classList.contains('tab')) tabs.push(el);
     if (!/\/\s*$/.test(attrText) && !/^(input|meta|link|br|hr)$/i.test(tag)) rootStack.push(el);
   }
   const segmented = elements.get('style-preset-segmented');
@@ -88,6 +90,7 @@ function createSidebar() {
     createElement: tag => element(tag.toUpperCase()),
     createTextNode: text => ({ nodeType: 3, textContent: String(text), remove() {} }),
     querySelectorAll(selector) {
+      if (selector === '.tabbar .tab') return tabs;
       const attr = /^\[([\w-]+)\]$/.exec(selector);
       return attr ? [...elements.values()].filter(el => Object.hasOwn(el.attributes, attr[1])) : [];
     },
@@ -112,7 +115,7 @@ function createSidebar() {
   emit('danmaku-state', { enabled: true, danmakuLoaded: true, danmakuFileType: 'nico-json' });
   filterInfo();
   return {
-    elements, context, document, window, messages, emit, filterInfo,
+    elements, context, document, window, messages, tabs, emit, filterInfo,
     flush() { for (const [id, callback] of Array.from(timers)) { timers.delete(id); callback(); } },
     filterMessages() { return messages.filter(message => message.name === 'set-danmaku-filter'); },
   };
@@ -256,7 +259,7 @@ test('font state echoes preserve the focused draft, spaces, caret and empty cust
   assert.equal(row.style.display, 'none');
 });
 
-test('speed dragging previews locally and commits one intent on change', () => {
+test('speed dragging applies live and change does not resend the same value', () => {
   const h = createSidebar();
   const speed = h.elements.get('speed-slider');
   speed.fire('pointerdown', {button: 0});
@@ -265,11 +268,9 @@ test('speed dragging previews locally and commits one intent on change', () => {
   speed.focus();
   h.emit('danmaku-state', {scrollSpeed: 1});
   assert.equal(speed.value, '25', 'an unrelated state echo does not overwrite the active drag');
-  assert.equal(h.messages.filter(m => m.name === 'set-scroll-speed').length, 0);
+  assert.deepEqual(h.messages.filter(m => m.name === 'set-scroll-speed').map(m => m.data.speed), [0.9, 0.75, 0.5, 0.25]);
   speed.fire('change');
-  const messages = h.messages.filter(m => m.name === 'set-scroll-speed');
-  assert.equal(messages.length, 1);
-  assert.equal(messages[0].data.speed, 0.25);
+  assert.equal(h.messages.filter(m => m.name === 'set-scroll-speed').length, 4);
 });
 
 test('compositionend commits a final composing-only input once and preserves it through delayed echoes and blur', () => {
@@ -412,7 +413,7 @@ for (const control of gestureSliders) test(control.id + ' accepts preset echoes 
   slider.value = control.draft; slider.fire('input');
   h.emit('danmaku-state', {scrollSpeed: 0.5, danmakuFontWeight: '500'});
   assert.equal(slider.value, control.draft, 'a held pointer keeps its preview');
-  assert.equal(h.messages.filter(m => m.name === control.message).length, 0);
+  assert.equal(h.messages.filter(m => m.name === control.message).length, 1, 'the dragged value applies live');
   slider.fire('change');
   const preset = {dataset: {preset: 'bilibili'}};
   h.elements.get('style-preset-segmented').fire('click', {target: {closest() {return preset;}}});
@@ -439,18 +440,18 @@ test('range drag protection ends on release outside the control, cancellation, c
   }
 });
 
-test('font-weight input previews locally and change submits only the final weight', () => {
+test('font-weight dragging applies live with weight-only patches', () => {
   const h = createSidebar();
   h.emit('danmaku-state', {danmakuFontFamily: 'Helvetica Neue', danmakuFontWeight: '400'});
   const slider = h.elements.get('danmaku-font-weight-slider');
   slider.fire('pointerdown', {button: 0});
   for (const value of ['450', '550', '650', '800']) { slider.value = value; slider.fire('input'); }
   assert.equal(h.elements.get('danmaku-font-weight-value').textContent, '800');
-  assert.equal(h.messages.filter(m => m.name === 'set-danmaku-font').length, 0);
   h.document.fire('pointerup');
-  assert.equal(slider.value, '800', 'pointerup must not overwrite the draft before change');
+  assert.equal(slider.value, '800', 'pointerup must not overwrite the draft');
   slider.fire('change');
-  assert.deepEqual(h.messages.filter(m => m.name === 'set-danmaku-font').map(m => JSON.parse(JSON.stringify(m.data))), [{fontWeight: '800'}]);
+  assert.deepEqual(h.messages.filter(m => m.name === 'set-danmaku-font').map(m => JSON.parse(JSON.stringify(m.data))),
+    [{fontWeight: '450'}, {fontWeight: '550'}, {fontWeight: '650'}, {fontWeight: '800'}]);
 });
 
 test('keyboard range changes and secondary clicks do not leave drag protection active', () => {
@@ -608,5 +609,227 @@ test('opacity, fontsize, stroke-opacity and stroke-width sliders protect active 
     h.document.fire('pointerup');
     h.emit('danmaku-state', echo);
     assert.equal(String(slider.value), settledVal, `${id} accepts echo after release`);
+  }
+});
+
+test('a date drag released outside the sidebar ends on the next buttonless move or window blur', () => {
+  for (const finish of ['buttonless-move', 'blur']) {
+    const h = createSidebar();
+    h.elements.get('filter-handle-left').fire('mousedown', {clientX: 0});
+    h.document.fire('mousemove', {clientX: 200, buttons: 1});
+    if (finish === 'blur') h.window.fire('blur');
+    else h.document.fire('mousemove', {clientX: 0, buttons: 0});
+    assert.equal(h.filterMessages().length, 1, finish + ': the drag result is committed');
+    const start = h.elements.get('danmaku-filter-date-start').textContent;
+    h.document.fire('mousemove', {clientX: 0});
+    assert.equal(h.elements.get('danmaku-filter-date-start').textContent, start, finish + ': no drag continues after release');
+  }
+});
+
+test('the danmaku switch stays usable when the video has no source', () => {
+  const h = createSidebar();
+  h.emit('danmaku-file-list', {xmlFiles: [], jsonFiles: [], selectedPaths: []});
+  h.emit('danmaku-state', {enabled: false, danmakuLoaded: false});
+  const toggle = h.elements.get('toggle-danmaku');
+  assert.equal(toggle.disabled, false);
+  assert.equal(toggle.checked, false);
+  toggle.checked = true;
+  toggle.fire('change');
+  assert.equal(h.messages.filter(m => m.name === 'toggle-danmaku').length, 1);
+  h.emit('danmaku-state', {enabled: true});
+  assert.equal(toggle.checked, true, 'the switch shows the setting even before a source loads');
+});
+
+test('clicking another search result releases a bangumi row whose reply main discarded', () => {
+  const h = createSidebar();
+  h.elements.get('dandanplay-search-input').value = 'show';
+  h.elements.get('dandanplay-search-go-btn').fire('click');
+  h.flush();
+  const searchId = h.messages.findLast(m => m.name === 'dandanplay-search').data.searchId;
+  h.emit('dandanplay-search-result', {searchId, animes: [{animeId: 1, animeTitle: 'A'}, {animeId: 2, animeTitle: 'B'}], error: null});
+  const [first, second] = h.elements.get('dandanplay-search-results-list').children;
+  first.fire('click');
+  assert.equal(first.children[1].textContent, h.context.t('loading_episodes'));
+  second.fire('click');
+  assert.equal(first.children[1].textContent, h.context.t('click_load_episodes'));
+  first.fire('click');
+  assert.deepEqual(h.messages.filter(m => m.name === 'dandanplay-get-bangumi').map(m => m.data.bangumiId), ['1', '2', '1']);
+});
+
+test('blocklist entries reported invalid by main are marked in the list', () => {
+  const h = createSidebar();
+  h.emit('danmaku-state', {blocklist: {enabled: true, words: ['ok', '/(a+)+/'], invalid: ['/(a+)+/']}});
+  let rows = h.elements.get('danmaku-blocklist-list').children;
+  assert.equal(rows[0].className.includes('invalid'), false);
+  assert.equal(rows[1].className.includes('invalid'), true);
+  assert.equal(rows[1].children[0].title, h.context.t('blocklist_invalid'));
+  h.emit('danmaku-state', {blocklist: {enabled: true, words: ['ok', '/(a+)+/']}});
+  rows = h.elements.get('danmaku-blocklist-list').children;
+  assert.equal(rows[1].className.includes('invalid'), false);
+});
+
+test('comment limit and density sliders keep their preview while held', () => {
+  const h = createSidebar();
+  const limit = h.elements.get('comment-limit-slider');
+  limit.fire('pointerdown', {button: 0});
+  limit.value = '50'; limit.fire('input');
+  h.emit('danmaku-state', {commentLimit: 100});
+  assert.equal(limit.value, '50');
+  h.document.fire('pointerup');
+  limit.fire('change');
+  assert.equal(h.messages.findLast(m => m.name === 'set-comment-limit').data.limit, 50);
+  const density = h.elements.get('density-slider');
+  density.fire('pointerdown', {button: 0});
+  density.value = '100'; density.fire('input');
+  h.filterInfo({filterDensity: 300});
+  assert.equal(density.value, '100');
+});
+
+test('the sidebar follows the plugin language reported by main', () => {
+  const h = createSidebar();
+  assert.equal(h.context.t('unlimited'), '\u65e0\u9650\u5236');
+  h.emit('danmaku-state', {uiLang: 'en'});
+  assert.equal(h.context.t('unlimited'), 'Unlimited');
+});
+
+test('density applies when a drag pauses and on release, without resending the same value', () => {
+  const h = createSidebar();
+  const slider = h.elements.get('density-slider');
+  const sent = () => h.messages.filter(m => m.name === 'set-danmaku-filter-density').map(m => m.data.density);
+  slider.fire('pointerdown', {button: 0});
+  for (const value of ['500', '400', '300']) { slider.value = value; slider.fire('input'); }
+  assert.equal(h.elements.get('density-value').textContent, '300 /min');
+  assert.deepEqual(sent(), [], 'passing through steps does not reload');
+  h.flush();
+  assert.deepEqual(sent(), [300], 'a pause applies the current step');
+  slider.value = '200'; slider.fire('input');
+  slider.value = '100'; slider.fire('input');
+  h.document.fire('pointerup');
+  slider.fire('change');
+  assert.deepEqual(sent(), [300, 100], 'release sends the final value at once');
+  h.flush();
+  assert.deepEqual(sent(), [300, 100], 'the pending pause timer was cancelled');
+  slider.value = '550'; slider.fire('input'); h.flush(); slider.fire('change');
+  assert.deepEqual(sent(), [300, 100, 0], 'the rightmost step means unlimited and is sent once');
+});
+
+test('new speed and weight edits are sent again after a preset restores another value', () => {
+  for (const [id, message, field, draft, value] of [
+    ['speed-slider', 'set-scroll-speed', 'speed', '95', 0.95],
+    ['danmaku-font-weight-slider', 'set-danmaku-font', 'fontWeight', '550', '550'],
+  ]) {
+    const h = createSidebar();
+    const slider = h.elements.get(id);
+    const preset = {stylePreset: 'nico', scrollSpeed: 1, danmakuFontWeight: '500'};
+    const sent = () => h.messages.filter(m => m.name === message).map(m => m.data[field]);
+    h.emit('danmaku-state', preset);
+    slider.value = draft; slider.fire('input'); slider.fire('change');
+    assert.deepEqual(sent(), [value]);
+    h.emit('danmaku-state', preset);
+    slider.value = draft; slider.fire('input'); slider.fire('change');
+    assert.deepEqual(sent(), [value, value], id + ': a new keyboard edit is not an old duplicate');
+    h.emit('danmaku-state', preset);
+    slider.value = draft; slider.fire('change');
+    assert.deepEqual(sent(), [value, value, value], id + ': a standalone change also starts a new edit');
+  }
+});
+
+test('density keeps its captured edit through keyboard echoes and interrupted drags', () => {
+  for (const finish of ['keyboard', 'window-blur', 'pointer-cancel']) {
+    const h = createSidebar();
+    const slider = h.elements.get('density-slider');
+    const sent = () => h.messages.filter(m => m.name === 'set-danmaku-filter-density').map(m => m.data.density);
+    h.filterInfo({filterDensity: 300});
+    if (finish !== 'keyboard') slider.fire('pointerdown', {button: 0});
+    slider.value = '350'; slider.fire('input');
+    if (finish === 'window-blur') h.window.fire('blur');
+    if (finish === 'pointer-cancel') h.document.fire('pointercancel');
+    h.emit('danmaku-state', {canvasOpacity: 0.5});
+    h.filterInfo({filterDensity: 300});
+    assert.equal(String(slider.value), '350', finish + ': pending preview survives both state channels');
+    assert.equal(h.elements.get('density-value').textContent, '350 /min');
+    h.flush();
+    assert.deepEqual(sent(), [350], finish + ': the pause sends the captured value');
+    h.filterInfo({filterDensity: 300});
+    slider.fire('change');
+    assert.deepEqual(sent(), [350], finish + ': a trailing change cannot resubmit a stale DOM value');
+    slider.value = '350'; slider.fire('input'); slider.fire('change');
+    h.flush();
+    assert.deepEqual(sent(), [350, 350], finish + ': the next edit is not suppressed by historical sends');
+  }
+});
+
+test('Nico source types hide the complete simplification row without resetting its preference', () => {
+  const h = createSidebar();
+  const row = h.elements.get('danmaku-force-simplified-row');
+  const toggle = h.elements.get('danmaku-force-simplified-toggle');
+  for (const type of ['nico-json', 'nico-json-v1', 'nico-json-legacy', 'nico-xml']) {
+    h.emit('danmaku-state', {danmakuFileType: type, danmakuLoaded: false, danmakuForceSimplified: true});
+    assert.equal(row.style.display, 'none', type + ': hidden even while rendering is pending');
+    assert.equal(toggle.checked, true, 'hiding preserves the saved setting');
+  }
+  for (const type of ['bilibili-xml', 'dandanplay', null]) {
+    h.emit('danmaku-state', {danmakuFileType: type});
+    assert.equal(row.style.display, '', String(type) + ': the switch returns');
+    assert.equal(toggle.checked, true);
+  }
+  h.filterInfo({fileType: 'nico-xml'});
+  assert.equal(row.style.display, 'none', 'filter/source metadata also hides the row');
+  assert.equal(h.messages.filter(m => m.name === 'set-danmaku-force-simplified').length, 0, 'state restoration sends no settings intent');
+});
+
+test('sidebar visibility pauses and resumes watching only on the filter tab', () => {
+  for (const name of ['filter', 'basic', 'advanced']) {
+    const h = createSidebar();
+    h.tabs.find(tab => tab.dataset.tab === name).fire('click');
+    h.messages.length = 0;
+    h.document.visibilityState = 'hidden'; h.document.fire('visibilitychange');
+    assert.deepEqual(h.messages.map(m => [m.name, m.data && m.data.watch]),
+      name === 'filter' ? [['danmaku-browser-watch', false]] : [], name);
+    h.messages.length = 0;
+    h.document.visibilityState = 'visible'; h.document.fire('visibilitychange');
+    assert.deepEqual(h.messages.map(m => [m.name, m.data && m.data.watch]),
+      name === 'filter' ? [['danmaku-browser-request', undefined], ['danmaku-browser-watch', true]] : [], name);
+  }
+});
+
+test('idle network status releases a bangumi row whose request was cancelled', () => {
+  const h = createSidebar();
+  h.elements.get('dandanplay-search-input').value = 'show';
+  h.elements.get('dandanplay-search-go-btn').fire('click'); h.flush();
+  const searchId = h.messages.findLast(m => m.name === 'dandanplay-search').data.searchId;
+  h.emit('dandanplay-search-result', {searchId, animes: [{animeId: 1, animeTitle: 'A'}]});
+  const row = h.elements.get('dandanplay-search-results-list').children[0];
+  row.fire('click');
+  h.emit('dandanplay-status', {status: 'idle'});
+  assert.equal(row.children[1].textContent, h.context.t('click_load_episodes'));
+  row.fire('click');
+  assert.deepEqual(h.messages.filter(m => m.name === 'dandanplay-get-bangumi').map(m => m.data.bangumiId), ['1', '1']);
+});
+
+test('shadow blur applies live and does not resubmit its trailing change', () => {
+  const h = createSidebar();
+  h.emit('danmaku-state', {canvasMode: 'css', cssTextShadowBlur: 2});
+  const slider = h.elements.get('css-text-shadow-blur-slider');
+  slider.value = '3.5'; slider.fire('input'); slider.fire('change');
+  assert.deepEqual(h.messages.filter(m => m.name === 'set-css-text-shadow-blur').map(m => m.data.blur), [3.5]);
+  h.emit('danmaku-state', {canvasMode: 'default'});
+  slider.fire('input'); slider.fire('change');
+  assert.equal(h.messages.filter(m => m.name === 'set-css-text-shadow-blur').length, 1);
+});
+
+test('interrupted density edits allow the next standalone change', () => {
+  for (const finish of ['hide', 'tab', 'source']) {
+    const h = createSidebar();
+    h.filterInfo({filterDensity: 300});
+    const slider = h.elements.get('density-slider');
+    slider.value = '350'; slider.fire('input');
+    if (finish === 'hide') {h.document.visibilityState = 'hidden'; h.document.fire('visibilitychange');}
+    if (finish === 'tab') h.tabs.find(tab => tab.dataset.tab === 'advanced').fire('click');
+    if (finish === 'source') h.emit('danmaku-file-list', {xmlFiles: [], jsonFiles: [], selectedPaths: ['/new']});
+    h.flush();
+    h.filterInfo({filterDensity: 350});
+    slider.value = '400'; slider.fire('change');
+    assert.deepEqual(h.messages.filter(m => m.name === 'set-danmaku-filter-density').map(m => m.data.density), [350, 400], finish);
   }
 });

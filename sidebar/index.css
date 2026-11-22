@@ -1101,6 +1101,13 @@ input[type="color"]::-webkit-color-swatch {
   border-bottom: none;
 }
 
+/* /.../ entries that failed to compile or were rejected as unsafe */
+.danmaku-blocklist-item.invalid .danmaku-blocklist-item-text {
+  color: var(--secondary-label);
+  text-decoration: underline wavy var(--tertiary-label);
+  text-underline-offset: 3px;
+}
+
 .danmaku-blocklist-item-text {
   flex: 1;
   min-width: 0;
