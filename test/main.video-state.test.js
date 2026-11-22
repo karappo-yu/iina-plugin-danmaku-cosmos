@@ -655,6 +655,144 @@ test('enabling after startup-disabled file load initializes that video', () => {
   assert.deepEqual(loadedComments(harness.overlayMessages).map(s => JSON.parse(s).map(c => c.content).join()), ['B comment']);
 });
 
+for (const enabled of [true, false]) {
+  test(`end-file hides and clears A before any next-file event (enabled=${enabled})`, () => {
+    const h = createHarness(true);
+    h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+    if (!enabled) h.toggleDanmaku();
+    const oldLoad = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+    h.context.applyDanmakuOffset(2);
+    const reads = h.fileReads.length, scans = h.directoryReads.length;
+    const operations = h.nativeOverlayOperations.length, messages = h.overlayMessages.length;
+    h.emitEvent('mpv.end-file');
+    assert.deepEqual(h.nativeOverlayOperations[operations], {name: 'opacity', value: 0});
+    const clears = h.overlayMessages.slice(messages).filter(m => m.name === 'clear-danmaku');
+    assert.equal(clears.length, 1);
+    assert.ok(clears[0].data.clearId > oldLoad);
+    assert.equal(h.isNativeOverlayHidden(), false, 'alpha zero keeps WebKit active');
+    assert.equal(h.context.currentVideoUrl, null);
+    assert.equal(h.context.iina.core.status.url, 'file:///videos/A.mp4', 'no new URL has arrived');
+    assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+    assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), []);
+    assert.deepEqual(Object.keys(h.context.danmakuCache), []);
+    assert.equal(h.context.pluginState.danmakuTimeOffsetSec, 0);
+    assert.equal(vm.runInContext('awaitingFileLoaded', h.context), false, 'stopping does not await another file');
+    h.emitOverlay('danmaku-load-result', {loadId: oldLoad, success: true});
+    h.emitEvent('mpv.time-pos.changed', 20);
+    h.runTimers(0);
+    assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, false);
+    assert.equal(h.overlayOpacities.at(-1), 0);
+    assert.equal(h.fileReads.length, reads);
+    assert.equal(h.directoryReads.length, scans);
+    assert.equal(loadedComments(h.overlayMessages.slice(messages)).length, 0);
+    assert.equal(h.overlayMessages.slice(messages).filter(m => m.name === 'time-update').length, 0);
+  });
+}
+
+test('file-started reuses the end-file clear and waits for B before discovery', () => {
+  const h = createHarness(true, false, {}, false, false);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.runTimers(0); h.ackLoad();
+  const messages = h.overlayMessages.length, reads = h.fileReads.length, scans = h.directoryReads.length;
+  h.emitEvent('mpv.end-file');
+  h.startVideo('file:///videos/B.mp4');
+  assert.equal(vm.runInContext('awaitingFileLoaded', h.context), true);
+  h.emitEvent('mpv.idle-active.changed', true); // A late idle update cannot release B.
+  h.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
+  h.emitSidebar('dandanplay-select-episode', {episodeId: 7});
+  h.finishVideo();
+  assert.equal(h.overlayMessages.slice(messages).filter(m => m.name === 'clear-danmaku').length, 1);
+  assert.equal(h.fileReads.length, reads);
+  assert.equal(h.directoryReads.length, scans);
+  assert.equal(h.httpRequests.length, 0);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.runTimers(0);
+  assert.equal(h.fileReads.at(-1), '/videos/B.xml');
+  assert.match(loadedComments(h.overlayMessages).at(-1), /B comment/);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.ackLoad();
+  assert.equal(h.overlayOpacities.at(-1), 1);
+});
+
+test('overlay readiness after end-file cannot rediscover the ended native URL', () => {
+  const h = createHarness(true, false, {}, false, false);
+  h.setVideo('file:///videos/A.mp4'); h.runTimers(0);
+  const reads = h.fileReads.length, scans = h.directoryReads.length;
+  h.emitEvent('mpv.end-file');
+  assert.equal(h.context.iina.core.status.idle, false, 'native status has not caught up yet');
+  h.readyOverlay(); h.runTimers(0);
+  assert.equal(h.context.currentVideoUrl, null);
+  assert.equal(h.fileReads.length, reads);
+  assert.equal(h.directoryReads.length, scans);
+  assert.equal(loadedComments(h.overlayMessages).length, 0);
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.startVideo('file:///videos/B.mp4'); h.finishVideo(); h.runTimers(0); h.ackLoad();
+  assert.match(loadedComments(h.overlayMessages).at(-1), /B comment/);
+  assert.equal(h.overlayOpacities.at(-1), 1);
+});
+
+test('stopping allows manual input and the next start invalidates an intervening source', async () => {
+  const h = createHarness(true);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  h.emitEvent('mpv.end-file');
+  h.context.iina.core.status.idle = true;
+  const messages = h.overlayMessages.length;
+  await h.loadFromMenu('/videos/A.xml');
+  assert.equal(loadedComments(h.overlayMessages.slice(messages)).length, 1, 'manual input is not blocked after stop');
+  const interveningLoad = h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.loadId;
+  h.context.iina.core.status.idle = false;
+  h.startVideo('file:///videos/B.mp4');
+  assert.equal(h.overlayMessages.slice(messages).filter(m => m.name === 'clear-danmaku').length, 1,
+    'a source sent after end-file still requires a new clear');
+  h.emitOverlay('danmaku-load-result', {loadId: interveningLoad, success: true});
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.finishVideo(); h.ackLoad();
+  assert.match(loadedComments(h.overlayMessages).at(-1), /B comment/);
+  assert.equal(h.overlayOpacities.at(-1), 1);
+});
+
+test('end-file cancels deferred discovery even if the old callback is already queued', () => {
+  const h = createHarness(true, false, {}, false, false);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
+  const [discoverA] = h.pendingTimers(0);
+  h.emitEvent('mpv.end-file');
+  assert.equal(h.pendingTimers(0).length, 0);
+  discoverA(); h.runTimers(0);
+  assert.equal(h.fileReads.length, 0);
+  assert.equal(h.directoryReads.length, 0);
+  assert.equal(loadedComments(h.overlayMessages).length, 0);
+});
+
+test('file-started invalidates a chooser opened after end-file while reusing its clear', async () => {
+  const h = createHarness(true);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  const messages = h.overlayMessages.length;
+  h.emitEvent('mpv.end-file');
+  let resolve;
+  h.setChooseFile(() => new Promise(done => {resolve = done;}));
+  h.loadFromMenu('/videos/A.xml');
+  h.startVideo('file:///videos/B.mp4');
+  resolve('/videos/A.xml'); await flushMicrotasks();
+  assert.equal(loadedComments(h.overlayMessages.slice(messages)).length, 0);
+  assert.equal(h.overlayMessages.slice(messages).filter(m => m.name === 'clear-danmaku').length, 1);
+  h.finishVideo(); h.ackLoad();
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['/videos/B.xml']);
+});
+
+test('end-file invalidates an A network reply without waiting for the next file', async () => {
+  const h = createHarness(true, true);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); await flushMicrotasks();
+  h.resolveNextHttp({statusCode: 200, data: {isMatched: true, matches: [{episodeId: 1}]}});
+  await flushMicrotasks();
+  h.emitEvent('mpv.end-file');
+  h.resolveNextHttp({statusCode: 200, data: {comments: [{p: '1,1,16777215,u', m: 'old A'}]}});
+  await flushMicrotasks();
+  assert.equal(loadedComments(h.overlayMessages).length, 0);
+  assert.equal(h.fileWrites.length, 0);
+  assert.deepEqual(Object.keys(h.context.danmakuCache), []);
+  assert.equal(h.context.pluginState.dandanplayState.status, 'idle');
+  assert.equal(h.overlayOpacities.at(-1), 0);
+});
+
 test('file-started invalidates A immediately and defers B source I/O by one turn', () => {
   const h = createHarness(true, false, {}, false, false);
   h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.runTimers(0); h.ackLoad();

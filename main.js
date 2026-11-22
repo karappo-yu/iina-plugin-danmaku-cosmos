@@ -141,6 +141,7 @@ var loadedDanmakuVideoUrl = null;
 // 同一 URL 也可能被重新加载;世代号用于丢弃旧异步 DDP 请求的回调。
 var danmakuLoadGeneration = 0;
 let awaitingFileLoaded = false;
+let videoHasEnded = false;
 let overlayAwaitingVideoRender = true;
 let overlayHiddenByUser = false;
 let videoDiscoveryTimer = null;
@@ -1166,7 +1167,7 @@ function hideOverlayForUser() {
   overlay.hide();
 }
 
-function beginVideoReset(resetOffset) {
+function beginVideoReset(resetOffset, skipOverlayClear) {
   setObserver(false);
   if (videoDiscoveryTimer !== null) clearTimeout(videoDiscoveryTimer);
   videoDiscoveryTimer = null;
@@ -1190,7 +1191,7 @@ function beginVideoReset(resetOffset) {
   sidebarPostMessage('danmaku-file-list', pluginState.danmakuFileList);
   sendDanmakuFilterInfo();
   notifyBrowserDataChanged();
-  if (overlayReady) overlayPostMessage('clear-danmaku', {clearId: overlayLoadId});
+  if (overlayReady && !skipOverlayClear) overlayPostMessage('clear-danmaku', {clearId: overlayLoadId});
 }
 
 function loadDanmakuForVideo(url, resetOffset) {
@@ -1198,6 +1199,7 @@ function loadDanmakuForVideo(url, resetOffset) {
   let needsReset = !awaitingFileLoaded;
   awaitingFileLoaded = false;
   if (needsReset) beginVideoReset(resetOffset);
+  videoHasEnded = false;
   currentVideoUrl = url;
   let loadGeneration = danmakuLoadGeneration;
   let requestGeneration = ddpRequestGeneration;
@@ -1453,7 +1455,7 @@ function markOverlayReady() {
     if (!sendCurrentDanmaku(true)) overlayPostMessage("toggle-danmaku", playbackSnapshot());
     pendingDanmaku = null;
     setObserver(true);
-  } else if (!awaitingFileLoaded && pluginState.danmakuEnabled && !core.status.idle && !currentVideoUrl && core.status.url) {
+  } else if (!awaitingFileLoaded && !videoHasEnded && pluginState.danmakuEnabled && !core.status.idle && !currentVideoUrl && core.status.url) {
     loadDanmakuForVideo(core.status.url);
     setObserver(true);
   } else {
@@ -1870,9 +1872,20 @@ event.on("iina.plugin-overlay-loaded", function () {
   overlayPostMessage("request-overlay-state", {});
 });
 
-event.on('iina.file-started', function () {
-  awaitingFileLoaded = true;
+event.on('mpv.end-file', function () {
+  // Hide and invalidate the ended video before mpv starts opening the next.
+  // Do not await file-loaded here: playback may simply have stopped.
+  videoHasEnded = true;
   beginVideoReset(true);
+});
+
+event.on('iina.file-started', function () {
+  // Reuse the end-file clear only while no source has been sent since it.
+  // Still reset generations to invalidate operations begun in the gap.
+  let alreadyCleared = videoHasEnded && currentVideoUrl === null &&
+    overlayAwaitingVideoRender && lastOverlayProjection === null;
+  awaitingFileLoaded = true;
+  beginVideoReset(true, alreadyCleared);
 });
 
 event.on("iina.file-loaded", function (url) {
