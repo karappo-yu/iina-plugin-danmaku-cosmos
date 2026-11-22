@@ -79,6 +79,9 @@ pluginState.stylePreset = savedStylePreset === undefined || savedStylePreset ===
   : (['nico', 'balanced', 'bilibili', 'custom'].indexOf(savedStylePreset) !== -1 ? savedStylePreset : 'custom');
 var overlayReady = false;
 let overlayLoadId = 0;
+let overlayTimeUpdateId = 0;
+let overlayTimeInFlight = null;
+let overlayTimePending = null;
 var preferencesSyncTimer = null;
 
 var DDP_APP_ID = preferences.get("dandanplayAppId") || 't43832ky57';
@@ -477,6 +480,7 @@ function sendDanmakuFilterInfo() {
 
 // load-danmaku 载荷统一构造。设置字段全量携带: overlay 端逐字段幂等应用,重复携带无副作用。
 function buildLoadDanmakuPayload(comments, danmakuType) {
+  resetOverlayTimeUpdates();
   return {
     loadId: ++overlayLoadId,
     playback: playbackSnapshot(),
@@ -1405,6 +1409,41 @@ function playbackSnapshot() {
     paused: !!core.status.paused, speed: Number.isFinite(speed) && speed > 0 ? speed : 1};
 }
 
+function resetOverlayTimeUpdates() {
+  overlayTimeInFlight = null;
+  overlayTimePending = null;
+}
+
+function flushOverlayTimeUpdate() {
+  if (overlayTimeInFlight || !overlayTimePending) return;
+  if (!overlayReady || !pluginState.danmakuEnabled || awaitingFileLoaded) {
+    resetOverlayTimeUpdates();
+    return;
+  }
+  let pending = overlayTimePending;
+  overlayTimePending = null;
+  if (pending.sourceId !== overlayLoadId) return;
+  let message = {
+    time: pending.time, seek: pending.seek, sourceId: pending.sourceId,
+    timeId: ++overlayTimeUpdateId
+  };
+  // The reply only acknowledges delivery of the anchor, not drawing or
+  // compositor presentation. Keep one native evaluation in flight.
+  overlayTimeInFlight = message;
+  overlayPostMessage('time-update', message);
+}
+
+function queueOverlayTimeUpdate(time, seek) {
+  if (!isFiniteNumber(time) || !overlayReady || !pluginState.danmakuEnabled || awaitingFileLoaded) return;
+  if (!overlayTimePending && overlayTimeInFlight &&
+      overlayTimeInFlight.sourceId === overlayLoadId && overlayTimeInFlight.time === time && !seek) return;
+  // A seek remains necessary even if ordinary progress replaces its target
+  // before the busy WebView has acknowledged the previous message.
+  let pendingSeek = overlayTimePending && overlayTimePending.sourceId === overlayLoadId && overlayTimePending.seek;
+  overlayTimePending = {time: time, seek: !!seek || !!pendingSeek, sourceId: overlayLoadId};
+  flushOverlayTimeUpdate();
+}
+
 function markOverlayReady() {
   if (overlayReady) return;
   overlayReady = true;
@@ -1424,6 +1463,7 @@ function markOverlayReady() {
 }
 
 function setObserver(start) {
+  if (!start) resetOverlayTimeUpdates();
   if (timePosListenerID) { event.off("mpv.time-pos.changed", timePosListenerID); timePosListenerID = null; }
   if (windowScaleListenerID) { event.off("mpv.window-scale.changed", windowScaleListenerID); windowScaleListenerID = null; }
   if (speedListenerID) { event.off("mpv.speed.changed", speedListenerID); speedListenerID = null; }
@@ -1437,7 +1477,7 @@ function setObserver(start) {
       // landing position instead. Repeated seeks (dragging) keep following the
       // targets live, and the final restart still lands on the real frame.
       if (!(videoSeekInProgress && !videoSeekRepeated && core.status.paused)) {
-        overlayPostMessage("time-update", { time: t });
+        queueOverlayTimeUpdate(t, videoSeekInProgress);
       }
       if (danmakuBrowserWatch) pushBrowserTime(t);
     });
@@ -1806,6 +1846,7 @@ function registerSidebarHandlers() {
 }
 
 event.on("iina.window-loaded", function () {
+  resetOverlayTimeUpdates();
   overlayReady = false;
   overlayLoadId += 1;
   overlayAwaitingVideoRender = true;
@@ -1819,6 +1860,7 @@ event.on("iina.window-loaded", function () {
 });
 
 event.on("iina.plugin-overlay-loaded", function () {
+  resetOverlayTimeUpdates();
   // Keep the WebView active while transparent so its render-success frames
   // can run. Explicit user hiding is restored before the next enabled load.
   overlay.setOpacity(0);
@@ -1856,9 +1898,7 @@ event.on("mpv.playback-restart", function () {
   if (!videoSeekInProgress) return;
   videoSeekInProgress = false;
   videoSeekRepeated = false;
-  if (overlayReady && pluginState.danmakuEnabled) overlayPostMessage('time-update', {
-    time: mpv.getNumber('time-pos'), seek: true
-  });
+  queueOverlayTimeUpdate(mpv.getNumber('time-pos'), true);
 });
 
 event.on("mpv.pause.changed", function () {
@@ -1881,12 +1921,21 @@ function registerOverlayHandlers() {
     markOverlayReady();
   });
 
+  overlayOnMessage('time-update-ack', function (data) {
+    if (!Number.isSafeInteger(data.timeId) || !Number.isSafeInteger(data.sourceId) ||
+        !overlayTimeInFlight || data.sourceId !== overlayLoadId ||
+        data.timeId !== overlayTimeInFlight.timeId || data.sourceId !== overlayTimeInFlight.sourceId) return;
+    overlayTimeInFlight = null;
+    flushOverlayTimeUpdate();
+  });
+
   overlayOnMessage("danmaku-load-result", function (data) {
     if (!data || data.loadId !== overlayLoadId) return;
     if (!data.success) {
       let path = pluginState.danmakuFileList.selectedPaths[0];
       // A failed candidate remains in the list for an explicit retry, but is
       // no longer an active selection. Invalidate later replies from this load.
+      resetOverlayTimeUpdates();
       overlayLoadId += 1;
       overlayAwaitingVideoRender = true;
       overlay.setOpacity(0);

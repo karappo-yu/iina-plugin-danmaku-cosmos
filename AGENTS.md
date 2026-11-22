@@ -67,6 +67,7 @@ When `mode: "css"` is passed to NiconiComments, a `CSSRenderer` is created inste
 - Object pool (max 512 elements) for DOM reuse
 - Pause/resume via Web Animations API `pause()`/`play()` (container class-driven)
 - Tracks reverse state per danmaku, reanimates when `@reverse` activates/deactivates
+- Tracks only Animation wrappers exposed by the existing off-timeline lifetime check. Before recycling a node or replacing its animation, cancel those wrappers and set their timeline to null (WebKit bug 318856); clearing CSS styles alone does not make affected WebKit versions collect them. Do not introduce getAnimations calls on every clear. Recycled nodes also drop their __dmComment reference.
 
 ### Fonts config (CRITICAL — validation trap)
 
@@ -200,6 +201,8 @@ Hardcoded in `main.js (`DDP_APP_ID` / `DDP_APP_SECRET`)` as fallback defaults. N
 - Loads and clears share the monotonic `overlayLoadId`: `clear-danmaku` carries `clearId`, and overlay rejects stale or repeated tagged load/clear messages. Disposal independently attempts every renderer/DOM/Canvas cleanup step, so one failure does not prevent a later source from loading. After the first draw, report successful loading only after two rAF callbacks, validating the load ID, renderer identity and cancellation generation. Cancel pending success on replacement, rebuild, clear or failure; this notifier must run independently of paused playback. Main restores native alpha to one only for the current successful renderer while danmaku is enabled. These frame callbacks provide rendering opportunities, not a compositor-presentation acknowledgment or millisecond deadline. Enabling after discovery reuses `autoLoadDiscoveredDanmaku()` without resetting the file list or time offset. Manual sources retain the shared load entry and readiness queue; no manual-intent replay queue exists.
 - Register WebView callbacks through `sidebarOnMessage()` / `overlayOnMessage()` in main. These helpers keep the current function for each message name in a global JS table so IINA's `JSManagedValue` cannot lose an otherwise unreferenced callback during garbage collection. Re-registration replaces the saved function; do not clear the tables on video changes or WebView navigation before new callbacks are installed.
 - Main owns the selected file type; overlay no longer echoes `danmaku-type`. Render success/failure uses `danmaku-load-result` with a `loadId`; replies from an older source/video/WebView are ignored. Mark isLoaded true and show success OSD only after the current success reply; do not resend the file list on success. Rendering failure clears selection/overlay but retains the file/error row for retry.
+- Time updates carry `{time, seek, sourceId, timeId}`. Main keeps one in-flight message and merges later input into the newest pending anchor, retaining any pending seek intent. Only a matching `time-update-ack` releases it; source/video/WebView changes, disable and failure reset the pump. The ACK confirms receipt, not drawing or presentation. Main's explicit mpv seek flag prevents native IPC delay from becoming a false seek.
+- Overlay anchors accepted time updates immediately and coalesces their clear/force-draw work into the next rAF, including one frame while paused. Source IDs reject old anchors, and draw generations reject canceled callbacks after clear, replacement, disable or failure. Keep this path separate from the two-rAF load-success notifier and native opacity gate. Do not restore synchronous clear/draw for each time message.
 - Use `sidebarPostMessage()` / `overlayPostMessage()` from main. All sends pass through `postSafeMessage()`. Payloads containing actual template syntax, curly quotes or lone surrogates are wrapped in `{__encoded: encodeURIComponent(json)}`; `onPluginMessage()` unwraps it in each WebView. Ordinary JSON quotes, newlines and backslashes do not require an envelope. Lone surrogates are escaped in serialized JSON before URI encoding, preserving code units. Business strings and paths remain lossless. Comment arrays and list chunks use this same envelope; no `xmlContent`, special path codec or Base64 list protocol remains.
 
 
@@ -261,6 +264,7 @@ Based on the `niconicomments` third-party library. All sources arrive as the sam
 ## Release Workflow
 
 - `node --test test/*.test.js` runs without installing dependencies. Regression tests include actual legacy data validated by the bundled engine parser.
+- The manual macOS regression in `test/native/animation-retention.swift` checks collection of actual engine Animation wrappers. Its private testing GC API belongs only in the isolated diagnostic application, never in the plugin.
 - Release CI checks syntax, tests, and tag/version equality. Branch workflow-dispatch runs upload an artifact without creating a GitHub release.
 
 
@@ -309,4 +313,4 @@ Based on the `niconicomments` third-party library. All sources arrive as the sam
 ## Related Repository
 
 - **niconicomments-dom (forked)**: https://github.com/karappo-yu/niconicomments-dom — The fork adds `CSSRenderer` (`src/renderer/css.ts`) and `mode: "css"` support. Changes are on the `develop` branch.
-- The bundled CSS measurement implementation was built from engine commit `7d6692989eb9329d09c843c7244955345703ada6`; source tests and WebKit regression tests pass before the artifact is synced.
+- The bundled engine was built from commit `4d86baa07442ea954b19a8fc9c453d3b4a8048b4`, including CSS Animation retirement and overflow canvas-pool pixel cleanup. Source tests and native/WebKit regressions pass before the artifact is synced.

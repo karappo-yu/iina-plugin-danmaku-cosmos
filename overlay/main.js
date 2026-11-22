@@ -36,6 +36,10 @@ let niconiComments = null;
 let domEmojiRenderer = null;
 let formattedComments = null;
 let canvasRafId = null;
+let canvasLoopGeneration = 0;
+let canvasForceDrawPending = false;
+let canvasClearPending = false;
+let latestTimeUpdateId = 0;
 let loadSuccessFrame = null;
 let loadSuccessGeneration = 0;
 let canvasRebuildTimer = null;
@@ -141,7 +145,8 @@ function createDomEmojiRenderer(container) {
       for (const node of record.addedNodes) {
         if (node.nodeType === 3) {
           pending.add(node);
-        } else if (node.nodeType === 1 && !node.closest('[data-dm-emoji-repeat]')) {
+        } else if (node.nodeType === 1 && container.contains(node) &&
+            !hasEmojiRepeatAncestor(node, container)) {
           const walker = document.createTreeWalker(node, 4);
           let text;
           while ((text = walker.nextNode())) pending.add(text);
@@ -150,10 +155,11 @@ function createDomEmojiRenderer(container) {
     }
     for (const node of pending) {
       const parent = node.parentElement;
-      if (!parent || !container.contains(parent) || parent.closest('[data-dm-emoji-repeat]') ||
-          !parent.closest('[data-dm-comment]')) continue;
       const repeated = getRepeatedEmoji(node.textContent);
-      if (!repeated) continue;
+      // Most CA runs are not repeated emoji. Reject them before walking their
+      // ancestors; WebKit's selector matching can serialize pending styles.
+      if (!repeated || !parent || !container.contains(parent) ||
+          !isDanmakuEmojiText(parent, container)) continue;
       const tile = getTile(repeated.glyph, getComputedStyle(parent));
       if (!tile) continue;
       const span = document.createElement('span');
@@ -175,6 +181,21 @@ function createDomEmojiRenderer(container) {
   });
   observer.observe(container, { childList: true, subtree: true });
   return { destroy: function () { observer.disconnect(); tiles.clear(); } };
+}
+
+function hasEmojiRepeatAncestor(element, container) {
+  for (let current = element; current && current !== container; current = current.parentElement) {
+    if (current.hasAttribute('data-dm-emoji-repeat')) return true;
+  }
+  return false;
+}
+
+function isDanmakuEmojiText(element, container) {
+  for (let current = element; current && current !== container; current = current.parentElement) {
+    if (current.hasAttribute('data-dm-emoji-repeat')) return false;
+    if (current.hasAttribute('data-dm-comment')) return true;
+  }
+  return false;
 }
 
 function syncVideoAnchor(videoTimeSec) {
@@ -215,6 +236,7 @@ function unbindCanvasEvents(instance) {
 }
 
 function disposeCanvasRenderer() {
+  cancelPendingCanvasDraw();
   cancelLoadSuccess();
   const emojiRenderer = domEmojiRenderer;
   const renderer = niconiComments;
@@ -436,7 +458,7 @@ function initCanvasRenderer(data) {
 }
 
 function shouldRunCanvasLoop() {
-  return !!(niconiComments && danmakuVisible && canvasIsPlaying);
+  return !!(niconiComments && danmakuVisible && (canvasIsPlaying || canvasForceDrawPending));
 }
 
 function drawCanvasAtVpos(vpos, forceRendering) {
@@ -449,21 +471,42 @@ function canvasRenderLoop() {
   canvasRafId = null;
   if (!shouldRunCanvasLoop()) return;
   try {
-    drawCanvasAtVpos((getVideoTimeSec() + danmakuTimeOffsetSec) * 100, false);
+    const forceRendering = canvasForceDrawPending;
+    const clear = canvasClearPending;
+    canvasForceDrawPending = false;
+    canvasClearPending = false;
+    if (clear) niconiComments.clear();
+    drawCanvasAtVpos((getVideoTimeSec() + danmakuTimeOffsetSec) * 100, forceRendering);
     startCanvasLoop();
   } catch (error) { reportCanvasError(error); }
 }
 
 function startCanvasLoop() {
   if (canvasRafId || !shouldRunCanvasLoop()) return;
-  canvasRafId = requestAnimationFrame(canvasRenderLoop);
+  const generation = canvasLoopGeneration;
+  canvasRafId = requestAnimationFrame(() => {
+    if (generation === canvasLoopGeneration) canvasRenderLoop();
+  });
 }
 
 function stopCanvasLoop() {
+  canvasLoopGeneration += 1;
   if (canvasRafId !== null) {
     cancelAnimationFrame(canvasRafId);
     canvasRafId = null;
   }
+}
+
+function cancelPendingCanvasDraw() {
+  stopCanvasLoop();
+  canvasForceDrawPending = false;
+  canvasClearPending = false;
+}
+
+function requestCanvasDraw(clear) {
+  canvasForceDrawPending = true;
+  canvasClearPending = canvasClearPending || clear;
+  startCanvasLoop();
 }
 
 function applyOpacityToDom() {
@@ -497,24 +540,39 @@ function applyOverlaySettings(data) {
 }
 
 onPluginMessage("time-update", (data) => {
-  if (!data || typeof data.time !== 'number' || !isFinite(data.time)) return;
-  let t = data.time * 100;
-  const elapsedSec = Math.max(0, (performance.now() - lastTimeUpdateAt) / 1000);
-  const expectedDelta = isPaused ? 0 : elapsedSec * playbackSpeed * 100;
-  const actualDelta = lastTime === null ? 0 : t - lastTime;
-  const drift = actualDelta - expectedDelta;
-  const isSeek = data.seek === true || (lastTime !== null &&
-    (actualDelta < -10 || Math.abs(drift) > Math.max(20, 10 * playbackSpeed)));
-  if (isSeek) stopCanvasLoop();
-  syncVideoAnchor(data.time);
-  lastTime = t;
-  if (danmakuVisible && (isSeek || isPaused) && niconiComments) {
-    niconiComments.clear();
-    // 必须用偏移后时间: 裸视频时间会在负偏移时把本该延后的弹幕提前生成,
-    // CSS 模式弹幕是 DOM 动画,生成后会完整飘完一遍再出现第二次(重复)
-    drawCanvasAtVpos((getVideoTimeSec() + danmakuTimeOffsetSec) * 100, true);
+  const hasIds = data && Number.isSafeInteger(data.timeId) && data.timeId > 0 &&
+    Number.isSafeInteger(data.sourceId) && data.sourceId >= 0;
+  try {
+    if (!data || typeof data.time !== 'number' || !isFinite(data.time)) return;
+    if (data.sourceId !== undefined &&
+        (!Number.isSafeInteger(data.sourceId) || data.sourceId !== latestMessageId)) return;
+    if (data.timeId !== undefined && (!hasIds || data.timeId <= latestTimeUpdateId)) return;
+    if (hasIds) latestTimeUpdateId = data.timeId;
+    const t = data.time * 100;
+    const changed = lastTime === null || t !== lastTime;
+    // Main knows mpv's seek state. An explicit false avoids mistaking native
+    // IPC queue delay for a video jump. Untagged callers retain drift fallback.
+    let isSeek = data.seek === true;
+    if (typeof data.seek !== 'boolean') {
+      const elapsedSec = Math.max(0, (performance.now() - lastTimeUpdateAt) / 1000);
+      const expectedDelta = isPaused ? 0 : elapsedSec * playbackSpeed * 100;
+      const actualDelta = lastTime === null ? 0 : t - lastTime;
+      isSeek = lastTime !== null && (actualDelta < -10 ||
+        Math.abs(actualDelta - expectedDelta) > Math.max(20, 10 * playbackSpeed));
+    }
+    syncVideoAnchor(data.time);
+    if (danmakuVisible && niconiComments && (isSeek || (isPaused && changed))) {
+      // Keep only one draw for the latest anchor, including while paused.
+      // The frame applies the offset once and clears old CSS nodes before drawing.
+      requestCanvasDraw(true);
+    } else {
+      startCanvasLoop();
+    }
+  } finally {
+    // Acknowledge receipt, not painting. This bounds main's native IPC queue;
+    // the renderer's existing load-success notifier still waits for two rAFs.
+    if (hasIds) iina.postMessage('time-update-ack', {timeId: data.timeId, sourceId: data.sourceId});
   }
-  startCanvasLoop();
 });
 
 onPluginMessage("load-danmaku", (data) => {
@@ -560,6 +618,7 @@ onPluginMessage("pause-state", (data) => {
     if (isPaused) {
       stopCanvasLoop();
       niconiComments.pauseCSS();
+      startCanvasLoop();
     } else {
       niconiComments.resumeCSS();
       startCanvasLoop();
@@ -578,7 +637,7 @@ onPluginMessage("playback-speed", (data) => {
 });
 
 function syncPlaybackState(data) {
-  stopCanvasLoop();
+  cancelPendingCanvasDraw();
   const time = Number.isFinite(data.time) ? data.time : getVideoTimeSec();
   if (typeof data.paused === 'boolean') isPaused = data.paused;
   if (Number.isFinite(data.speed) && data.speed > 0) playbackSpeed = data.speed;
@@ -601,7 +660,7 @@ onPluginMessage("toggle-danmaku", (data) => {
   if (!data.enabled) {
     if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
     canvasRebuildTimer = null;
-    stopCanvasLoop();
+    cancelPendingCanvasDraw();
     if (niconiComments) niconiComments.clear();
   } else if (canvasRebuildPending && formattedComments) {
     try { initCanvasRenderer(formattedComments); startCanvasLoop(); }
