@@ -174,7 +174,7 @@ test('rapid style updates rebuild once and clear cancels a pending rebuild', () 
 });
 
 for (const mode of ['css', 'default']) {
-  test(`video clear acknowledges only after teardown and cancels pending work (${mode})`, () => {
+  test(`video clear tears down visible content and cancels pending work (${mode})`, () => {
     const h = harness();
     h.send('load-danmaku', {loadId: 4, comments: formatted([comment('old video', [])]), canvasMode: mode,
       playback: {enabled: true, time: 10, paused: false, speed: 1}});
@@ -184,14 +184,14 @@ for (const mode of ['css', 'default']) {
     assert.equal(h.timers.size, 1);
     assert.equal(h.frames.size, 2, 'playing loop and viewport update are queued');
     const size = {width: h.canvas.width, height: h.canvas.height};
+    const messageCount = h.messages.length;
     h.events.length = 0;
     h.send('clear-danmaku', {clearId: 5});
     assert.equal(old.destroyed, true);
     if (container) assert.equal(container.removed, true);
     assert.equal(h.canvas.pixels, null);
     assert.deepEqual({width: h.canvas.width, height: h.canvas.height}, size);
-    assert.equal(h.events.at(-1), 'danmaku-cleared', 'ACK follows renderer, DOM and pixel cleanup');
-    assert.deepEqual({...h.messages.at(-1).data}, {clearId: 5});
+    assert.equal(h.messages.length, messageCount, 'clear needs no response IPC');
     assert.equal(h.timers.size, 0);
     assert.equal(h.frames.size, 0);
     for (const name of ['niconiComments', 'formattedComments', 'canvasRebuildTimer', 'canvasRafId', 'canvasViewportFrame', 'lastTime']) {
@@ -214,8 +214,9 @@ test('tagged clears and loads reject stale IPC without changing a newer source',
   h.send('load-danmaku', {...data, loadId: 11, canvasFontScale: 0.25});
   assert.equal(h.instances.length, 1, 'loads at or before the clear cannot restore old comments');
   assert.equal(h.read('canvasFontScale'), 1, 'stale load settings are ignored too');
+  const eventCount = h.events.length;
   h.send('clear-danmaku', {clearId: 11});
-  assert.equal(h.messages.filter(m => m.name === 'danmaku-cleared').length, 2, 'successful repeat clear can be acknowledged');
+  assert.equal(h.events.length, eventCount, 'repeat clear IDs do not repeat cleanup');
   h.send('load-danmaku', {...data, loadId: 12});
   const current = h.instances.at(-1), messageCount = h.messages.length;
   h.send('clear-danmaku', {clearId: 11});
@@ -229,16 +230,21 @@ test('tagged clears and loads reject stale IPC without changing a newer source',
   assert.equal(h.instances.length, 2, 'legacy clear does not reset the ID boundary');
 });
 
-for (const mode of ['css', 'default']) {
-  test(`teardown failures clear sources and visible pixels without acknowledging success (${mode})`, () => {
+for (const mode of ['css', 'default']) for (const nextMode of ['css', 'default']) {
+  test(`independent cleanup survives failures and the next load recovers (${mode} to ${nextMode})`, () => {
     const h = harness();
     h.send('load-danmaku', {loadId: 1, comments: formatted([comment('old video', [])]), canvasMode: mode,
       playback: {enabled: true, time: 10, paused: false, speed: 1}});
     const old = h.instances[0], container = old.container;
-    old.clear = () => {throw new Error('clear failed');};
-    old.destroy = () => {throw new Error('destroy failed');};
+    const steps = [];
+    h.context.failingEmoji = {destroy() {steps.push('emoji'); throw new Error('emoji failed');}};
+    h.read('domEmojiRenderer = failingEmoji');
+    old.removeEventListener = () => {steps.push('unbind'); throw new Error('unbind failed');};
+    old.clear = () => {steps.push('clear'); throw new Error('clear failed');};
+    old.destroy = () => {steps.push('destroy'); throw new Error('destroy failed');};
     h.send('set-fontscale', {scale: 0.5});
     assert.doesNotThrow(() => h.send('clear-danmaku', {clearId: 2}));
+    assert.deepEqual(steps, ['emoji', 'unbind', 'clear', 'destroy'], 'one failure does not skip later cleanup');
     if (container) assert.equal(container.removed, true);
     assert.equal(h.canvas.pixels, null, 'independent surface reset survives an engine failure');
     assert.equal(h.read('niconiComments'), null);
@@ -247,11 +253,22 @@ for (const mode of ['css', 'default']) {
     assert.equal(h.context.getVideoTimeSec(), 0);
     assert.equal(h.timers.size, 0);
     assert.equal(h.frames.size, 0);
-    assert.ok(h.logs.some(line => line.includes('[overlay] clear failed:')));
+    for (const step of ['emoji destroy', 'unbind', 'renderer clear', 'renderer destroy']) {
+      assert.ok(h.logs.some(line => line.includes('[overlay] ' + step + ' failed:')));
+    }
     h.send('clear-danmaku', {clearId: 2});
-    assert.equal(h.messages.filter(m => m.name === 'danmaku-cleared').length, 0);
+    assert.equal(steps.length, 4, 'a repeated clear does not retry the old renderer');
     h.flush(); h.flushFrames();
     assert.equal(h.instances.length, 1);
+    h.send('load-danmaku', {loadId: 3, comments: formatted([comment('new video', [])]), canvasMode: nextMode,
+      playback: {enabled: true, time: 2, paused: true, speed: 1}});
+    assert.equal(h.instances.length, 2);
+    assert.deepEqual(h.instances[1].draws, [200]);
+    assert.equal(h.read('formattedComments')[0].content, 'new video');
+    assert.equal(h.messages.at(-1).data.loadId, 3);
+    assert.equal(h.messages.at(-1).data.success, true);
+    assert.equal(h.canvas.width, nextMode === 'css' ? 1 : 1920);
+    assert.equal(h.canvas.height, nextMode === 'css' ? 1 : 1080);
   });
 }
 
