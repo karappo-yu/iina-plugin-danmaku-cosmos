@@ -144,6 +144,8 @@ let videoDiscoveryTimer = null;
 let ddpRequestGeneration = 0;
 let ddpSearchGeneration = 0;
 let videoSeekInProgress = false;
+// A new seek before the previous one restarted playback: a slider drag or a held key.
+let videoSeekRepeated = false;
 let ddpBangumiGeneration = 0;
 var timePosListenerID = null;
 var windowScaleListenerID = null;
@@ -1169,6 +1171,7 @@ function beginVideoReset(resetOffset) {
   overlayAwaitingVideoRender = true;
   overlay.setOpacity(0);
   videoSeekInProgress = false;
+  videoSeekRepeated = false;
   danmakuCache = Object.create(null);
   projectionCache = null;
   lastOverlayProjection = null;
@@ -1427,7 +1430,15 @@ function setObserver(start) {
 
   if (start && !awaitingFileLoaded && overlayReady && pluginState.danmakuEnabled) {
     timePosListenerID = event.on("mpv.time-pos.changed", function (t) {
-      overlayPostMessage("time-update", { time: t });
+      // Until a seek restarts playback, mpv reports the seek target rather
+      // than the landing frame. While paused, the overlay repaints on every
+      // update, so forwarding a lone seek's target draws one snapshot and then
+      // nudges it to the real frame time; the playback-restart sync sends the
+      // landing position instead. Repeated seeks (dragging) keep following the
+      // targets live, and the final restart still lands on the real frame.
+      if (!(videoSeekInProgress && !videoSeekRepeated && core.status.paused)) {
+        overlayPostMessage("time-update", { time: t });
+      }
       if (danmakuBrowserWatch) pushBrowserTime(t);
     });
     windowScaleListenerID = event.on("mpv.window-scale.changed", function () {
@@ -1830,10 +1841,21 @@ event.on('mpv.idle-active.changed', function (idle) {
   if (idle && awaitingFileLoaded && core.status.idle) awaitingFileLoaded = false;
 });
 
-event.on("mpv.seeking.changed", function (seeking) {
-  if (seeking) { videoSeekInProgress = true; return; }
+// IINA observes plugin-requested properties as MPV_FORMAT_DOUBLE. `seeking` is
+// a flag, so mpv cannot convert it and IINA hands the callback 0: a
+// `mpv.seeking.changed` listener never sees `true`. mpv's own events bracket a
+// seek reliably instead: `seek` is sent after the target is set, and
+// `playback-restart` after the landing frame's time is published, both ahead
+// of the matching time-pos change.
+event.on("mpv.seek", function () {
+  if (videoSeekInProgress) videoSeekRepeated = true;
+  videoSeekInProgress = true;
+});
+
+event.on("mpv.playback-restart", function () {
   if (!videoSeekInProgress) return;
   videoSeekInProgress = false;
+  videoSeekRepeated = false;
   if (overlayReady && pluginState.danmakuEnabled) overlayPostMessage('time-update', {
     time: mpv.getNumber('time-pos'), seek: true
   });
