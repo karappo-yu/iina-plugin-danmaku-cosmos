@@ -10,28 +10,44 @@ const formatted = data => projectDanmaku(parseDanmakuSource(data, '', 'dandanpla
 const source = fs.readFileSync(path.join(__dirname, '../overlay/main.js'), 'utf8');
 
 function harness() {
-  const handlers = new Map(), timers = new Map(), instances = [], messages = [];
+  const handlers = new Map(), timers = new Map(), frames = new Map(), windowHandlers = new Map();
+  const instances = [], messages = [], events = [], logs = [];
   let id = 0, now = 1000;
+  let cssContainer = null, canvasWidth = 300, canvasHeight = 150;
   const canvas = {style: {}}, viewport = {style: {}};
+  Object.defineProperties(canvas, {
+    width: {get() {return canvasWidth;}, set(value) {canvasWidth = value; canvas.pixels = null; events.push('canvas-reset');}},
+    height: {get() {return canvasHeight;}, set(value) {canvasHeight = value; canvas.pixels = null; events.push('canvas-reset');}},
+  });
   class Renderer {
-    constructor(canvas, data, options) { this.data = data; this.options = options; this.size = options.viewportSize; this.draws = []; instances.push(this); }
-    addEventListener() {} removeEventListener() {} clear() {this.clears = (this.clears || 0) + 1;} destroy() {}
+    constructor(canvas, data, options) {
+      this.data = data; this.options = options; this.size = options.viewportSize; this.draws = []; instances.push(this);
+      if (options.mode === 'css') {
+        cssContainer = this.container = {style: {}, remove() {this.removed = true; events.push('css-remove'); cssContainer = null;}};
+      }
+    }
+    addEventListener() {} removeEventListener() {}
+    clear() {this.clears = (this.clears || 0) + 1; canvas.pixels = null; events.push('renderer-clear');}
+    destroy() {this.destroyed = true; events.push('renderer-destroy'); if (this.container) this.container.remove();}
     pauseCSS() {} resumeCSS() {} setPlaybackSpeed() {} setScrollSpeed(speed) {if (this.scrollSpeed === speed) return false; this.scrollSpeed = speed; return true;}
-    drawCanvas(vpos) { this.draws.push(vpos); }
+    drawCanvas(vpos) { this.draws.push(vpos); canvas.pixels = this.data; }
     resize(width, height) { this.size = {width, height}; return true; }
   }
   const context = vm.createContext({
-    iina: {onMessage(name, callback) { handlers.set(name, callback); }, postMessage(name, data) {messages.push({name, data});}},
-    document: {getElementById(id) { return id === 'danmaku-viewport' ? viewport : canvas; }, querySelector() { return null; }},
-    window: {location: {href: 'file:///plugin/overlay/index.html'}, innerWidth: 1280, innerHeight: 720}, URL, console,
+    iina: {onMessage(name, callback) { handlers.set(name, callback); }, postMessage(name, data) {messages.push({name, data}); events.push(name);}},
+    document: {getElementById(id) { return id === 'danmaku-viewport' ? viewport : canvas; }, querySelector() { return cssContainer; }},
+    window: {location: {href: 'file:///plugin/overlay/index.html'}, innerWidth: 1280, innerHeight: 720,
+      addEventListener(name, callback) {windowHandlers.set(name, callback);}}, URL, console: {log(message) {logs.push(message);}},
     performance: {now() {return now;}}, NiconiComments: Renderer,
     setTimeout(callback) {timers.set(++id, callback); return id;}, clearTimeout(id) {timers.delete(id);},
-    requestAnimationFrame() {return ++id;}, cancelAnimationFrame() {},
+    requestAnimationFrame(callback) {frames.set(++id, callback); return id;}, cancelAnimationFrame(id) {frames.delete(id);},
   });
   vm.runInContext(source, context);
-  return {advance(ms) {now += ms;}, context, instances, messages, canvas, viewport, send(name, data) {handlers.get(name)(data);},
+  return {advance(ms) {now += ms;}, context, instances, messages, events, logs, timers, frames, canvas, viewport,
+    send(name, data) {handlers.get(name)(data);}, emitWindow(name) {windowHandlers.get(name)();},
     read(expr) {return vm.runInContext(expr, context);},
-    flush() {for (const [id, callback] of Array.from(timers)) {timers.delete(id); callback();}}};
+    flush() {for (const [id, callback] of Array.from(timers)) {timers.delete(id); callback();}},
+    flushFrames() {for (const [id, callback] of Array.from(frames)) {frames.delete(id); callback();}}};
 }
 
 const comment = (text, commands, owner = false, user = 'u') => ({t: 100, text, _commands: commands, _isOwner: owner, _dateSec: 1767196800, _userId: user});
@@ -156,6 +172,88 @@ test('rapid style updates rebuild once and clear cancels a pending rebuild', () 
   h.flush();
   assert.equal(h.instances.length,2);
 });
+
+for (const mode of ['css', 'default']) {
+  test(`video clear acknowledges only after teardown and cancels pending work (${mode})`, () => {
+    const h = harness();
+    h.send('load-danmaku', {loadId: 4, comments: formatted([comment('old video', [])]), canvasMode: mode,
+      playback: {enabled: true, time: 10, paused: false, speed: 1}});
+    const old = h.instances[0], container = old.container;
+    h.send('set-fontscale', {scale: 0.5});
+    h.emitWindow('resize');
+    assert.equal(h.timers.size, 1);
+    assert.equal(h.frames.size, 2, 'playing loop and viewport update are queued');
+    const size = {width: h.canvas.width, height: h.canvas.height};
+    h.events.length = 0;
+    h.send('clear-danmaku', {clearId: 5});
+    assert.equal(old.destroyed, true);
+    if (container) assert.equal(container.removed, true);
+    assert.equal(h.canvas.pixels, null);
+    assert.deepEqual({width: h.canvas.width, height: h.canvas.height}, size);
+    assert.equal(h.events.at(-1), 'danmaku-cleared', 'ACK follows renderer, DOM and pixel cleanup');
+    assert.deepEqual({...h.messages.at(-1).data}, {clearId: 5});
+    assert.equal(h.timers.size, 0);
+    assert.equal(h.frames.size, 0);
+    for (const name of ['niconiComments', 'formattedComments', 'canvasRebuildTimer', 'canvasRafId', 'canvasViewportFrame', 'lastTime']) {
+      assert.equal(h.read(name), null, name + ' cleared');
+    }
+    assert.equal(h.read('canvasRebuildPending'), false);
+    assert.equal(h.read('canvasIsPlaying'), false);
+    assert.equal(h.context.getVideoTimeSec(), 0);
+    h.flush(); h.flushFrames();
+    assert.equal(h.instances.length, 1, 'old source cannot rebuild after clear');
+  });
+}
+
+test('tagged clears and loads reject stale IPC without changing a newer source', () => {
+  const h = harness();
+  const data = {comments: formatted([comment('old video', [])]), canvasMode: 'css'};
+  h.send('load-danmaku', {...data, loadId: 10});
+  h.send('clear-danmaku', {clearId: 11});
+  h.send('load-danmaku', {...data, loadId: 10, canvasFontScale: 0.25});
+  h.send('load-danmaku', {...data, loadId: 11, canvasFontScale: 0.25});
+  assert.equal(h.instances.length, 1, 'loads at or before the clear cannot restore old comments');
+  assert.equal(h.read('canvasFontScale'), 1, 'stale load settings are ignored too');
+  h.send('clear-danmaku', {clearId: 11});
+  assert.equal(h.messages.filter(m => m.name === 'danmaku-cleared').length, 2, 'successful repeat clear can be acknowledged');
+  h.send('load-danmaku', {...data, loadId: 12});
+  const current = h.instances.at(-1), messageCount = h.messages.length;
+  h.send('clear-danmaku', {clearId: 11});
+  h.send('clear-danmaku', {clearId: 12});
+  h.send('load-danmaku', {...data, loadId: 12});
+  assert.equal(current.destroyed, undefined);
+  assert.equal(h.instances.length, 2);
+  assert.equal(h.messages.length, messageCount, 'stale requests produce no success reply');
+  h.send('clear-danmaku', {});
+  h.send('load-danmaku', {...data, loadId: 11});
+  assert.equal(h.instances.length, 2, 'legacy clear does not reset the ID boundary');
+});
+
+for (const mode of ['css', 'default']) {
+  test(`teardown failures clear sources and visible pixels without acknowledging success (${mode})`, () => {
+    const h = harness();
+    h.send('load-danmaku', {loadId: 1, comments: formatted([comment('old video', [])]), canvasMode: mode,
+      playback: {enabled: true, time: 10, paused: false, speed: 1}});
+    const old = h.instances[0], container = old.container;
+    old.clear = () => {throw new Error('clear failed');};
+    old.destroy = () => {throw new Error('destroy failed');};
+    h.send('set-fontscale', {scale: 0.5});
+    assert.doesNotThrow(() => h.send('clear-danmaku', {clearId: 2}));
+    if (container) assert.equal(container.removed, true);
+    assert.equal(h.canvas.pixels, null, 'independent surface reset survives an engine failure');
+    assert.equal(h.read('niconiComments'), null);
+    assert.equal(h.read('formattedComments'), null);
+    assert.equal(h.read('canvasRebuildPending'), false);
+    assert.equal(h.context.getVideoTimeSec(), 0);
+    assert.equal(h.timers.size, 0);
+    assert.equal(h.frames.size, 0);
+    assert.ok(h.logs.some(line => line.includes('[overlay] clear failed:')));
+    h.send('clear-danmaku', {clearId: 2});
+    assert.equal(h.messages.filter(m => m.name === 'danmaku-cleared').length, 0);
+    h.flush(); h.flushFrames();
+    assert.equal(h.instances.length, 1);
+  });
+}
 
 test('CSS shadow edits coalesce, preserve disabled state, and are deferred in Canvas mode', () => {
   const h = harness();

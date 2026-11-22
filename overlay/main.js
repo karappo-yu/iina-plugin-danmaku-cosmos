@@ -10,6 +10,10 @@ function onPluginMessage(name, callback) {
 let lastTime = null;
 let lastTimeUpdateAt = 0;
 let currentLoadId = 0;
+// Loads and clears share main's monotonic ID, so delayed IPC cannot restore
+// an earlier source or clear a newer renderer after a video switch.
+let latestMessageId = 0;
+let lastClearedId = null;
 let isPaused = false;
 
 let canvasOpacity = 0.8;
@@ -210,19 +214,26 @@ function unbindCanvasEvents(instance) {
 }
 
 function disposeCanvasRenderer() {
-  if (domEmojiRenderer) {
-    domEmojiRenderer.destroy();
-    domEmojiRenderer = null;
-  }
-  if (niconiComments) {
-    unbindCanvasEvents(niconiComments);
-    niconiComments.clear();
-    niconiComments.destroy();
-    niconiComments = null;
-  }
-  if (canvasNicoMode === 'css') {
-    const canvas = document.getElementById('niconicomments-canvas');
-    if (canvas) { canvas.width = 1; canvas.height = 1; }
+  const emojiRenderer = domEmojiRenderer;
+  const renderer = niconiComments;
+  domEmojiRenderer = null;
+  niconiComments = null;
+  try {
+    if (emojiRenderer) emojiRenderer.destroy();
+  } finally {
+    try {
+      if (renderer) {
+        try {
+          unbindCanvasEvents(renderer);
+          renderer.clear();
+        } finally { renderer.destroy(); }
+      }
+    } finally {
+      if (canvasNicoMode === 'css') {
+        const canvas = document.getElementById('niconicomments-canvas');
+        if (canvas) { canvas.width = 1; canvas.height = 1; }
+      }
+    }
   }
 }
 
@@ -470,6 +481,11 @@ onPluginMessage("time-update", (data) => {
 });
 
 onPluginMessage("load-danmaku", (data) => {
+  if (data.loadId !== undefined) {
+    if (!Number.isSafeInteger(data.loadId) || data.loadId <= latestMessageId) return;
+    latestMessageId = data.loadId;
+  }
+  lastClearedId = null;
   currentLoadId = data.loadId;
   try {
     applyOverlaySettings(data);
@@ -650,22 +666,56 @@ onPluginMessage("set-danmaku-font", (data) => {
   if (formattedComments) scheduleCanvasRebuild();
 });
 
-onPluginMessage("clear-danmaku", () => {
+onPluginMessage("clear-danmaku", (data) => {
+  const clearId = data && data.clearId;
+  const tagged = clearId !== undefined;
+  if (tagged) {
+    if (!Number.isSafeInteger(clearId) || clearId < latestMessageId) return;
+    if (clearId === latestMessageId) {
+      if (lastClearedId === clearId) iina.postMessage("danmaku-cleared", {clearId});
+      return;
+    }
+    latestMessageId = clearId;
+  }
   currentLoadId = 0;
   canvasRebuildPending = false;
   if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
   canvasRebuildTimer = null;
   stopCanvasLoop();
-  disposeCanvasRenderer();
-  lastTime = null;
-  lastTimeUpdateAt = 0;
-  canvasVideoAnchorTime = 0;
-  canvasSystemAnchorTime = 0;
-  canvasIsPlaying = false;
-  const cssContainer = document.querySelector('[data-dm-css-container]');
-  if (cssContainer) cssContainer.remove();
-  formattedComments = null;
-
+  if (canvasViewportFrame !== null) cancelAnimationFrame(canvasViewportFrame);
+  canvasViewportFrame = null;
+  let cleared = false;
+  try {
+    try { disposeCanvasRenderer(); }
+    finally {
+      // Clear the visible surfaces even when an engine teardown fails.
+      try {
+        const cssContainer = document.querySelector('[data-dm-css-container]');
+        if (cssContainer) cssContainer.remove();
+      } finally {
+        const canvas = document.getElementById('niconicomments-canvas');
+        if (canvas) {
+          canvas.width = canvasNicoMode === 'css' ? 1 : canvas.width;
+          if (canvasNicoMode === 'css') canvas.height = 1;
+        }
+      }
+    }
+    cleared = true;
+  } catch (error) {
+    // reportCanvasError would retry teardown and report an unrelated load.
+    console.log('[overlay] clear failed: ' + error);
+  } finally {
+    lastTime = null;
+    lastTimeUpdateAt = 0;
+    canvasVideoAnchorTime = 0;
+    canvasSystemAnchorTime = 0;
+    canvasIsPlaying = false;
+    formattedComments = null;
+  }
+  if (cleared && tagged) {
+    lastClearedId = clearId;
+    iina.postMessage("danmaku-cleared", {clearId});
+  }
 });
 
 function reportOverlayReady() {
