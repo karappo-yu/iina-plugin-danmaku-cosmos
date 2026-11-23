@@ -799,6 +799,39 @@ test('explicit progress does not turn native receipt delay into seeks', () => {
   assert.equal(h.messages.filter(m => m.name === 'time-update-ack').length, 100);
 });
 
+for (const mode of ['css', 'default']) {
+  test(`speed-change lag and catch-up preserve the playing clock without correction (${mode})`, () => {
+    const h = harness();
+    h.send('load-danmaku', {loadId: 1, comments: formatted([comment('test', [])]), canvasMode: mode,
+      playback: {enabled: true, time: 1, paused: false, speed: 1}});
+    const renderer = h.instances[0], clears = renderer.clears || 0;
+    h.advance(30);
+    h.send('playback-speed', {speed: 2});
+    h.advance(166);
+    const beforeLag = h.context.getVideoTimeSec();
+    h.send('time-update', {time: 1.033333, seek: false, sourceId: 1, timeId: 1});
+    assert.equal(h.context.getVideoTimeSec(), beforeLag, 'late progress cannot pull the render clock backwards');
+    assert.ok(Math.abs(h.read('lastTime') - 103.3333) < 1e-9, 'seek detection still records the received video time');
+    h.advance(533);
+    const beforeRestore = h.context.getVideoTimeSec();
+    h.send('playback-speed', {speed: 1});
+    assert.equal(h.context.getVideoTimeSec(), beforeRestore, 'restoring speed preserves the current phase');
+    h.advance(33);
+    const beforeCatchUp = h.context.getVideoTimeSec();
+    h.send('time-update', {time: 2.466667, seek: false, sourceId: 1, timeId: 2});
+    assert.equal(h.context.getVideoTimeSec(), beforeCatchUp, 'mpv catch-up cannot push the render clock forwards');
+    h.flushFrames();
+    assert.equal(renderer.clears || 0, clears);
+    h.advance(2000);
+    assert.ok(Math.abs(h.context.getVideoTimeSec() - (beforeCatchUp + 2)) < 1e-9, 'there is no delayed catch-up');
+    h.send('time-update', {time: 20, seek: true, sourceId: 1, timeId: 3});
+    h.flushFrames();
+    assert.equal(h.context.getVideoTimeSec(), 20, 'an actual seek still aligns immediately');
+    assert.equal(renderer.draws.at(-1), 2000);
+    assert.equal(renderer.clears, clears + 1);
+  });
+}
+
 test('stale source and duplicate time updates are acknowledged without changing the anchor', () => {
   const h = harness();
   h.send('load-danmaku', {loadId: 3, comments: formatted([comment('new', [])]),

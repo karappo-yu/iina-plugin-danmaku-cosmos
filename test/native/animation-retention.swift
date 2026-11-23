@@ -83,8 +83,14 @@ import WebKit
       var passed = true
       for cycle in 0..<3 {
         _ = await evaluate("loadBatch(\(cycle * 2 + 1))")
-        await wait(5)
+        await wait(0.3)
+        _ = await evaluate("iina.emit('playback-speed',{speed:2});void 0")
+        await wait(0.3)
+        _ = await evaluate("iina.emit('playback-speed',{speed:1});void 0")
+        await wait(4.4)
         _ = await evaluate("iina.emit('clear-danmaku',{clearId:\(cycle * 2 + 2)});window.ordinaryRef=new WeakRef({sentinel:1});void 0")
+        // Let pending native animation tasks settle before testing collection.
+        await wait(0.3)
         await collect(); await collect()
         guard let text = await evaluate("gcState()") as? String,
           let data = text.data(using: .utf8),

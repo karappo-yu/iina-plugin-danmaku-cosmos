@@ -560,7 +560,16 @@ onPluginMessage("time-update", (data) => {
       isSeek = lastTime !== null && (actualDelta < -10 ||
         Math.abs(actualDelta - expectedDelta) > Math.max(20, 10 * playbackSpeed));
     }
-    syncVideoAnchor(data.time);
+    if (isSeek || isPaused || !canvasIsPlaying || lastTime === null) {
+      syncVideoAnchor(data.time);
+    } else {
+      // During playback the render clock is continuous. mpv can briefly lag
+      // and then catch up around speed changes; applying either correction
+      // would pull Canvas comments back or push them forward on screen.
+      // Keep the received time for seek detection without moving that clock.
+      lastTime = t;
+      lastTimeUpdateAt = performance.now();
+    }
     if (danmakuVisible && niconiComments && (isSeek || (isPaused && changed))) {
       // Keep only one draw for the latest anchor, including while paused.
       // The frame applies the offset once and clears old CSS nodes before drawing.
@@ -630,7 +639,7 @@ onPluginMessage("playback-speed", (data) => {
   const anchoredTime = getVideoTimeSec();
   playbackSpeed = data && data.speed ? data.speed : 1.0;
   syncVideoAnchor(anchoredTime);
-  // 通知 CSS 渲染器:速度变化时重设滚动动画时长(1x 无操作)
+  // CSS changes the existing animation's rate without resetting its position.
   if (danmakuVisible && niconiComments && niconiComments.setPlaybackSpeed) {
     niconiComments.setPlaybackSpeed(playbackSpeed);
   }
