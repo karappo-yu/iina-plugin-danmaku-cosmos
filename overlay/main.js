@@ -621,7 +621,11 @@ onPluginMessage("set-fullscreen", (data) => {
 });
 
 onPluginMessage("pause-state", (data) => {
-  const anchoredTime = getVideoTimeSec();
+  if (data.sourceId !== undefined && data.sourceId !== latestMessageId) return;
+  // Cache transitions carry native video time, including recovery without a
+  // user pause change. Ordinary pause events preserve the continuous clock.
+  const resync = Number.isFinite(data.time);
+  const anchoredTime = resync ? data.time : getVideoTimeSec();
   isPaused = !!data.paused;
   canvasIsPlaying = !isPaused;
   syncVideoAnchor(anchoredTime);
@@ -635,6 +639,7 @@ onPluginMessage("pause-state", (data) => {
       startCanvasLoop();
     }
   }
+  if (resync && danmakuVisible && niconiComments) requestCanvasDraw(true);
 });
 
 onPluginMessage("playback-speed", (data) => {
