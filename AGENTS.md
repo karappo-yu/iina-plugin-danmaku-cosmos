@@ -61,14 +61,15 @@ When `mode: "css"` is passed to NiconiComments, a `CSSRenderer` is created inste
 - Uses `CSSMeasurementRenderer` with a detached 1×1 Canvas 2D surface instead of creating WebGL or a full-size helper. Overlay passes `viewportSize: {width, height}` at construction so the initial logical viewport and timeline are correct while the display canvas stays 1×1. CSS resizing updates logical dimensions without allocating full-size pixel buffers.
 - Uses `--dm-unit` = displayed video height / 1080 for uniform coordinate mapping; 4:3 retains full-height text rather than shrinking into a 16:9 box
 - Renders each danmaku as a `div[data-dm-comment]` with `will-change: transform, opacity; contain: layout style`
-- Scroll danmaku: CSS `@keyframes dm-scroll` driven by JS-computed duration (inline `animation` style), matching `getPosX()` formula
+- Scroll danmaku at ordinary 1×: CSS `@keyframes dm-scroll` driven by JS-computed duration (inline `animation` style), matching `getPosX()` formula. Playback-speed changes queue a CSS→frame-motion handoff for the next draw. Existing scrolling nodes then use the continuous overlay clock to write `transform` every frame and remain frame-driven until recycled. Comments born at non-1× use frame motion immediately; after returning to 1× only new comments use CSS animation.
 - Fixed danmaku (ue/shita): CSS `@keyframes dm-fade` animation
 - Stroke: `-webkit-text-stroke` + `paint-order: stroke fill`
 - Object pool (max 512 elements) for DOM reuse
 - Pause/resume via Web Animations API `pause()`/`play()` (container class-driven)
 - Tracks reverse state per danmaku, reanimates when `@reverse` activates/deactivates
-- Playback-speed changes use the existing scrolling animation's `updatePlaybackRate()` to preserve its model phase; do not rebuild its start position from `lastUpdateVpos`. This does not guarantee WebKit compositor presentation continuity: Safari can still show a small backward step during rate changes. The plugin deliberately keeps autonomous CSS animations rather than adding per-frame DOM writes for this small residual. Each animation remembers the speed used to calculate its initial duration, so later rate changes and pooled-node reuse retain the correct multiplier. Fixed comments are unchanged.
-- Tracks only Animation wrappers exposed by the off-timeline lifetime check or a discrete playback-speed change. Before recycling a node or replacing its animation, cancel those wrappers and set their timeline to null (WebKit bug 318856); clearing CSS styles alone does not make affected WebKit versions collect them. Do not introduce getAnimations calls on every clear or ordinary playback frame. Recycled nodes also drop their __dmComment reference.
+- Never change an active scrolling CSS animation's playback rate. Safari can reanchor even untouched compositor animations when another animation changes timing. Scheme U hands all current scrolling CSS nodes to frame motion once at the next draw, using the same position formula as Canvas, without model-to-compositor compensation. Fixed comments are unchanged. The 1× path with no frame-driven nodes retains autonomous CSS animation and does not write node positions each frame.
+- `needsContinuousCSSDraw()` is true for a queued handoff, non-1× playback or remaining frame-driven nodes. Overlay passes fractional vpos only on this CSS path, and the engine's equal-vpos early return must allow these draws. Ordinary 1× CSS retains centisecond input; Canvas input and motion are unchanged. Frame nodes use geometric exit checks rather than CSS animation lifetime, and pooled nodes must drop frame state and inline transform.
+- Tracks only Animation wrappers exposed by the off-timeline lifetime check or the CSS→frame handoff. Before recycling a node or replacing its animation, cancel those wrappers and set their timeline to null (WebKit bug 318856); clearing CSS styles alone does not make affected WebKit versions collect them. Handoff reads wrappers before mutating styles. Do not introduce getAnimations calls on every clear or ordinary playback frame. Recycled nodes also drop their __dmComment reference.
 
 ### Fonts config (CRITICAL — validation trap)
 
@@ -242,12 +243,12 @@ Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-
 
 ### CSS Mode (niconicomments) Render Flow
 
-1. `time-update` fires → `syncVideoAnchor()` → `startCanvasLoop()` (rAF)
-2. `canvasRenderLoop` calls `niconiComments.drawCanvas(vpos)` where `vpos = canvasGetCurrentTime() * 100` (includes time offset)
-3. `drawCanvas` with `cssRenderer` calls `cssRenderer.updateComments(timeline, vpos, frameActiveState)`
-4. `updateComments` diffs visible comments vs `activeElements`, creates/recycles DOM elements
-5. Scroll danmaku get inline `animation: dm-scroll <remainingSec>s linear forwards` with `--dm-from/--dm-to` CSS vars; fixed danmaku use `dm-fade`
-6. When video pauses, `pauseCSS()` pauses all active animations; `resumeCSS()` resumes them
+1. Ordinary time updates record receipt without correcting the continuous playback clock; explicit seeks anchor and queue one clear/draw.
+2. `canvasRenderLoop` draws at `(getVideoTimeSec() + danmakuTimeOffsetSec) * 100`. Only CSS with a pending handoff or frame-driven nodes uses fractional vpos; ordinary 1x CSS retains centisecond input.
+3. `drawCanvas` resolves the timeline and passes comments, vpos and reverse/ban state to `cssRenderer.updateComments`.
+4. A queued playback-speed change retires current scrolling CSS animations at this draw and hands their existing nodes to frame-driven motion.
+5. Ordinary 1x births use CSS animation. Non-1x births use frame motion; old frame nodes stay that way after restoration to 1x until exit. Fixed comments retain their original path.
+6. Pause stops the overlay loop and pauses remaining CSS animations; frame positions stay at the paused anchor. Resume restarts both paths.
 
 ### Canvas Mode
 
@@ -314,4 +315,4 @@ Based on the `niconicomments` third-party library. All sources arrive as the sam
 ## Related Repository
 
 - **niconicomments-dom (forked)**: https://github.com/karappo-yu/niconicomments-dom — The fork adds `CSSRenderer` (`src/renderer/css.ts`) and `mode: "css"` support. Changes are on the `develop` branch.
-- The bundled engine was built from fork commit `c32d227e90d7f306d867ffefd8680b02ee558551`, including CSS Animation retirement, overflow canvas-pool pixel cleanup and playback-rate changes that preserve the animation model phase. Source tests and native/WebKit regressions pass before the tested artifact is synced from the fork's build; do not hand-edit the bundle.
+- The bundled engine was built from fork commit `33c336f7b93e6b92046652e9e48e5a9fbf7b3f73`, including CSS Animation retirement, overflow canvas-pool pixel cleanup and scheme U's sticky CSS-to-frame motion on playback-speed changes. Source tests and native/WebKit regressions pass before the tested artifact is synced from the fork's build; do not hand-edit the bundle.

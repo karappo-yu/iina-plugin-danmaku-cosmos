@@ -294,6 +294,25 @@ for (const mode of ['css', 'default']) {
   });
 }
 
+test('CSS preserves normal centisecond input and uses fractional vpos only while the engine needs frame motion', () => {
+  const h = harness();
+  h.send('load-danmaku', {loadId: 1, comments: formatted([comment('test', [])]), canvasMode: 'css',
+    playback: {enabled: true, time: 10.1234, paused: true, speed: 1}});
+  const renderer = h.instances[0];
+  renderer.needsContinuousCSSDraw = () => false;
+  h.context.drawCanvasAtVpos(1012.34, true);
+  assert.equal(renderer.draws.at(-1), 1012);
+  renderer.needsContinuousCSSDraw = () => true;
+  h.context.drawCanvasAtVpos(1012.34, true);
+  assert.equal(renderer.draws.at(-1), 1012.34);
+  h.send('set-canvas-mode', {mode: 'default'});
+  h.flush();
+  const canvasRenderer = h.instances.at(-1);
+  canvasRenderer.needsContinuousCSSDraw = () => false;
+  h.context.drawCanvasAtVpos(1012.34, true);
+  assert.equal(canvasRenderer.draws.at(-1), 1012.34, 'Canvas keeps its existing fractional input');
+});
+
 test('tagged clears and loads reject stale IPC without changing a newer source', () => {
   const h = harness();
   const data = {comments: formatted([comment('old video', [])]), canvasMode: 'css'};

@@ -51,7 +51,7 @@
 
 #### 播放与同步
 
-- **变速同步**：Canvas 变速时保持运动连续；CSS 不因短暂时钟偏差重绘，但 WebKit 仍可能出现轻微回退。手动跳转立即对齐
+- **变速同步**：Canvas 保持连续运动；CSS 在变速时暂用逐帧位置，原有弹幕保持到离场，恢复 1× 后新弹幕回到 CSS 动画。手动跳转立即对齐
 - **弹幕时间偏移**：在侧边栏输入秒数，或在侧边栏聚焦时按 `A` / `D` 键以 0.5 秒步进微调
 - **自动片头偏移**：检测弹幕源与视频的时长差，自动调整弹幕时间偏移以对齐正片（仅 Niconico V1 JSON，默认关闭）
 - **繁简转换**：将 Bilibili 和弹弹play 的繁体中文弹幕转为简体中文；Niconico JSON/XML 保留原文，加载时隐藏此开关
@@ -102,7 +102,7 @@ IINA で動画を見ながらコメントを流せるプラグインです。Nic
 
 #### 再生・同期サポート
 
-- **再生速度変更時の同期**：Canvas はコメントの移動を保ちます。CSS は一時的な時刻差で再描画しませんが、WebKit により小さな戻りが生じる場合があります。手動シーク時はすぐに合わせます
+- **再生速度変更時の同期**：Canvas は移動を保ちます。CSS は速度変更時に各フレームで位置を更新し、表示中のコメントは退出までその方式を続けます。1× に戻ると、新しいコメントは CSS アニメーションに戻ります。手動シーク時はすぐに合わせます
 - **表示タイミング調整（オフセット）**：サイドバーで秒数を指定できるほか、サイドバーにフォーカスがある状態で `A` / `D` キーを押すと 0.5 秒単位で微調整できます
 - **尺差によるオフセット自動補正**：コメントソースと動画の再生時間の差を検出し、OP などの尺差に合わせてコメントの表示オフセットを自動調整します（Niconico V1 JSON のみ、デフォルトはオフ）
 - **繁体字→簡体字変換**：Bilibili と DanDanPlay の繁体字コメントを簡体字に変換します。Niconico JSON/XML は原文を保持し、読み込み時はこのスイッチを非表示にします
@@ -153,7 +153,7 @@ An IINA plugin for overlaying danmaku (bullet comments) on videos. Supports loca
 
 #### Playback & Sync
 
-- **Playback speed sync**: Canvas motion stays continuous during speed changes. CSS avoids redraws for brief clock differences, though WebKit may still show a small backward step. Manual seeks align immediately.
+- **Playback speed sync**: Canvas motion stays continuous. CSS temporarily uses frame-driven scrolling during speed changes; existing comments finish that way while new comments return to CSS animation at 1×. Manual seeks align immediately.
 - **Danmaku time offset**: Enter an offset in seconds in the sidebar, or press `A` / `D` (while the sidebar is focused) to nudge by 0.5s increments.
 - **Auto timing offset**: Detects duration differences between the comment source and the video and automatically adjusts the comment time offset to align with the intro (Niconico V1 JSON only, off by default).
 - **Traditional to Simplified Chinese**: Convert Bilibili and DanDanPlay comments to Simplified Chinese. Niconico JSON/XML retain their original text, and this switch is hidden when they are loaded.

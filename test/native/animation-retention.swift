@@ -21,9 +21,10 @@ import WebKit
     window.title = "Danmaku animation retention regression"
     window.contentView = web
     window.orderFrontRegardless()
-    let engine = root.appendingPathComponent("overlay/lib/niconicomments.min.js").absoluteString
-    let overlay = root.appendingPathComponent("overlay/main.js").absoluteString
-    let css = root.appendingPathComponent("overlay/index.css").absoluteString
+    let testRun = UUID().uuidString
+    let engine = root.appendingPathComponent("overlay/lib/niconicomments.min.js").absoluteString + "?native-test=" + testRun
+    let overlay = root.appendingPathComponent("overlay/main.js").absoluteString + "?native-test=" + testRun
+    let css = root.appendingPathComponent("overlay/index.css").absoluteString + "?native-test=" + testRun
     let html = """
       <meta charset="utf-8"><link rel="stylesheet" href="\(css)">
       <div id="danmaku-viewport"><canvas id="niconicomments-canvas"></canvas></div>
@@ -51,6 +52,9 @@ import WebKit
         alive:animationRefs.filter(ref=>ref.deref()).length,
         ordinaryAlive:!!ordinaryRef.deref(),nodes:document.querySelectorAll('[data-dm-comment]').length,
         rendererPresent:niconiComments!==null});
+      window.motionState=()=>JSON.stringify({frameNodes:niconiComments.cssRenderer.frameDrivenElements.size,
+        active:niconiComments.cssRenderer.activeElements.size,continuous:niconiComments.needsContinuousCSSDraw(),
+        animations:document.getAnimations().length});
       </script>
       """
     let file = FileManager.default.temporaryDirectory.appendingPathComponent("danmaku-animation-\(getpid()).html")
@@ -69,6 +73,18 @@ import WebKit
 
   func wait(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * 1e9)) }
 
+  func motionAfterFrames() async -> String {
+    await withCheckedContinuation { continuation in
+      web.callAsyncJavaScript("await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); return motionState();",
+        arguments: [:], in: nil, in: .page) { result in
+        switch result {
+        case .success(let value): continuation.resume(returning: value as? String ?? "{}")
+        case .failure(let error): print("Motion frame error:", error); continuation.resume(returning: "{}")
+        }
+      }
+    }
+  }
+
   func collect() async {
     web.configuration.processPool.perform(NSSelectorFromString("_garbageCollectJavaScriptObjectsForTesting"))
     await wait(0.3)
@@ -86,8 +102,17 @@ import WebKit
         await wait(0.3)
         _ = await evaluate("iina.emit('playback-speed',{speed:2});void 0")
         await wait(0.3)
+        let switched = await motionAfterFrames()
+        print("Handoff \(cycle + 1):", switched)
+        let switchedRow = (try? JSONSerialization.jsonObject(with: Data(switched.utf8))) as? [String: Any]
+        passed = passed && switchedRow?["frameNodes"] as? Int == 200 && switchedRow?["animations"] as? Int == 0
         _ = await evaluate("iina.emit('playback-speed',{speed:1});void 0")
-        await wait(4.4)
+        await wait(0.3)
+        let restored = await motionAfterFrames()
+        print("Restored \(cycle + 1):", restored)
+        let restoredRow = (try? JSONSerialization.jsonObject(with: Data(restored.utf8))) as? [String: Any]
+        passed = passed && restoredRow?["frameNodes"] as? Int == 200 && restoredRow?["animations"] as? Int == 0
+        await wait(4.1)
         _ = await evaluate("iina.emit('clear-danmaku',{clearId:\(cycle * 2 + 2)});window.ordinaryRef=new WeakRef({sentinel:1});void 0")
         // Let pending native animation tasks settle before testing collection.
         await wait(0.3)

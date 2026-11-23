@@ -463,7 +463,9 @@ function shouldRunCanvasLoop() {
 
 function drawCanvasAtVpos(vpos, forceRendering) {
   if (!danmakuVisible || !niconiComments) return;
-  const renderVpos = canvasNicoMode === 'css' ? Math.floor(vpos) : vpos;
+  const continuousCss = canvasNicoMode === 'css' &&
+    typeof niconiComments.needsContinuousCSSDraw === 'function' && niconiComments.needsContinuousCSSDraw();
+  const renderVpos = canvasNicoMode === 'css' && !continuousCss ? Math.floor(vpos) : vpos;
   niconiComments.drawCanvas(renderVpos, !!forceRendering);
 }
 
@@ -639,7 +641,7 @@ onPluginMessage("playback-speed", (data) => {
   const anchoredTime = getVideoTimeSec();
   playbackSpeed = data && data.speed ? data.speed : 1.0;
   syncVideoAnchor(anchoredTime);
-  // CSS changes the existing animation's rate without resetting its position.
+  // CSS hands active scrolling nodes to frame-driven motion on its next draw.
   if (danmakuVisible && niconiComments && niconiComments.setPlaybackSpeed) {
     niconiComments.setPlaybackSpeed(playbackSpeed);
   }
