@@ -244,6 +244,9 @@ test('enabling and releasing a user pause during buffering keep the cache pause'
   h.overlay.advance(1000);
   h.main.toggleDanmaku();
   h.drainMessages();
+  // The reveal acknowledgment is one frame pair after the draw, not a render loop.
+  h.overlay.flushFrames(); h.overlay.flushFrames(); h.drainMessages();
+  assert.equal(h.main.overlayOpacities.at(-1), 1);
   const enabledMessage = h.main.overlayMessages.findLast(message => message.name === 'toggle-danmaku');
   assert.equal(enabledMessage.data.enabled, true);
   assert.equal(enabledMessage.data.paused, true, 'enabling snapshots include an existing cache pause');

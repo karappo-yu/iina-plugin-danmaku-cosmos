@@ -949,7 +949,44 @@ test('a new render success after disabling stays hidden and the next enable reus
   const loads = loadedComments(h.overlayMessages).length;
   h.toggleDanmaku();
   assert.equal(loadedComments(h.overlayMessages).length, loads);
+  assert.equal(h.overlayOpacities.at(-1), 0, 'enabling waits for a frame drawn at the current time');
+  const enabled = h.overlayMessages.findLast(m => m.name === 'toggle-danmaku');
+  h.emitOverlay('danmaku-reveal-ready', {revealId: enabled.data.revealId});
   assert.equal(h.overlayOpacities.at(-1), 1);
+});
+
+test('enabling during playback reveals only after the overlay draws the current time', () => {
+  const h = createHarness(true);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  assert.equal(h.overlayOpacities.at(-1), 1);
+  h.toggleDanmaku();
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  assert.equal(h.overlayMessages.findLast(m => m.name === 'toggle-danmaku').data.revealId, undefined);
+  h.toggleDanmaku();
+  const enabled = h.overlayMessages.findLast(m => m.name === 'toggle-danmaku');
+  assert.equal(enabled.data.enabled, true);
+  assert.ok(Number.isSafeInteger(enabled.data.revealId));
+  assert.equal(h.overlayOpacities.at(-1), 0, 'the frame from before disabling must not be revealed');
+  h.emitOverlay('danmaku-reveal-ready', {revealId: enabled.data.revealId - 1});
+  assert.equal(h.overlayOpacities.at(-1), 0, 'an obsolete acknowledgment is ignored');
+  h.emitOverlay('danmaku-reveal-ready', {revealId: enabled.data.revealId});
+  assert.equal(h.overlayOpacities.at(-1), 1);
+  assert.equal(h.pendingTimers(500).length, 0, 'the acknowledgment cancels the fallback');
+});
+
+test('a reveal acknowledgment after disabling again stays hidden, and a missing one is bounded', () => {
+  const h = createHarness(true);
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4'); h.ackLoad();
+  h.toggleDanmaku(); h.toggleDanmaku();
+  const enabled = h.overlayMessages.findLast(m => m.name === 'toggle-danmaku');
+  h.toggleDanmaku();
+  h.emitOverlay('danmaku-reveal-ready', {revealId: enabled.data.revealId});
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  assert.equal(h.pendingTimers(500).length, 0);
+  h.toggleDanmaku();
+  assert.equal(h.overlayOpacities.at(-1), 0);
+  h.runTimers(500);
+  assert.equal(h.overlayOpacities.at(-1), 1, 'a WebView that never acknowledges is still revealed');
 });
 
 test('native transparency keeps the WebView active and remains separate from comment opacity', () => {
