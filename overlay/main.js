@@ -329,6 +329,25 @@ function notifyLoadSuccess() {
   });
 }
 
+// Main keeps the native view transparent while enabling until this frame
+// acknowledgment, mirroring the two-callback bound used by load success.
+let revealAckFrame = null;
+
+function cancelRevealAck() {
+  if (revealAckFrame !== null) cancelAnimationFrame(revealAckFrame);
+  revealAckFrame = null;
+}
+
+function acknowledgeReveal(revealId) {
+  cancelRevealAck();
+  revealAckFrame = requestAnimationFrame(() => {
+    revealAckFrame = requestAnimationFrame(() => {
+      revealAckFrame = null;
+      iina.postMessage("danmaku-reveal-ready", {revealId});
+    });
+  });
+}
+
 function scheduleCanvasRebuild() {
   cancelLoadSuccess();
   canvasRebuildPending = true;
@@ -667,6 +686,7 @@ function syncPlaybackState(data) {
 }
 
 onPluginMessage("toggle-danmaku", (data) => {
+  cancelRevealAck();
   syncPlaybackState(data);
   danmakuVisible = !!data.enabled;
   const canvas = document.getElementById('niconicomments-canvas');
@@ -687,6 +707,7 @@ onPluginMessage("toggle-danmaku", (data) => {
     // 且关闭分支已 clear() 清空内容——必须强制重绘一次,否则画面空白直到恢复播放
     drawCanvasAtVpos((getVideoTimeSec() + danmakuTimeOffsetSec) * 100, true);
   }
+  if (data.enabled && Number.isSafeInteger(data.revealId)) acknowledgeReveal(data.revealId);
 });
 
 onPluginMessage("set-opacity", (data) => {

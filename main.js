@@ -144,6 +144,13 @@ let awaitingFileLoaded = false;
 let videoHasEnded = false;
 let overlayAwaitingVideoRender = true;
 let overlayHiddenByUser = false;
+// Enabling keeps the native view transparent until the overlay acknowledges a
+// frame drawn at the current time. Revealing first can present the WebView's
+// frame from before it was disabled for one compositor frame during playback.
+let overlayAwaitingEnableFrame = false;
+let overlayRevealId = 0;
+let overlayRevealTimer = null;
+const OVERLAY_REVEAL_TIMEOUT_MS = 500;
 let videoDiscoveryTimer = null;
 let ddpRequestGeneration = 0;
 let ddpSearchGeneration = 0;
@@ -1153,7 +1160,37 @@ function addDDPToFileList(episodeId, animeTitle, episodeTitle, comments, stale) 
 }
 
 function updateOverlayOpacity() {
-  overlay.setOpacity(pluginState.danmakuEnabled && !overlayAwaitingVideoRender ? 1 : 0);
+  overlay.setOpacity(pluginState.danmakuEnabled && !overlayAwaitingVideoRender && !overlayAwaitingEnableFrame ? 1 : 0);
+}
+
+function cancelOverlayReveal() {
+  overlayAwaitingEnableFrame = false;
+  if (overlayRevealTimer !== null) clearTimeout(overlayRevealTimer);
+  overlayRevealTimer = null;
+}
+
+// Begin a disabled → enabled transition. The bounded fallback keeps a WebView
+// that never acknowledges (for example, one being reloaded) from staying hidden.
+function beginOverlayReveal() {
+  cancelOverlayReveal();
+  overlayRevealId += 1;
+  overlayAwaitingEnableFrame = true;
+  let revealId = overlayRevealId;
+  overlayRevealTimer = setTimeout(function () { finishOverlayReveal(revealId); }, OVERLAY_REVEAL_TIMEOUT_MS);
+}
+
+function finishOverlayReveal(revealId) {
+  if (!overlayAwaitingEnableFrame || revealId !== overlayRevealId) return;
+  cancelOverlayReveal();
+  updateOverlayOpacity();
+}
+
+// Playback snapshot for toggle-danmaku. A pending reveal asks the overlay to
+// acknowledge after it has drawn the enabled state.
+function toggleSnapshot() {
+  let snapshot = playbackSnapshot();
+  if (overlayAwaitingEnableFrame && snapshot.enabled) snapshot.revealId = overlayRevealId;
+  return snapshot;
 }
 
 function restoreOverlayAfterManualHide() {
@@ -1176,6 +1213,7 @@ function beginVideoReset(resetOffset, skipOverlayClear) {
   overlayLoadId += 1;
   danmakuLoadGeneration += 1;
   overlayAwaitingVideoRender = true;
+  cancelOverlayReveal();
   overlay.setOpacity(0);
   videoSeekInProgress = false;
   videoSeekRepeated = false;
@@ -1217,7 +1255,7 @@ function loadDanmakuForVideo(url, resetOffset) {
       let status = pluginState.dandanplayState.status;
       if (status === 'error' || status === 'matched' || status === 'no-match') ddpFallbackToLocal(status === 'error');
     }
-    if (overlayReady && loadedDanmakuVideoUrl !== currentVideoUrl) overlayPostMessage('toggle-danmaku', playbackSnapshot());
+    if (overlayReady && loadedDanmakuVideoUrl !== currentVideoUrl) overlayPostMessage('toggle-danmaku', toggleSnapshot());
     setObserver(true);
   }, 0);
 }
@@ -1353,7 +1391,7 @@ function loadDanmakuFile(path, options) {
     let wasEnabled = pluginState.danmakuEnabled;
     if (enableDanmaku) ensureDanmakuEnabled(true);
     if (overlayReady && pluginState.danmakuEnabled) {
-      if (!sendCurrentDanmaku(false) && !wasEnabled) overlayPostMessage('toggle-danmaku', playbackSnapshot());
+      if (!sendCurrentDanmaku(false) && !wasEnabled) overlayPostMessage('toggle-danmaku', toggleSnapshot());
       if (!timePosListenerID) setObserver(true);
     }
     return true;
@@ -1456,14 +1494,14 @@ function markOverlayReady() {
   updateOverlayOpacity();
   postVideoAspect();
   if (pendingDanmaku) {
-    if (!sendCurrentDanmaku(true)) overlayPostMessage("toggle-danmaku", playbackSnapshot());
+    if (!sendCurrentDanmaku(true)) overlayPostMessage("toggle-danmaku", toggleSnapshot());
     pendingDanmaku = null;
     setObserver(true);
   } else if (!awaitingFileLoaded && !videoHasEnded && pluginState.danmakuEnabled && !core.status.idle && !currentVideoUrl && core.status.url) {
     loadDanmakuForVideo(core.status.url);
     setObserver(true);
   } else {
-    overlayPostMessage("toggle-danmaku", playbackSnapshot());
+    overlayPostMessage("toggle-danmaku", toggleSnapshot());
     setObserver(true);
   }
 }
@@ -1520,6 +1558,7 @@ function setDanmakuEnabled(enabled, options) {
   }
   commitState({danmakuEnabled: next});
   if (next) {
+    beginOverlayReveal();
     restoreOverlayAfterManualHide();
     updateOverlayOpacity();
     if (awaitingFileLoaded || videoDiscoveryTimer !== null) {
@@ -1528,18 +1567,19 @@ function setDanmakuEnabled(enabled, options) {
     }
     let selectedPath = pluginState.danmakuFileList.selectedPaths[0];
     if (selectedPath && danmakuCache[selectedPath]) {
-      if (!sendCurrentDanmaku(false) && overlayReady) overlayPostMessage('toggle-danmaku', playbackSnapshot());
+      if (!sendCurrentDanmaku(false) && overlayReady) overlayPostMessage('toggle-danmaku', toggleSnapshot());
       setObserver(true);
     } else if (currentVideoUrl && loadedDanmakuVideoUrl !== currentVideoUrl) {
       autoLoadDiscoveredDanmaku(currentVideoUrl, danmakuLoadGeneration);
-      if (overlayReady && loadedDanmakuVideoUrl !== currentVideoUrl) overlayPostMessage('toggle-danmaku', playbackSnapshot());
+      if (overlayReady && loadedDanmakuVideoUrl !== currentVideoUrl) overlayPostMessage('toggle-danmaku', toggleSnapshot());
       setObserver(true);
     } else {
-      if (overlayReady) overlayPostMessage('toggle-danmaku', playbackSnapshot());
+      if (overlayReady) overlayPostMessage('toggle-danmaku', toggleSnapshot());
       setObserver(true);
     }
     if (options.osd !== false) core.osd(t('danmaku_on'));
   } else {
+    cancelOverlayReveal();
     updateOverlayOpacity();
     if (overlayReady) overlayPostMessage('toggle-danmaku', playbackSnapshot());
     setObserver(false);
@@ -1554,11 +1594,13 @@ function toggleDanmaku() {
 
 // Source loads defer playback IPC because their load payload carries the full snapshot.
 function ensureDanmakuEnabled(deferPlayback) {
+  let wasEnabled = pluginState.danmakuEnabled;
   commitState({danmakuEnabled: true});
+  if (!wasEnabled) beginOverlayReveal();
   restoreOverlayAfterManualHide();
   updateOverlayOpacity();
   if (!deferPlayback) {
-    if (overlayReady) overlayPostMessage('toggle-danmaku', playbackSnapshot());
+    if (overlayReady) overlayPostMessage('toggle-danmaku', toggleSnapshot());
     setObserver(true);
   }
 }
@@ -1870,6 +1912,7 @@ event.on("iina.window-loaded", function () {
   overlayReady = false;
   overlayLoadId += 1;
   overlayAwaitingVideoRender = true;
+  cancelOverlayReveal();
   overlay.setOpacity(0);
   updateDanmakuStatus({fileType: pluginState.currentDanmakuStatus.fileType, isLoaded: false});
   lastOverlayProjection = null;
@@ -1975,6 +2018,7 @@ function registerOverlayHandlers() {
       resetOverlayTimeUpdates();
       overlayLoadId += 1;
       overlayAwaitingVideoRender = true;
+      cancelOverlayReveal();
       overlay.setOpacity(0);
       lastOverlayProjection = null;
       projectionCache = null;
@@ -1994,12 +2038,18 @@ function registerOverlayHandlers() {
     } else {
       updateDanmakuStatus({ fileType: pluginState.currentDanmakuStatus.fileType, isLoaded: true });
       overlayAwaitingVideoRender = false;
+      // The load acknowledgment already waited for frames drawn at this time.
+      cancelOverlayReveal();
       updateOverlayOpacity();
       if (pendingLoadNotice && pendingLoadNotice.path === pluginState.danmakuFileList.selectedPaths[0]) {
         osdAfterDanmakuLoad(pendingLoadNotice.fileName, pendingLoadNotice.loadedMessageKey);
         pendingLoadNotice = null;
       }
     }
+  });
+
+  overlayOnMessage("danmaku-reveal-ready", function (data) {
+    if (data && Number.isSafeInteger(data.revealId)) finishOverlayReveal(data.revealId);
   });
 
   overlayOnMessage("seek-disable", function () { core.osd(t('seek_disable')); });

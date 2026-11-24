@@ -412,6 +412,29 @@ test('CSS shadow edits coalesce, preserve disabled state, and are deferred in Ca
   assert.equal(h.instances[5].options.config.cssTextShadowBlur, 0);
 });
 
+test('an enable reveal acknowledgment follows the draw by two frames and a later toggle cancels it', () => {
+  const h = harness();
+  load(h, [comment('test', [])]);
+  h.flushFrames(); h.flushFrames();
+  const reveals = () => h.messages.filter(m => m.name === 'danmaku-reveal-ready').map(m => m.data.revealId);
+  h.send('toggle-danmaku', {enabled: false, time: 1, paused: false, speed: 1});
+  const draws = h.instances.at(-1).draws.length;
+  h.send('toggle-danmaku', {enabled: true, time: 2, paused: false, speed: 1, revealId: 7});
+  assert.ok(h.instances.at(-1).draws.length > draws, 'the current time is drawn before acknowledging');
+  assert.deepEqual(reveals(), []);
+  h.flushFrames();
+  assert.deepEqual(reveals(), []);
+  h.flushFrames();
+  assert.deepEqual(reveals(), [7]);
+  h.send('toggle-danmaku', {enabled: true, time: 3, paused: false, speed: 1, revealId: 8});
+  h.send('toggle-danmaku', {enabled: false, time: 3, paused: false, speed: 1});
+  h.flushFrames(); h.flushFrames();
+  assert.deepEqual(reveals(), [7], 'disabling cancels a pending acknowledgment');
+  h.send('toggle-danmaku', {enabled: true, time: 4, paused: true, speed: 1});
+  h.flushFrames(); h.flushFrames();
+  assert.deepEqual(reveals(), [7], 'untagged enables do not acknowledge');
+});
+
 test('invalid formatted input reports a correlated load error instead of escaping the message handler', () => {
   const h = harness();
   assert.doesNotThrow(() => h.send('load-danmaku', {loadId:7,danmakuType:'nico-json',comments: 'invalid'}));
