@@ -153,6 +153,7 @@ function createHarness(initialEnabled, autoNetwork = false, savedPreferences = {
       sync() {},
     },
     mpv: {
+      getFlag(name) { return !!mpvValues[name]; },
       getNumber(name) { return mpvValues[name]; },
       set() {},
     },

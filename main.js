@@ -154,6 +154,8 @@ let ddpBangumiGeneration = 0;
 var timePosListenerID = null;
 var windowScaleListenerID = null;
 var speedListenerID = null;
+let cachePauseListenerID = null;
+let overlayPausedForCache = false;
 
 pluginState.currentDanmakuStatus = {
   fileType: null,
@@ -1407,8 +1409,10 @@ function postVideoAspect() {
 function playbackSnapshot() {
   let time = mpv.getNumber('time-pos');
   let speed = mpv.getNumber('speed');
+  overlayPausedForCache = mpv.getFlag('paused-for-cache');
   return {enabled: pluginState.danmakuEnabled, time: Number.isFinite(time) ? time : 0,
-    paused: !!core.status.paused, speed: Number.isFinite(speed) && speed > 0 ? speed : 1};
+    paused: !!core.status.paused || overlayPausedForCache,
+    speed: Number.isFinite(speed) && speed > 0 ? speed : 1};
 }
 
 function resetOverlayTimeUpdates() {
@@ -1469,6 +1473,7 @@ function setObserver(start) {
   if (timePosListenerID) { event.off("mpv.time-pos.changed", timePosListenerID); timePosListenerID = null; }
   if (windowScaleListenerID) { event.off("mpv.window-scale.changed", windowScaleListenerID); windowScaleListenerID = null; }
   if (speedListenerID) { event.off("mpv.speed.changed", speedListenerID); speedListenerID = null; }
+  if (cachePauseListenerID) { event.off("mpv.cache-buffering-state.changed", cachePauseListenerID); cachePauseListenerID = null; }
 
   if (start && !awaitingFileLoaded && overlayReady && pluginState.danmakuEnabled) {
     timePosListenerID = event.on("mpv.time-pos.changed", function (t) {
@@ -1488,6 +1493,19 @@ function setObserver(start) {
     });
     speedListenerID = event.on("mpv.speed.changed", function (speed) {
       overlayPostMessage("playback-speed", { speed: speed });
+    });
+    // IINA observes plugin-added properties as doubles. Cache percentage is
+    // numeric (0–99 while stopped, 100 after recovery); paused-for-cache is a
+    // flag. Start from the last sent snapshot so recovery between loading and
+    // observer installation still sends a resume rather than dropping it.
+    cachePauseListenerID = event.on("mpv.cache-buffering-state.changed", function (percent) {
+      if (awaitingFileLoaded || videoHasEnded || !currentVideoUrl ||
+          !Number.isFinite(percent) || percent < 0 || percent > 100) return;
+      const next = percent < 100;
+      if (next === overlayPausedForCache) return;
+      overlayPausedForCache = next;
+      overlayPostMessage("pause-state", {paused: !!core.status.paused || next,
+        time: mpv.getNumber('time-pos'), sourceId: overlayLoadId});
     });
   }
 }
@@ -1916,7 +1934,13 @@ event.on("mpv.playback-restart", function () {
 
 event.on("mpv.pause.changed", function () {
   if (!overlayReady) return;
-  overlayPostMessage("pause-state", { paused: core.status.paused });
+  const pausedForCache = mpv.getFlag('paused-for-cache');
+  const data = {paused: !!core.status.paused || pausedForCache, sourceId: overlayLoadId};
+  if (pausedForCache !== overlayPausedForCache) {
+    overlayPausedForCache = pausedForCache;
+    data.time = mpv.getNumber('time-pos');
+  }
+  overlayPostMessage("pause-state", data);
 });
 
 // mpv's display aspect includes pixel-aspect and aspect overrides; output

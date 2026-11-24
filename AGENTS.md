@@ -61,13 +61,15 @@ When `mode: "css"` is passed to NiconiComments, a `CSSRenderer` is created inste
 - Uses `CSSMeasurementRenderer` with a detached 1×1 Canvas 2D surface instead of creating WebGL or a full-size helper. Overlay passes `viewportSize: {width, height}` at construction so the initial logical viewport and timeline are correct while the display canvas stays 1×1. CSS resizing updates logical dimensions without allocating full-size pixel buffers.
 - Uses `--dm-unit` = displayed video height / 1080 for uniform coordinate mapping; 4:3 retains full-height text rather than shrinking into a 16:9 box
 - Renders each danmaku as a `div[data-dm-comment]` with `will-change: transform, opacity; contain: layout style`
-- Scroll danmaku: CSS `@keyframes dm-scroll` driven by JS-computed duration (inline `animation` style), matching `getPosX()` formula
+- Scroll danmaku at ordinary 1×: CSS `@keyframes dm-scroll` driven by JS-computed duration (inline `animation` style), matching `getPosX()` formula. Playback-speed changes queue a CSS→frame-motion handoff for the next draw. Existing scrolling nodes then use the continuous overlay clock to write `transform` every frame and remain frame-driven until recycled. Comments born at non-1× use frame motion immediately; after returning to 1× only new comments use CSS animation.
 - Fixed danmaku (ue/shita): CSS `@keyframes dm-fade` animation
 - Stroke: `-webkit-text-stroke` + `paint-order: stroke fill`
 - Object pool (max 512 elements) for DOM reuse
 - Pause/resume via Web Animations API `pause()`/`play()` (container class-driven)
 - Tracks reverse state per danmaku, reanimates when `@reverse` activates/deactivates
-- Tracks only Animation wrappers exposed by the existing off-timeline lifetime check. Before recycling a node or replacing its animation, cancel those wrappers and set their timeline to null (WebKit bug 318856); clearing CSS styles alone does not make affected WebKit versions collect them. Do not introduce getAnimations calls on every clear. Recycled nodes also drop their __dmComment reference.
+- Never change an active scrolling CSS animation's playback rate. Safari can reanchor even untouched compositor animations when another animation changes timing. Scheme U hands all current scrolling CSS nodes to frame motion once at the next draw, using the same position formula as Canvas, without model-to-compositor compensation. Fixed comments are unchanged. The 1× path with no frame-driven nodes retains autonomous CSS animation and does not write node positions each frame.
+- `needsContinuousCSSDraw()` is true for a queued handoff, non-1× playback or remaining frame-driven nodes. Overlay passes fractional vpos only on this CSS path, and the engine's equal-vpos early return must allow these draws. Ordinary 1× CSS retains centisecond input; Canvas input and motion are unchanged. Frame nodes use geometric exit checks rather than CSS animation lifetime, and pooled nodes must drop frame state and inline transform.
+- Tracks only Animation wrappers exposed by the off-timeline lifetime check or the CSS→frame handoff. Before recycling a node or replacing its animation, cancel those wrappers and set their timeline to null (WebKit bug 318856); clearing CSS styles alone does not make affected WebKit versions collect them. Handoff reads wrappers before mutating styles. Do not introduce getAnimations calls on every clear or ordinary playback frame. Recycled nodes also drop their __dmComment reference.
 
 ### Fonts config (CRITICAL — validation trap)
 
@@ -202,7 +204,8 @@ Hardcoded in `main.js (`DDP_APP_ID` / `DDP_APP_SECRET`)` as fallback defaults. N
 - Register WebView callbacks through `sidebarOnMessage()` / `overlayOnMessage()` in main. These helpers keep the current function for each message name in a global JS table so IINA's `JSManagedValue` cannot lose an otherwise unreferenced callback during garbage collection. Re-registration replaces the saved function; do not clear the tables on video changes or WebView navigation before new callbacks are installed.
 - Main owns the selected file type; overlay no longer echoes `danmaku-type`. Render success/failure uses `danmaku-load-result` with a `loadId`; replies from an older source/video/WebView are ignored. Mark isLoaded true and show success OSD only after the current success reply; do not resend the file list on success. Rendering failure clears selection/overlay but retains the file/error row for retry.
 - Time updates carry `{time, seek, sourceId, timeId}`. Main keeps one in-flight message and merges later input into the newest pending anchor, retaining any pending seek intent. Only a matching `time-update-ack` releases it; source/video/WebView changes, disable and failure reset the pump. The ACK confirms receipt, not drawing or presentation. Main's explicit mpv seek flag prevents native IPC delay from becoming a false seek.
-- Overlay anchors accepted time updates immediately and coalesces their clear/force-draw work into the next rAF, including one frame while paused. Source IDs reject old anchors, and draw generations reject canceled callbacks after clear, replacement, disable or failure. Keep this path separate from the two-rAF load-success notifier and native opacity gate. Do not restore synchronous clear/draw for each time message.
+- During active playback the overlay uses a continuous render clock. Ordinary `seek:false` progress records the received time for seek detection without correcting that clock or scheduling gradual catch-up; tolerate playback-speed lag rather than moving visible comments backwards or forwards. Explicit seeks, paused/nonplaying time updates, loads and enable snapshots still anchor immediately. Seek clear/force-draw work coalesces into the next rAF, including one frame while paused. Source IDs reject old anchors, and draw generations reject canceled callbacks after clear, replacement, disable or failure. Keep this path separate from the two-rAF load-success notifier and native opacity gate. Do not restore synchronous clear/draw for each time message.
+- Cache stalls use numeric `mpv.cache-buffering-state.changed` (0–99 paused for cache, 100 recovered), not receipt-gap heuristics or flag-valued property callbacks (IINA observes plugin-added properties as doubles). Read `paused-for-cache` with `mpv.getFlag()` in load/enable snapshots and combine it with user pause. Cache transitions send source-tagged `pause-state` with native video time, freeze the render clock and coalesce clear/draw into the next rAF on entry and recovery; repeated buffering percentages do not resync. Cache recovery must retain a user pause. Ordinary speed-change lag still never corrects the playing clock.
 - Use `sidebarPostMessage()` / `overlayPostMessage()` from main. All sends pass through `postSafeMessage()`. Payloads containing actual template syntax, curly quotes or lone surrogates are wrapped in `{__encoded: encodeURIComponent(json)}`; `onPluginMessage()` unwraps it in each WebView. Ordinary JSON quotes, newlines and backslashes do not require an envelope. Lone surrogates are escaped in serialized JSON before URI encoding, preserving code units. Business strings and paths remain lossless. Comment arrays and list chunks use this same envelope; no `xmlContent`, special path codec or Base64 list protocol remains.
 
 
@@ -241,12 +244,12 @@ Customization messages (sidebar → main.js → overlay): `set-fontscale`, `set-
 
 ### CSS Mode (niconicomments) Render Flow
 
-1. `time-update` fires → `syncVideoAnchor()` → `startCanvasLoop()` (rAF)
-2. `canvasRenderLoop` calls `niconiComments.drawCanvas(vpos)` where `vpos = canvasGetCurrentTime() * 100` (includes time offset)
-3. `drawCanvas` with `cssRenderer` calls `cssRenderer.updateComments(timeline, vpos, frameActiveState)`
-4. `updateComments` diffs visible comments vs `activeElements`, creates/recycles DOM elements
-5. Scroll danmaku get inline `animation: dm-scroll <remainingSec>s linear forwards` with `--dm-from/--dm-to` CSS vars; fixed danmaku use `dm-fade`
-6. When video pauses, `pauseCSS()` pauses all active animations; `resumeCSS()` resumes them
+1. Ordinary time updates record receipt without correcting the continuous playback clock; explicit seeks anchor and queue one clear/draw.
+2. `canvasRenderLoop` draws at `(getVideoTimeSec() + danmakuTimeOffsetSec) * 100`. Only CSS with a pending handoff or frame-driven nodes uses fractional vpos; ordinary 1x CSS retains centisecond input.
+3. `drawCanvas` resolves the timeline and passes comments, vpos and reverse/ban state to `cssRenderer.updateComments`.
+4. A queued playback-speed change retires current scrolling CSS animations at this draw and hands their existing nodes to frame-driven motion.
+5. Ordinary 1x births use CSS animation. Non-1x births use frame motion; old frame nodes stay that way after restoration to 1x until exit. Fixed comments retain their original path.
+6. Pause stops the overlay loop and pauses remaining CSS animations; frame positions stay at the paused anchor. Resume restarts both paths.
 
 ### Canvas Mode
 
@@ -313,4 +316,4 @@ Based on the `niconicomments` third-party library. All sources arrive as the sam
 ## Related Repository
 
 - **niconicomments-dom (forked)**: https://github.com/karappo-yu/niconicomments-dom — The fork adds `CSSRenderer` (`src/renderer/css.ts`) and `mode: "css"` support. Changes are on the `develop` branch.
-- The bundled engine was built from commit `4d86baa07442ea954b19a8fc9c453d3b4a8048b4`, including CSS Animation retirement and overflow canvas-pool pixel cleanup. Source tests and native/WebKit regressions pass before the artifact is synced.
+- The bundled engine was built from fork commit `33c336f7b93e6b92046652e9e48e5a9fbf7b3f73`, including CSS Animation retirement, overflow canvas-pool pixel cleanup and scheme U's sticky CSS-to-frame motion on playback-speed changes. Source tests and native/WebKit regressions pass before the tested artifact is synced from the fork's build; do not hand-edit the bundle.
