@@ -11,7 +11,6 @@
 <body>
   <div id="root">
 
-    <!-- Tab bar (IINA 1.5 segmented pill style) -->
     <div class="tabbar">
       <div class="tab active" data-tab="basic" data-clickable>
         <svg viewBox="0 0 64 64">
@@ -52,10 +51,8 @@
       </div>
     </div>
 
-    <!-- ==================== Basic tab ==================== -->
     <div id="tab-basic" class="pane-stack">
 
-      <!-- Track section: header + toggle outside card, TrackSelector directly below (1:1 IINA 1.5 Subtitles pane) -->
       <div id="danmaku-file-list-section" class="danmaku-track-section">
         <div class="track-section-header">
           <div class="track-section-label">
@@ -74,7 +71,6 @@
         <div id="danmaku-file-list-container"></div>
       </div>
 
-      <!-- Card: Local / Network source actions + DDP matches & search (1:1 IINA 1.5 LoadSubtitleView) -->
       <div class="iina-card sources-actions-card">
         <div class="danmaku-file-list-footer">
           <div class="danmaku-file-list-actions">
@@ -105,7 +101,6 @@
         </div>
       </div>
 
-      <!-- Card: Style Preset -->
       <div class="iina-card">
         <div class="control-row preset-row">
           <span class="toggle-label" data-i18n="style_preset">样式预设</span>
@@ -117,7 +112,6 @@
         </div>
       </div>
 
-      <!-- Card: Date Slice -->
       <div class="section iina-card" id="danmaku-filter-section" style="display:none">
         <div class="section-title" data-i18n="danmaku_filter">日期切片</div>
         <div class="range-selector" id="danmaku-range-selector">
@@ -134,7 +128,6 @@
         </div>
       </div>
 
-      <!-- Card: Quick Sliders (Density + Opacity + Font Scale) -->
       <div class="section iina-card card-stack" id="danmaku-basic-sliders-card">
         <div class="slider-group" id="danmaku-density-section">
           <div class="section-header">
@@ -166,10 +159,8 @@
 
     </div>
 
-    <!-- ==================== Advanced tab ==================== -->
     <div id="tab-advanced" class="pane-stack" style="display:none">
 
-      <!-- Card: Behavior Toggles -->
       <div class="toggle-group iina-card iina-card-flush">
         <div class="toggle-row">
           <span class="toggle-label" data-i18n="ddp_auto_network">自动加载网络弹幕</span>
@@ -201,7 +192,6 @@
         </div>
       </div>
 
-      <!-- Card: Typography & Motion -->
       <div class="iina-card card-stack">
         <div class="control-row">
           <span class="toggle-label" data-i18n="danmaku_font_family">字体</span>
@@ -259,7 +249,6 @@
         </div>
       </div>
 
-      <!-- Card: Outline & Shadow -->
       <div class="iina-card card-stack">
         <div class="slider-group">
           <div class="section-title" data-i18n="stroke_opacity">描边不透明度</div>
@@ -299,7 +288,6 @@
         </div>
       </div>
 
-      <!-- Card: Timing Offset -->
       <div class="iina-card card-stack">
         <div class="control-row">
           <span class="toggle-label" data-i18n="danmaku_offset">弹幕偏移 (秒)</span>
@@ -310,10 +298,8 @@
 
     </div>
 
-    <!-- ==================== Filter tab ==================== -->
     <div id="tab-filter" class="pane-stack" style="display:none">
 
-      <!-- Card: Virtualized Danmaku Timeline -->
       <div class="toggle-group iina-card iina-card-flush">
         <div class="toggle-row">
           <div class="toggle-row-left">
@@ -334,7 +320,6 @@
         </div>
       </div>
 
-      <!-- Card: Blocklist & Position Blocking -->
       <div class="toggle-group iina-card iina-card-flush">
         <div class="toggle-row">
           <span class="toggle-label" data-i18n="blocklist_title">屏蔽词</span>
@@ -362,7 +347,6 @@
         </div>
       </div>
 
-      <!-- Card: Deduplicate -->
       <div class="toggle-group iina-card iina-card-flush">
         <div class="toggle-row">
           <span class="toggle-label" data-i18n="dedupe_title">弹幕去重</span>

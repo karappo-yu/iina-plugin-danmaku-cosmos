@@ -46,13 +46,9 @@ function projectMatches(matches) {
   for (let i = 0; i < matches.length; i++) {
     let match = matches[i] || {};
     result[i] = {
-      animeId: match.animeId,
       animeTitle: match.animeTitle,
       episodeId: match.episodeId,
-      episodeTitle: match.episodeTitle,
-      type: match.type,
-      typeDescription: match.typeDescription,
-      shift: match.shift
+      episodeTitle: match.episodeTitle
     };
   }
   return result;
@@ -98,9 +94,8 @@ function createDdpClient(deps) {
     return http.post(url, options);
   }
 
-  // Compute MD5 of the first 16MB + file size for DDP hash matching.
-  // Runs as an async /bin/bash subprocess (pipefail is not POSIX sh) so it never blocks video opening (JS thread stays free).
-  // Uses only macOS base-system tools (dd, /sbin/md5, stat) — no python3/Xcode CLT dependency.
+  // DDP matches the first 16 MiB's MD5 and the full file size. Use an async
+  // subprocess with macOS base tools; pipefail requires bash rather than sh.
   function calcFileHash(filePath) {
     if (!filePath) return Promise.resolve(null);
     let script = 'set -e\n'
@@ -245,8 +240,6 @@ function createDdpClient(deps) {
   }
 
   return {
-    request: request,
-    calcFileHash: calcFileHash,
     matchVideo: matchVideo,
     searchAnime: searchAnime,
     getComments: getComments,
@@ -259,11 +252,9 @@ function createDdpClient(deps) {
 }
 
 module.exports = {
-  DDP_API_BASE: DDP_API_BASE,
   DDP_LOAD_ORIGIN: DDP_LOAD_ORIGIN,
   ddpParseBody: ddpParseBody,
   ddpErrStr: ddpErrStr,
-  ddpPathHash: ddpPathHash,
   ddpCacheFile: ddpCacheFile,
   projectMatches: projectMatches,
   createDdpClient: createDdpClient

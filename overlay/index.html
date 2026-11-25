@@ -7,7 +7,7 @@
 </head>
 <body>
   <div id="danmaku-viewport"><canvas id="niconicomments-canvas"></canvas></div>
-  <!-- WKWebView 会缓存 file:// 脚本子资源,版本参数用于强制刷新 -->
+  <!-- Version queries invalidate WKWebView's cached file:// scripts. -->
   <script src="lib/niconicomments.min.js?v=22"></script>
   <script src="main.js?v=32"></script>
 </body>

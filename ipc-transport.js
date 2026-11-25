@@ -34,7 +34,6 @@ function postSafeMessage(target, key, data) {
 }
 
 module.exports = {
-  escapeLoneSurrogates: escapeLoneSurrogates,
   needsIPCEnvelope: needsIPCEnvelope,
   postSafeMessage: postSafeMessage
 };

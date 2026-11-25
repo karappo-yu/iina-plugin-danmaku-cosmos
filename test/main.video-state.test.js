@@ -8,6 +8,8 @@ const test = require('node:test');
 const vm = require('node:vm');
 
 const {parseDanmakuSource, projectDanmaku} = require('../danmaku-document.js');
+const {ddpCacheFile} = require('../ddp-client.js');
+const {extractNumberFromName} = require('../episode-matcher.js');
 const MAIN_JS = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 
 test('video display aspect follows output filters, rotation, and metadata fallback', () => {
@@ -32,7 +34,7 @@ test('overlay receives video aspect on startup and output-parameter changes', ()
   h.setMpv('video-out-params/aspect', 21 / 9);
   h.emitEvent('mpv.video-out-params.changed', {});
   assert.equal(h.overlayMessages.findLast(m => m.name === 'set-video-aspect').data.aspect, 21 / 9);
-  assert.equal(h.context.buildLoadDanmakuPayload('', 'nico-json').videoAspectRatio, 21 / 9);
+  assert.equal(h.context.buildLoadDanmakuPayload([]).videoAspectRatio, 21 / 9);
 });
 
 test('fullscreen state is restored on load and relayed after IINA transitions', () => {
@@ -42,7 +44,7 @@ test('fullscreen state is restored on load and relayed after IINA transitions', 
   h.readyOverlay();
   const initial = h.overlayMessages.findLast(m => m.name === 'set-video-aspect');
   assert.equal(initial.data.fullscreen, true);
-  assert.equal(h.context.buildLoadDanmakuPayload('', 'nico-json').fullscreen, true);
+  assert.equal(h.context.buildLoadDanmakuPayload([]).fullscreen, true);
   h.setFullscreen(false);
   h.emitEvent('iina.window-fs.changed', false);
   assert.equal(h.overlayMessages.findLast(m => m.name === 'set-fullscreen').data.fullscreen, false);
@@ -395,14 +397,14 @@ for (const fixture of positionFixtures) {
     harness.readyOverlay();
     const sourcePath = setPositionSource(harness, fixture.fileType, fixture.source);
     harness.emitSidebar('danmaku-browser-watch', { watch: true });
-    assert.equal(harness.context.getEffectiveContent(sourcePath).length, 3, '默认关闭');
+    assert.equal(harness.context.getEffectiveContent(sourcePath).length, 3, 'disabled by default');
     for (const [top, bottom] of [[true, false], [false, true], [true, true], [false, false]]) {
       harness.emitSidebar('danmaku-position-filter-set', { danmakuBlockTopEnabled: top, danmakuBlockBottomEnabled: bottom });
       const effective = JSON.stringify(harness.context.getEffectiveContent(sourcePath));
       assert.equal(effective.includes('top-only'), !top);
       assert.equal(effective.includes('bottom-only'), !bottom);
       assert.equal(effective.includes('scroll-only'), true);
-      assert.equal(loadedComments(harness.overlayMessages).at(-1), effective, '切换立即更新 overlay');
+      assert.equal(loadedComments(harness.overlayMessages).at(-1), effective, 'toggling immediately updates the overlay');
       const items = Array.from(harness.context.buildDanmakuBrowserList(), (item) => ({ text: item.text, blocked: item.blocked }));
       assert.deepEqual(items, [
         { text: 'top-only', blocked: top },
@@ -411,9 +413,9 @@ for (const fixture of positionFixtures) {
       ]);
       const message = harness.sidebarMessages.filter((item) => item.name === 'danmaku-browser-data').at(-1);
       const sentItems = message.data.items;
-      assert.deepEqual(sentItems.map((item) => ({ text: item.text, blocked: item.blocked })), items, '列表收到划线标记');
+      assert.deepEqual(sentItems.map((item) => ({ text: item.text, blocked: item.blocked })), items, 'the list receives blocked markers');
     }
-    assert.equal(harness.context.danmakuCache[sourcePath].comments.length, 3, '过滤不修改 IR');
+    assert.equal(harness.context.danmakuCache[sourcePath].comments.length, 3, 'filtering preserves the IR');
   });
 }
 
@@ -425,7 +427,7 @@ test('CSS shadow blur persists, restores to lazy views, and rejects invalid valu
   h.emitSidebar('set-css-text-shadow-blur', {blur: 3.5});
   assert.equal(h.preferences.get('cssTextShadowBlur'), 3.5);
   assert.equal(h.overlayMessages.findLast(m => m.name === 'set-css-text-shadow-blur').data.blur, 3.5);
-  assert.equal(h.context.buildLoadDanmakuPayload([], 'nico-json').cssTextShadowBlur, 3.5);
+  assert.equal(h.context.buildLoadDanmakuPayload([]).cssTextShadowBlur, 3.5);
   for (const blur of [-1, 10.5, NaN, Infinity, '2', null]) h.emitSidebar('set-css-text-shadow-blur', {blur});
   assert.equal(h.preferences.get('cssTextShadowBlur'), 3.5);
   h.emitSidebar('set-canvas-mode', {mode: 'default'});
@@ -433,11 +435,11 @@ test('CSS shadow blur persists, restores to lazy views, and rejects invalid valu
   const restored = createHarness(true, false, Object.fromEntries(h.preferences));
   restored.emitSidebar('request-state');
   assert.equal(restored.sidebarMessages.findLast(m => m.name === 'danmaku-state').data.cssTextShadowBlur, 3.5);
-  assert.equal(restored.context.buildLoadDanmakuPayload([], 'nico-json').cssTextShadowBlur, 3.5);
+  assert.equal(restored.context.buildLoadDanmakuPayload([]).cssTextShadowBlur, 3.5);
   restored.emitSidebar('set-css-text-shadow-blur', {blur: 0});
   assert.equal(restored.preferences.get('cssTextShadowBlur'), 0);
   const invalid = createHarness(true, false, {cssTextShadowBlur: -1});
-  assert.equal(invalid.context.buildLoadDanmakuPayload([], 'nico-json').cssTextShadowBlur, 2);
+  assert.equal(invalid.context.buildLoadDanmakuPayload([]).cssTextShadowBlur, 2);
 });
 
 test('position settings default off, persist independently and restore through lazy sidebar snapshots', () => {
@@ -522,7 +524,7 @@ test('V1 density counts use the date-sliced input total and include protected th
     const info = harness.sidebarMessages.findLast(m => m.name === 'danmaku-filter-info').data;
     assert.equal(info.sourceTotalCount, inputCount);
     assert.equal(info.filteredCount, kept);
-    assert.equal(info.totalCount, 20, 'date selector keeps its own main-thread count');
+    assert.equal(info.dateInfo.totalCount, 20, 'date metadata keeps its own main-thread count');
   }
   assertCounts(7);
   const firstDay = Date.UTC(2026, 0, 1) / 86400000;
@@ -582,10 +584,10 @@ test('position blocking and hybrid dedupe produce merged lists but progressive f
   // scrolling comments keep the static merged suffix.
   assert.deepEqual(Array.from(source, item => item.content), ['same', 'same', 'same', 'visiblex2']);
   assert.deepEqual(Array.from(source, item => item.comboSuffix), [undefined, undefined, undefined, 'x2']);
-  assert.equal(source.some((item) => item.content === 'blocked-word'), false, '关闭位置过滤仍保留屏蔽词过滤');
-  assert.equal(harness.context.buildLoadDanmakuPayload([], 'dandanplay').fixedCombo, true);
+  assert.equal(source.some((item) => item.content === 'blocked-word'), false, 'disabling position filtering preserves word filtering');
+  assert.equal(harness.context.buildLoadDanmakuPayload([]).fixedCombo, true);
   harness.emitSidebar('danmaku-dedupe-set', { enabled: false });
-  assert.equal(harness.context.buildLoadDanmakuPayload([], 'dandanplay').fixedCombo, false);
+  assert.equal(harness.context.buildLoadDanmakuPayload([]).fixedCombo, false);
 });
 
 test('dedupe toggle resends the payload when only the fixedCombo flag changes', () => {
@@ -1177,7 +1179,7 @@ test('DDP failure or no match before discovery waits for local candidates instea
   for (const outcome of ['error', 'unmatched']) {
     const h = createHarness(true, true, {}, false, false);
     const url = 'file:///videos/B.mp4';
-    h.setFile(h.context.ddpCacheFile(url), JSON.stringify({episodeId: 8,
+    h.setFile(ddpCacheFile(url), JSON.stringify({episodeId: 8,
       cachedAt: Date.now() - 25 * 60 * 60 * 1000, comments: [{t: 100, text: 'stale B'}]}));
     h.readyOverlay(); h.setVideo(url);
     h.emitSidebar('dandanplay-trigger-match'); await flushMicrotasks();
@@ -1196,7 +1198,7 @@ test('DDP failure or no match before discovery waits for local candidates instea
 test('cached DDP discovery cannot replace a manual source that finished during the yield', async () => {
   const h = createHarness(false, true, {}, false, false);
   const url = 'file:///videos/B.mp4';
-  h.setFile(h.context.ddpCacheFile(url), JSON.stringify({episodeId: 8, cachedAt: Date.now(),
+  h.setFile(ddpCacheFile(url), JSON.stringify({episodeId: 8, cachedAt: Date.now(),
     animeTitle: 'Old title', comments: [{t: 100, text: 'old cached B'}]}));
   h.readyOverlay(); h.setVideo(url);
   h.emitSidebar('dandanplay-select-episode', {episodeId: 8, animeTitle: 'New title'});
@@ -1214,7 +1216,7 @@ test('an early manual DDP failure on a network URL can still use its stale cache
   const h = createHarness(true, true, {}, false, false);
   const url = 'https://example.com/video.m3u8';
   h.setNetworkResource(true);
-  h.setFile(h.context.ddpCacheFile(url), JSON.stringify({episodeId: 8,
+  h.setFile(ddpCacheFile(url), JSON.stringify({episodeId: 8,
     cachedAt: Date.now() - 25 * 60 * 60 * 1000, comments: [{t: 100, text: 'stale network'}]}));
   h.readyOverlay(); h.setVideo(url);
   h.emitSidebar('dandanplay-trigger-match'); await flushMicrotasks();
@@ -1304,7 +1306,7 @@ for (const entry of ['automatic', 'menu', 'sidebar']) {
 
     function assertDdpLoaded() {
       const load = harness.overlayMessages.filter((message) => message.name === 'load-danmaku').at(-1);
-      assert.equal(load.data.danmakuType, 'dandanplay');
+      assert.equal(harness.context.pluginState.currentDanmakuStatus.fileType, 'dandanplay');
       assert.deepEqual(load.data.comments.map(c => c.content), ['DDP comment']);
       assert.deepEqual(Array.from(harness.context.pluginState.danmakuFileList.selectedPaths), [filePath]);
       assert.deepEqual(Array.from(harness.context.buildDanmakuBrowserList(), (item) => item.text), ['DDP comment']);
@@ -1710,7 +1712,7 @@ test('the first cache write waits for mkdir and stores the video identity', asyn
 test('cache rejects invalid shapes and path collisions, and treats future dates as stale', () => {
   const h = createHarness(true);
   const url = 'file:///videos/C.mp4';
-  const file = h.context.ddpCacheFile(url);
+  const file = ddpCacheFile(url);
   h.setFile(file, JSON.stringify({episodeId: 7, comments: {}, cachedAt: Date.now()}));
   assert.equal(h.context.ddpReadVideoCache(url), null);
   h.setFile(file, JSON.stringify({episodeId: 7, comments: [], videoPath: 'different', cachedAt: Date.now()}));
@@ -1928,7 +1930,7 @@ test('renderer errors update load status while stale replies cannot alter the ne
 test('fresh cache bypasses matching and malformed DDP rows do not discard valid comments', async () => {
   const h = createHarness(true,true);
   const url='file:///videos/C.mp4';
-  h.setFile(h.context.ddpCacheFile(url),JSON.stringify({episodeId:7,cachedAt:Date.now(),comments:[{t:100,text:'cached'}]}));
+  h.setFile(ddpCacheFile(url),JSON.stringify({episodeId:7,cachedAt:Date.now(),comments:[{t:100,text:'cached'}]}));
   h.readyOverlay();
   h.setVideo(url);
   await flushMicrotasks();
@@ -2110,7 +2112,7 @@ test('startup, video loads, and DDP cache writes do not scan or evict disk cache
   assert.equal(h.fileReads.includes(expiredFile), false);
   assert.deepEqual(removed, []);
   assert.equal(commands.includes('/bin/rm'), false);
-  assert.deepEqual(h.fileWrites.map(write => write.filePath), [h.context.ddpCacheFile(videoUrl)]);
+  assert.deepEqual(h.fileWrites.map(write => write.filePath), [ddpCacheFile(videoUrl)]);
 });
 
 test('bangumi responses cannot replace a newer selection or search', async () => {
@@ -2595,15 +2597,15 @@ test('presets commit and transmit complete appearance tuples atomically', () => 
 test('Balanced differs from Nico only in scale and speed, including after restart', () => {
   const h = createHarness(true, false, {danmakuFontFamily: 'custom', strokeColor: '#123456', cssTextShadowBlur: 8});
   h.emitSidebar('set-style-preset', {preset: 'nico'});
-  const nico = h.context.buildLoadDanmakuPayload([], 'nico-json');
+  const nico = h.context.buildLoadDanmakuPayload([]);
   h.emitSidebar('set-style-preset', {preset: 'balanced'});
-  const balanced = h.context.buildLoadDanmakuPayload([], 'nico-json');
+  const balanced = h.context.buildLoadDanmakuPayload([]);
   assert.equal(balanced.canvasFontScale, nico.canvasFontScale / 2);
   assert.equal(balanced.scrollSpeed, nico.scrollSpeed / 2);
   assert.deepEqual({...balanced, loadId: nico.loadId,
     canvasFontScale: nico.canvasFontScale, scrollSpeed: nico.scrollSpeed}, {...nico});
   const restored = createHarness(true, false, Object.fromEntries(h.preferences));
-  const reload = restored.context.buildLoadDanmakuPayload([], 'nico-json');
+  const reload = restored.context.buildLoadDanmakuPayload([]);
   for (const key of ['canvasFontScale', 'scrollSpeed', 'danmakuFontFamily', 'danmakuFontWeight',
     'strokeWidth', 'strokeOpacity', 'strokeColor', 'strokeInversionColor', 'cssTextShadowBlur']) {
     assert.equal(reload[key], balanced[key], key);
@@ -3027,7 +3029,6 @@ test('auto offset notice reports the clamped offset', () => {
 });
 
 test('extractNumberFromName prioritizes explicit episode markers over codec/season/resolution numbers', () => {
-  const h = createHarness(true);
   const cases = [
     ['Title H.264 第05话', 5],
     ['[SubGroup] Anime 2nd Season [1080p][x265][10bit] 第05话', 5],
@@ -3076,7 +3077,7 @@ test('extractNumberFromName prioritizes explicit episode markers over codec/seas
     ['Gintama 251', 251],
   ];
   for (const [name, expected] of cases) {
-    assert.equal(h.context.extractNumberFromName(name), expected, name);
+    assert.equal(extractNumberFromName(name), expected, name);
   }
 });
 

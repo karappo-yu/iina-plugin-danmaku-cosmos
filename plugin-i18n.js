@@ -121,7 +121,6 @@ function createTranslator(lang) {
 }
 
 module.exports = {
-  PLUGIN_I18N: PLUGIN_I18N,
   getPluginLang: getPluginLang,
   createTranslator: createTranslator
 };
