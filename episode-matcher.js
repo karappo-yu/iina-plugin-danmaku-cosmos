@@ -18,32 +18,28 @@ function extractNumberFromName(name) {
   let suffix = /(\d{1,3})\s*(?:話|话|集)/g;
   while ((match = suffix.exec(name)) !== null) {
     let prefix = name.slice(0, match.index);
-    // 全12话/共 12集 describe the series length, not this file's episode.
+    // Skip labels for the series' total episode count.
     if (/\d$/.test(prefix) || /(?:全|共)\s*$/.test(prefix)) continue;
     return parseInt(match[1], 10);
   }
-  // A bare 第 also occurs in season labels (第2季/第2期). Only full
-  // numbered suffixes above count; English markers must start a token.
+  // Require full episode suffixes above to exclude season labels;
+  // English episode markers must start a token.
   match = name.match(/(?:^|[^a-z])(?:Episode|Ep\.?)\s*(\d{1,3})(?!\d|p\b|bit\b)/i);
   if (match) return parseInt(match[1], 10);
   // Bracketed episode numbers may carry a release revision suffix ([01v2]).
-  match = name.match(/\[(\d{1,3})(?:v\d)?\](?!.*\[)/i);
-  if (match) return parseInt(match[1], 10);
   match = name.match(/\[\d{1,3}(?:v\d)?\]/gi);
   if (match) {
     match = match[match.length - 1].match(/\[(\d{1,3})/);
     if (match) return parseInt(match[1], 10);
   }
-  // Fansub style "Title - 07": the number after a spaced dash is the episode,
-  // even when the title itself contains numbers (Mob Psycho 100 - 07,
-  // 86 - Eighty Six - 03, Spy x Family 2 - 04). Ignore technical suffixes
-  // such as " - 10-bit" and " - 2.0 AAC"; the last episode token wins.
+  // In fansub names such as "Title 100 - 07", use the last episode after a
+  // spaced dash, excluding technical suffixes like " - 10-bit" and " - 2.0 AAC".
   let dashMatches = name.match(/\s[-\u2013\u2014]\s*\d{1,3}(?:v\d)?(?!\d|p\b|-?bit\b|\.\d)(?=$|[\s.\[\]()_\-])/gi);
   if (dashMatches) {
     match = dashMatches[dashMatches.length - 1].match(/(\d{1,3})(?:v\d)?$/i);
     if (match) return parseInt(match[1], 10);
   }
-  // Vol. 通常指卷/碟号, 优先级低于明确的集数标记和方括号集数 ("Show Vol.2 [05]" 应为第 5 集)。
+  // Volume/disc numbers are a fallback after explicit and bracketed episodes.
   match = name.match(/(?:^|[^a-z])Vol\.?\s*(\d{1,3})(?!\d|p\b|bit\b)/i);
   if (match) return parseInt(match[1], 10);
   match = name.match(/(?:^|[_\-.\s])(\d{1,3})(?:_|\-|\.|\s|$)/);
@@ -138,7 +134,5 @@ function findDanmakuByEpisode(videoUrl, fileApi) {
 module.exports = {
   filePathFromUrl: filePathFromUrl,
   extractNumberFromName: extractNumberFromName,
-  extractEpisodeNumber: extractEpisodeNumber,
-  extractDanmakuNumber: extractDanmakuNumber,
   findDanmakuByEpisode: findDanmakuByEpisode
 };

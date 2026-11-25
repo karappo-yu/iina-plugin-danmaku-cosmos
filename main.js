@@ -11,11 +11,9 @@ let parseDanmakuSource = danmakuDocument.parseDanmakuSource;
 let projectDanmaku = danmakuDocument.projectDanmaku;
 let postSafeMessage = ipcTransport.postSafeMessage;
 var filePathFromUrl = episodeMatcher.filePathFromUrl;
-var extractNumberFromName = episodeMatcher.extractNumberFromName;
 var DDP_LOAD_ORIGIN = ddpClientModule.DDP_LOAD_ORIGIN;
 var ddpParseBody = ddpClientModule.ddpParseBody;
 var ddpErrStr = ddpClientModule.ddpErrStr;
-var ddpCacheFile = ddpClientModule.ddpCacheFile;
 var projectMatches = ddpClientModule.projectMatches;
 
 var overlay = iina.overlay;
@@ -34,9 +32,8 @@ let sidebarMessageHandlers = Object.create(null);
 let overlayMessageHandlers = Object.create(null);
 
 pluginState.danmakuEnabled = preferences.get("danmakuEnabled") !== false;
-pluginState.danmakuForceSimplified = !!preferences.get("danmakuForceSimplified"); // 默认 false,与 Info.json preferenceDefaults 一致
-// 弹幕时长自动偏移检测(nico-json): 加载时对比弹幕源时长与视频时长
-// 默认关闭: 时长差无法区分片头/片尾差异, 只提醒, 由用户在高级设置中手动开启自动设置
+pluginState.danmakuForceSimplified = !!preferences.get("danmakuForceSimplified");
+// Duration differences can come from opening or ending cuts, so auto-offset is opt-in.
 pluginState.danmakuAutoOffset = preferences.get("danmakuAutoOffset") !== undefined ? preferences.get("danmakuAutoOffset") : false;
 pluginState.danmakuBlocklist = [];
 try { pluginState.danmakuBlocklist = JSON.parse(preferences.get("danmakuBlocklist") || '[]') || []; } catch (e) { pluginState.danmakuBlocklist = []; }
@@ -48,15 +45,13 @@ pluginState.danmakuBlocklist = pluginState.danmakuBlocklist
 pluginState.danmakuBlocklistEnabled = !!preferences.get("danmakuBlocklistEnabled");
 pluginState.danmakuBlockTopEnabled = !!preferences.get("danmakuBlockTopEnabled");
 pluginState.danmakuBlockBottomEnabled = !!preferences.get("danmakuBlockBottomEnabled");
-var blockRegexes = []; // 编译缓存(列表变化时重建)
-// /.../ 词条中编译失败、超长或可能灾难性回溯的条目(按普通文字匹配,侧栏标记提示)
+var blockRegexes = [];
+// Invalid or unsafe regex entries fall back to literal matching and are marked in the sidebar.
 var blockInvalidEntries = [];
-// 正则长度上限必须在启动重建之前赋值: 函数声明会提升, var 赋值不会,
-// 否则启动时已保存的 /.../ 词条会因 undefined 比较退化为字面量匹配。
+// Initialize this before rebuilding: declarations are hoisted, assignments are not.
 var BLOCK_REGEX_MAX_LENGTH = 200;
 rebuildBlockRegexes();
-// 弹幕去重: 开关 + 区间(秒,1-5)。滚动弹幕在投影内静态合并为 "原文xN"(时间取组内最早);
-// 固定弹幕(顶部/底部)不在投影合并,由引擎 fixedCombo 在屏上渐进接续(计数 x2→x3,宿主生命周期延长)。
+// Projection merges scrolling duplicates; the engine chains fixed comments as they appear.
 pluginState.danmakuDedupeEnabled = !!preferences.get("danmakuDedupeEnabled");
 pluginState.danmakuDedupeWindow = parseFloat(preferences.get("danmakuDedupeWindow"));
 if (!isFinite(pluginState.danmakuDedupeWindow) || pluginState.danmakuDedupeWindow < 1 || pluginState.danmakuDedupeWindow > 5) pluginState.danmakuDedupeWindow = 2;
@@ -70,7 +65,7 @@ pluginState.strokeColor = preferences.get("strokeColor") || '#000000';
 pluginState.strokeInversionColor = preferences.get("strokeInversionColor") || '#ffffff';
 pluginState.commentLimit = preferences.get("commentLimit") !== undefined ? preferences.get("commentLimit") : 0;
 pluginState.scrollSpeed = preferences.get("scrollSpeed") !== undefined ? preferences.get("scrollSpeed") : 1.0;
-pluginState.danmakuTimeOffsetSec = 0; // 弹幕偏移不做持久化: 偏移量因视频/弹幕文件而异,每个会话从 0 开始
+pluginState.danmakuTimeOffsetSec = 0; // Video-specific offset; reset on load and never persisted.
 pluginState.danmakuFontFamily = preferences.get("danmakuFontFamily") || "";
 pluginState.danmakuFontWeight = preferences.get("danmakuFontWeight") || "500";
 var savedStylePreset = preferences.get("stylePreset");
@@ -87,16 +82,11 @@ var preferencesSyncTimer = null;
 var DDP_APP_ID = preferences.get("dandanplayAppId") || 't43832ky57';
 var DDP_APP_SECRET = preferences.get("dandanplayAppSecret") || 'IDnPEdEKDIziKeYVxm6VcaJE4Bv2fnzT';
 
-// Off by default: automatic matching hashes every opened video and calls the
-// DanDanPlay API. Only an explicit opt-in (true) enables it.
 pluginState.dandanplayAutoNetwork = preferences.get("dandanplayAutoNetwork") === true;
 
 pluginState.dandanplayState = {
   status: 'idle',
-  animeTitle: '',
-  episodeTitle: '',
   episodeId: null,
-  commentCount: 0,
   error: '',
   matches: null,
   matchType: ''
@@ -135,18 +125,16 @@ function syncPreferencesSoon() {
 var pendingDanmaku = null;
 let pendingLoadNotice = null;
 var currentVideoUrl = null;
-// 最后下发的 renderer 目标视频。渲染是否成功由 loadId 回执确认,
-// 不从弹幕文件读取成功或开关状态推断。
+// Target video of the last renderer load; only a matching loadId reply confirms success.
 var loadedDanmakuVideoUrl = null;
-// 同一 URL 也可能被重新加载;世代号用于丢弃旧异步 DDP 请求的回调。
+// A URL can be reloaded; generations reject asynchronous replies from the previous load.
 var danmakuLoadGeneration = 0;
 let awaitingFileLoaded = false;
 let videoHasEnded = false;
 let overlayAwaitingVideoRender = true;
 let overlayHiddenByUser = false;
-// Enabling keeps the native view transparent until the overlay acknowledges a
-// frame drawn at the current time. Revealing first can present the WebView's
-// frame from before it was disabled for one compositor frame during playback.
+// Keep the native view transparent until a current frame is acknowledged,
+// avoiding a flash of the WebView's previous frame when enabling playback.
 let overlayAwaitingEnableFrame = false;
 let overlayRevealId = 0;
 let overlayRevealTimer = null;
@@ -178,17 +166,16 @@ pluginState.danmakuFileList = {
 var danmakuCache = Object.create(null);
 
 pluginState.nicoJsonDateInfo = emptyNicoJsonDateInfo();
-// 时长检测: nico-json main 线程的 duration(下载弹幕时原视频长度,秒)与当前视频时长的差值
-// null = 无检测结果(非 nico-json / 无 duration 字段 / 时长一致)
+// Video duration minus source duration; null means no mismatch was found.
 pluginState.nicoJsonDurationDiff = null;
 pluginState.nicoJsonHasDuration = false;
 pluginState.danmakuFilterStartDay = null;
 pluginState.danmakuFilterEndDay = null;
 pluginState.danmakuFilterDensity = preferences.get("danmakuFilterDensity") !== undefined ? preferences.get("danmakuFilterDensity") : 0;
-var danmakuBrowserWatch = false; // sidebar 过滤 tab 是否在监听(控制播放时间推送)
+var danmakuBrowserWatch = false;
 var lastBrowserTimeSent = 0;
 pluginState.danmakuBrowserVisible = preferences.get("danmakuBrowserVisible") !== undefined ? !!preferences.get("danmakuBrowserVisible") : true;
-var openccSimplifier = null;     // 简繁转换器(tw→cn,懒加载;仅强制简体开启时构建)
+var openccSimplifier = null;
 
 // Preference names are an I/O mapping, not a second copy of state.
 const statePreferenceKeys = {
@@ -222,8 +209,6 @@ function blocklistPayload() {
 }
 
 // Presets are one state transaction, including their motion/layout settings.
-// Soft Nico appearance: native Hiragino default, weight 500, centered glyph
-// shadow without a hard outline. 2 engine units is ~4.3 px at 58 px text.
 const NICO_STYLE = {
   canvasFontScale: 1, danmakuFontFamily: '', danmakuFontWeight: '500',
   strokeWidth: 0, strokeOpacity: 1, strokeColor: '#000000', strokeInversionColor: '#ffffff',
@@ -315,9 +300,8 @@ function commitDdpState(patch) {
   commitState({dandanplayState: Object.assign({}, pluginState.dandanplayState, patch)}, false);
 }
 
-// Intents that carry no payload by design. Every other message is dropped
-// unless its payload is an object; each handler then validates its own fields,
-// so a missing field never becomes a setting (undefined/false/0).
+// Reject malformed IPC before missing payloads can become settings.
+// Payloadless intents receive an empty object; handlers validate their own fields.
 const PAYLOADLESS_MESSAGES = Object.freeze({
   'toggle-danmaku': true, 'request-state': true, 'danmaku-file-add': true, 'dandanplay-trigger-match': true,
   'overlay-ready': true, 'seek-disable': true, 'seek-enable': true,
@@ -425,9 +409,8 @@ function setNicoJsonDurationAvailability(hasDuration) {
   commitState({nicoJsonHasDuration: hasDuration});
 }
 
-// nico-json 加载时自动检测时长差: diff = 视频时长 - 弹幕源时长
-// |diff| < 1 视为一致(弹幕源时长只能精确到秒,1s 以内的差值忽略);否则提醒,并(开关开启时)自动设置偏移
-// 返回 true 表示本次比较有效(拿到了视频时长)
+// Source duration has whole-second precision, so differences below one second are ignored.
+// Return false only when video duration is unavailable, allowing a deferred retry.
 function runDurationCompare(danmakuDuration) {
   var videoDuration;
   try { videoDuration = mpv.getNumber("duration"); } catch (e) { videoDuration = NaN; }
@@ -452,7 +435,7 @@ function checkNicoJsonDuration(doc) {
   setNicoJsonDurationAvailability(danmakuDuration !== null);
   if (danmakuDuration === null) return;
   if (runDurationCompare(danmakuDuration)) return;
-  // file-loaded 瞬间 mpv duration 可能还没就绪,延迟重试一次(仅当仍选中同一弹幕文件)
+  // mpv duration may be unavailable at file-loaded; retry only for the same source and video.
   var savedPath = pluginState.danmakuFileList.selectedPaths.length > 0 ? pluginState.danmakuFileList.selectedPaths[0] : null;
   let generation = danmakuLoadGeneration;
   setTimeout(function () {
@@ -462,7 +445,7 @@ function checkNicoJsonDuration(doc) {
   }, 800);
 }
 
-// 加载弹幕后的 OSD: 若时长检测发现不一致,优先提醒(避免被"已加载"覆盖)
+// Keep the duration warning visible instead of replacing it with the load notification.
 function osdAfterDanmakuLoad(loadedName, loadedMessageKey) {
   if (pluginState.nicoJsonDurationDiff !== null) {
     if (pluginState.danmakuAutoOffset) {
@@ -480,7 +463,6 @@ function sendDanmakuFilterInfo() {
   let projection = getCurrentProjection();
   sidebarPostMessage("danmaku-filter-info", {
     fileType: pluginState.currentDanmakuStatus.fileType,
-    totalCount: pluginState.nicoJsonDateInfo.totalCount,
     sourceTotalCount: projection ? projection.sourceTotalCount : 0,
     filterStartDay: pluginState.danmakuFilterStartDay, filterEndDay: pluginState.danmakuFilterEndDay,
     filterDensity: pluginState.danmakuFilterDensity, filteredCount: projection ? projection.filteredCount : 0,
@@ -488,14 +470,12 @@ function sendDanmakuFilterInfo() {
   });
 }
 
-// load-danmaku 载荷统一构造。设置字段全量携带: overlay 端逐字段幂等应用,重复携带无副作用。
-function buildLoadDanmakuPayload(comments, danmakuType) {
+function buildLoadDanmakuPayload(comments) {
   resetOverlayTimeUpdates();
   return {
     loadId: ++overlayLoadId,
     playback: playbackSnapshot(),
     comments: comments,
-    danmakuType: danmakuType,
     canvasMode: pluginState.currentCanvasMode,
     videoAspectRatio: getVideoAspectRatio(),
     fullscreen: !!(core.window && core.window.fullscreen),
@@ -512,7 +492,6 @@ function buildLoadDanmakuPayload(comments, danmakuType) {
     danmakuFontFamily: pluginState.danmakuFontFamily,
     danmakuFontWeight: pluginState.danmakuFontWeight,
     fixedCombo: pluginState.danmakuDedupeEnabled,
-    nakaDedupeWindow: 0,
   };
 }
 
@@ -558,8 +537,6 @@ function applyDanmakuFilterDensity(density) {
   refreshDanmakuFilters();
 }
 
-// IINA's package-local CommonJS loader owns initialization; no WebView path
-// messages, persisted absolute paths, or eval are involved.
 function ensureSimplifier() {
   if (openccSimplifier) return true;
   if (!pluginState.danmakuForceSimplified) return false;
@@ -571,10 +548,6 @@ function ensureSimplifier() {
     return false;
   }
 }
-
-// ── 屏蔽词过滤(默认字面量匹配;/.../ 包裹时编译为正则) ──────────────────────
-// 普通词按大小写不敏感纯文本匹配,避免 ".", "+", "()" 等触发误匹配或 ReDoS;
-// 仅当词条以 /.../ (可选 i/m/s/u 修饰符) 包裹时才作为正则编译并限制最大长度(BLOCK_REGEX_MAX_LENGTH 在文件头部初始化)。
 
 // Reads a quantifier at pattern[index]. `repeats` is true when the item can
 // occur more than once (*, +, {n,}, {n,m}/{n} with a maximum above 1).
@@ -615,22 +588,12 @@ function normalizeRegexGroupName(name) {
   return normalized || null;
 }
 
-// A synchronous RegExp cannot be interrupted, and a saved catastrophic entry
-// would freeze every load after a restart. Three shapes are rejected:
-// 1. a group that can repeat (any maximum above 1, bounded or not) while its
-//    body is ambiguous, i.e. contains a quantifier or an alternation:
-//    (a+)+, (a+){9}, (a{1,5})+, (a|aa)+ (exponential);
-// 2. two or more variable choices along one alternative, including optional
-//    and bounded repetitions and alternatives inside groups. A short bound
-//    does not stop choices multiplying: a?a?...b, a{0,16}a{0,16}...b.
-//    Fixed {n} has no length choice. Top-level alternatives count separately.
-//    A backreference to a variable-length capture re-matches every length the
-//    group tried, so it counts as one more choice: (.*)\1x is cubic.
-// 3. variable wildcards without a preceding start anchor on their alternative:
-//    .*x restarts from every character on failure. ^.*x remains usable unless
-//    both m and s allow repeated line starts to consume the entire remainder.
-// This is conservative: safe forms such as (ab|cd)+, (a+)? and two bounded
-// numeric fields are also rejected; they fall back to marked literal entries.
+// Synchronous regex matching cannot be interrupted. Reject repeated ambiguous
+// groups, multiple variable choices per alternative (including backreferences),
+// and unanchored variable wildcards that can restart at every character.
+// Bounds still multiply choices; exact {n} repetitions add no length choice.
+// With both m and s, even anchored wildcards can repeatedly scan the remainder.
+// This conservative check also rejects some safe patterns; they fall back to literals.
 function isUnsafeBlockPattern(pattern, flags) {
   flags = flags || '';
   let unicode = flags.indexOf('u') !== -1;
@@ -758,7 +721,7 @@ function isUnsafeBlockPattern(pattern, flags) {
   return false;
 }
 
-// Returns {regex} for valid /.../ entries, otherwise a pre-lowered literal.
+// Only explicit /pattern/flags entries use regex; ordinary words match literally.
 function compileBlockEntry(entry) {
   if (!entry) return null;
   var regexMatch = /^\/([\s\S]+)\/([imsu]*)$/.exec(entry);
@@ -802,7 +765,6 @@ function isBlockedText(text) {
   return false;
 }
 
-// 渲染过滤与列表 blocked 标记共用判定,各屏蔽条件独立叠加。
 function isBlockedComment(text, position) {
   return (pluginState.danmakuBlockTopEnabled && position === 'ue') ||
     (pluginState.danmakuBlockBottomEnabled && position === 'shita') ||
@@ -858,7 +820,6 @@ function sendDanmakuBrowserData(items) {
   pushBrowserTime(mpv.getNumber('time-pos'), true);
 }
 
-// 播放时间推送(300ms 节流),sidebar 据此计算在屏弹幕窗口
 function pushBrowserTime(timeSec, force) {
   if (typeof timeSec !== 'number' || !isFinite(timeSec)) return;
   var now = Date.now();
@@ -867,9 +828,8 @@ function pushBrowserTime(timeSec, force) {
   sidebarPostMessage("danmaku-visible-time", { time: timeSec, offset: pluginState.danmakuTimeOffsetSec });
 }
 
-var browserDataPending = false; // 列表开关关闭期间数据变化: 不构建不发送,打开时补发一次
+var browserDataPending = false; // Defer list construction and delivery until the list is shown.
 
-// 弹幕加载/切换/清空后,若 sidebar 正在监听则推送刷新列表
 function notifyBrowserDataChanged() {
   if (!danmakuBrowserWatch) return;
   if (!pluginState.danmakuBrowserVisible) {
@@ -879,8 +839,6 @@ function notifyBrowserDataChanged() {
   sendDanmakuBrowserData(buildDanmakuBrowserList());
 }
 
-// 向 overlay 重发当前弹幕(内容经 getEffectiveContent 单源处理)。
-// 屏蔽词/简体等设置变化后调用,让渲染内容与 sidebar 列表同步更新。
 function sameFormattedComments(a, b) {
   if (a === b) return true;
   if (a.length !== b.length) return false;
@@ -900,13 +858,13 @@ function sendCurrentDanmaku(force) {
   let doc = path && danmakuCache[path];
   if (!overlayReady || !pluginState.danmakuEnabled || !doc) return false;
   let comments = getEffectiveContent(path);
-  // fixedCombo 只随 load-danmaku 载荷下发,投影不变但开关变化时也必须重发。
+  // fixedCombo travels only with loads, so its changes require a reload even with identical comments.
   if (!force && lastOverlayProjection && lastOverlayProjection.doc === doc &&
       lastOverlayProjection.fixedCombo === pluginState.danmakuDedupeEnabled &&
       sameFormattedComments(lastOverlayProjection.comments, comments)) return false;
   lastOverlayProjection = {doc: doc, comments: comments, fixedCombo: pluginState.danmakuDedupeEnabled};
   updateDanmakuStatus({fileType: pluginState.currentDanmakuStatus.fileType, isLoaded: false});
-  overlayPostMessage('load-danmaku', buildLoadDanmakuPayload(comments, pluginState.currentDanmakuStatus.fileType));
+  overlayPostMessage('load-danmaku', buildLoadDanmakuPayload(comments));
   loadedDanmakuVideoUrl = currentVideoUrl;
   return true;
 }
@@ -940,12 +898,9 @@ function loadFirstLocalDanmaku() {
 function ddpSyncState() {
   sidebarPostMessage("dandanplay-status", {
     status: pluginState.dandanplayState.status,
-    animeTitle: pluginState.dandanplayState.animeTitle,
-    episodeTitle: pluginState.dandanplayState.episodeTitle,
     episodeId: pluginState.dandanplayState.episodeId,
-    commentCount: pluginState.dandanplayState.commentCount,
     error: pluginState.dandanplayState.error,
-    matches: projectMatches(pluginState.dandanplayState.matches),
+    matches: pluginState.dandanplayState.matches,
     autoNetwork: pluginState.dandanplayAutoNetwork,
     matchType: pluginState.dandanplayState.matchType
   });
@@ -957,10 +912,7 @@ function ddpResetState() {
   ddpBangumiGeneration += 1;
   commitState({dandanplayState: {
     status: 'idle',
-    animeTitle: '',
-    episodeTitle: '',
     episodeId: null,
-    commentCount: 0,
     error: '',
     matches: null,
     matchType: ''
@@ -990,10 +942,7 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
 
   commitState({dandanplayState: {
     status: 'matching',
-    animeTitle: '',
-    episodeTitle: '',
     episodeId: null,
-    commentCount: 0,
     error: '',
     matches: null,
     matchType: ''
@@ -1035,7 +984,6 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
     commitDdpState({matches: projectMatches(data.matches)});
 
     if (data.isMatched) {
-      if (!isManual && loadEnabled && !pluginState.danmakuEnabled) return;
       var match = data.matches[0];
       var forceLoad = isManual || (loadEnabled && pluginState.dandanplayAutoNetwork);
       commitDdpState({matchType: 'hash'});
@@ -1072,7 +1020,7 @@ function ddpUpsertFileListEntry(episodeId, animeTitle, episodeTitle, converted, 
 function ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted, forceLoad, fresh) {
   var virtualPath = ddpUpsertFileListEntry(episodeId, animeTitle, episodeTitle, converted, fresh);
   if (forceLoad) {
-    // 网络弹幕的激活统一复用 loadDanmakuFile,避免复制 overlay/pending/开关逻辑。
+    // Share source activation, readiness queuing and enable handling with local files.
     loadDanmakuFile(virtualPath, { enableDanmaku: true, loadedMessageKey: 'network_loaded' });
   } else {
     sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
@@ -1086,7 +1034,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
   var isManual = isManualDdpLoad(origin);
   var videoUrl = currentVideoUrl;
   if (loadGeneration === undefined) loadGeneration = danmakuLoadGeneration;
-  commitDdpState({status: 'loading', episodeId: episodeId, animeTitle: animeTitle || '', episodeTitle: episodeTitle || ''});
+  commitDdpState({status: 'loading', episodeId: episodeId});
   ddpSyncState();
 
   ddpGetComments(episodeId).then(function(res) {
@@ -1120,7 +1068,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
     var converted = ddpConvertComments(data.comments);
 
     if (converted.comments.length === 0) {
-      // 全部条目 malformed:视为下载失败,不覆盖磁盘上的 stale 缓存
+      // Treat entirely malformed downloads as failures, preserving any stale cache.
       commitDdpState({status: 'error', error: t('ddp_no_comments')});
       ddpSyncState();
       core.osd(t('ddp_no_comments'));
@@ -1130,7 +1078,7 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
 
     ddpSaveVideoCache(videoUrl, episodeId, animeTitle, episodeTitle, converted);
 
-    commitDdpState({status: 'loaded', commentCount: converted.comments.length});
+    commitDdpState({status: 'loaded'});
     ddpSyncState();
     ddpAddToFileListAndLoad(episodeId, animeTitle, episodeTitle, converted, forceLoad, true);
   }).catch(function(err) {
@@ -1147,7 +1095,7 @@ function ddpFallbackToLocal(allowStale) {
   if (!pluginState.dandanplayAutoNetwork || !pluginState.danmakuEnabled) return;
   if (pluginState.currentDanmakuStatus.isLoaded) return;
   if (loadFirstLocalDanmaku()) return;
-  // 仅下载失败路径启用:无本地文件时回退到过期缓存(成功下载会覆盖写同一文件)
+  // Stale cache is a download-failure fallback only; successful refreshes overwrite it.
   if (!allowStale) return;
   var cached = ddpReadVideoCache(currentVideoUrl);
   if (cached && cached.stale && cached.comments && cached.comments.length > 0) {
@@ -1272,7 +1220,6 @@ function discoverDanmakuForVideo(url, loadGeneration, activate) {
     return;
   }
 
-  // === Step 1: Build complete file list (local + cached DDP) ===
   var discovered = findDanmakuByEpisode(url);
   let current = pluginState.danmakuFileList;
   let mergeFiles = function (found, existing) {
@@ -1292,7 +1239,6 @@ function discoverDanmakuForVideo(url, loadGeneration, activate) {
     addDDPToFileList(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.document, ddpCached.stale);
   }
 
-  // === Step 2: Send file list (all available sources, regardless of priority) ===
   sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
   sendDanmakuFilterInfo();
   notifyBrowserDataChanged();
@@ -1309,19 +1255,14 @@ function autoLoadDiscoveredDanmaku(url, loadGeneration, ddpCached) {
   if (ddpCached === undefined) ddpCached = ddpReadVideoCache(url);
   let hasFreshDDPCache = ddpCached && !ddpCached.stale && ddpCached.comments && ddpCached.comments.length > 0;
 
-  // === Step 3: Auto-load to overlay based on autoNetwork setting ===
   if (pluginState.dandanplayAutoNetwork) {
-    // network-first: 缓存新鲜(24h TTL 内)时只用缓存,完全跳过后台自动匹配
-    // (不重算 hash、不发 API)。缓存刷新发生在 TTL 过期后,
-    // 或用户在「网络弹幕」面板手动触发匹配时(dandanplay-trigger-match);
-    // 过期缓存带「(旧)」标记进列表,不自动加载,等刷新结果
+    // Fresh cache skips hashing and API requests until expiry or an explicit manual match.
     if (hasFreshDDPCache) {
       ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.document, true, true);
     } else {
       ddpAutoMatchAndLoad(url, DDP_LOAD_ORIGIN.AUTO, loadGeneration);
     }
   } else {
-    // local-first: prefer local files, fallback to DDP cache as last resort
     if (loadFirstLocalDanmaku()) return;
     if (hasFreshDDPCache) {
       ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.document, true, true);
@@ -1331,9 +1272,8 @@ function autoLoadDiscoveredDanmaku(url, loadGeneration, ddpCached) {
   }
 }
 
-// 自动加载、菜单和侧栏选择共用同一入口。读取成功后才切换选中源;
-// 本地文件在首次 I/O 时解析,同一视频会话内重选复用 IR。
-// DDP 虚拟条目在加入列表时已写入会话缓存,无需另从磁盘重建。
+// All source selections share this entry. Switch only after a successful read;
+// local documents and DDP virtual entries reuse the current video's parsed cache.
 function loadDanmakuFile(path, options) {
   if (!path || awaitingFileLoaded) return;
   options = options || {};
@@ -1341,7 +1281,6 @@ function loadDanmakuFile(path, options) {
   let loadedMessageKey = options.loadedMessageKey || 'loaded';
   let fileInfo = findDanmakuFileByPath(path);
   let fileName = fileInfo ? fileInfo.filename : path.split("/").pop();
-  let fileType = 'dandanplay';
   let doc = options.reload && path.indexOf('dandanplay://') !== 0 ? null : danmakuCache[path];
 
   if (!doc && path.indexOf('dandanplay://') !== 0) {
@@ -1381,7 +1320,7 @@ function loadDanmakuFile(path, options) {
     return;
   }
 
-  // 用户选定本地来源后,此前的后台匹配/下载不得覆盖该选择。
+  // A manual local selection invalidates earlier background matching and downloads.
   if (enableDanmaku && path.indexOf('dandanplay://') !== 0) ddpResetState();
 
   // An active or in-flight source can be reused without resetting its date
@@ -1399,7 +1338,7 @@ function loadDanmakuFile(path, options) {
 
   if (enableDanmaku) ensureDanmakuEnabled(true);
   danmakuCache[path] = doc;
-  fileType = doc.sourceType.indexOf('nico-json') === 0 ? 'nico-json' : doc.sourceType;
+  let fileType = doc.sourceType.indexOf('nico-json') === 0 ? 'nico-json' : doc.sourceType;
   commitState({danmakuFileList: Object.assign({}, pluginState.danmakuFileList, {selectedPaths: [path]})}, false);
   resetNicoJsonFilterState();
   commitState({nicoJsonDateInfo: doc.dateInfo});
@@ -1515,12 +1454,9 @@ function setObserver(start) {
 
   if (start && !awaitingFileLoaded && overlayReady && pluginState.danmakuEnabled) {
     timePosListenerID = event.on("mpv.time-pos.changed", function (t) {
-      // Until a seek restarts playback, mpv reports the seek target rather
-      // than the landing frame. While paused, the overlay repaints on every
-      // update, so forwarding a lone seek's target draws one snapshot and then
-      // nudges it to the real frame time; the playback-restart sync sends the
-      // landing position instead. Repeated seeks (dragging) keep following the
-      // targets live, and the final restart still lands on the real frame.
+      // While paused, defer a lone seek until playback-restart provides the
+      // landing frame time, avoiding a second visible correction. Repeated
+      // seeks follow drag targets live and still anchor at the final restart.
       if (!(videoSeekInProgress && !videoSeekRepeated && core.status.paused)) {
         queueOverlayTimeUpdate(t, videoSeekInProgress);
       }
@@ -1641,16 +1577,14 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("set-css-text-shadow-blur", function (data) {
-    if (data && isValidCssTextShadowBlur(data.blur)) commitState({cssTextShadowBlur: data.blur});
+    if (isValidCssTextShadowBlur(data.blur)) commitState({cssTextShadowBlur: data.blur});
   });
 
   sidebarOnMessage("set-danmaku-force-simplified", function (data) {
     if (typeof data.value !== 'boolean') return;
     commitState({danmakuForceSimplified: data.value});
 
-    // 当前已加载弹幕时重新驱动加载管道（内容经 getEffectiveContent 单源转换）
     resendDanmakuToOverlay();
-    // 过滤 tab 列表与 overlay 同源: 简体开关变化 → 重新构建并推送
     notifyBrowserDataChanged();
   });
 
@@ -1679,7 +1613,7 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("set-style-preset", function (data) {
-    if (!data || !Object.prototype.hasOwnProperty.call(STYLE_PRESETS, data.preset)) return;
+    if (!Object.prototype.hasOwnProperty.call(STYLE_PRESETS, data.preset)) return;
     commitState(Object.assign({}, STYLE_PRESETS[data.preset], {stylePreset: data.preset}));
   });
 
@@ -1692,16 +1626,14 @@ function registerSidebarHandlers() {
     // 0 is the explicit "unlimited" value; a missing field is not.
     if (!isFiniteNumber(data.density) || data.density < 0) return;
     applyDanmakuFilterDensity(data.density);
-    notifyBrowserDataChanged(); // 密度过滤变化 → 列表与 overlay 同步重建
+    notifyBrowserDataChanged();
   });
-
-  // ── 屏蔽词 ──
 
   sidebarOnMessage("danmaku-blocklist-set-enabled", function (data) {
     if (typeof data.enabled !== 'boolean') return;
     commitState({danmakuBlocklistEnabled: data.enabled});
 
-    // 屏蔽词为零时开关不影响弹幕内容,跳过重建以省性能
+    // An empty blocklist cannot change the projection, so skip the rebuild.
     if (pluginState.danmakuBlocklist.length > 0) {
       notifyBrowserDataChanged();
       resendDanmakuToOverlay();
@@ -1719,9 +1651,9 @@ function registerSidebarHandlers() {
     resendDanmakuToOverlay();
   });
 
-  // 按词值删除(不按下标): 渲染与点击之间列表可能变化,下标会删错词
+  // Remove by value because the list may change between rendering and clicking.
   sidebarOnMessage("danmaku-blocklist-remove", function (data) {
-    var word = data && data.word !== undefined ? String(data.word) : null;
+    var word = data.word !== undefined ? String(data.word) : null;
     var idx = word !== null ? pluginState.danmakuBlocklist.indexOf(word) : -1;
     if (idx < 0) return;
     commitState({danmakuBlocklist: pluginState.danmakuBlocklist.filter(function (_, i) { return i !== idx; })});
@@ -1730,9 +1662,7 @@ function registerSidebarHandlers() {
     resendDanmakuToOverlay();
   });
 
-  // ── 顶部 / 底部弹幕屏蔽 ──
   sidebarOnMessage("danmaku-position-filter-set", function (data) {
-    if (!data) return;
     let top = typeof data.danmakuBlockTopEnabled === 'boolean' ? data.danmakuBlockTopEnabled : pluginState.danmakuBlockTopEnabled;
     let bottom = typeof data.danmakuBlockBottomEnabled === 'boolean' ? data.danmakuBlockBottomEnabled : pluginState.danmakuBlockBottomEnabled;
     if (top !== pluginState.danmakuBlockTopEnabled || bottom !== pluginState.danmakuBlockBottomEnabled) {
@@ -1743,11 +1673,8 @@ function registerSidebarHandlers() {
     }
   });
 
-  // ── 弹幕去重 ──
-
-  // 点击列表时间戳 → 跳转到该弹幕时间(弹幕 vpos 换算为视频秒,考虑弹幕偏移)
   sidebarOnMessage("danmaku-seek", function (data) {
-    if (!data || typeof data.vpos !== 'number' || !isFinite(data.vpos)) return;
+    if (typeof data.vpos !== 'number' || !isFinite(data.vpos)) return;
     var sec = data.vpos / 100 - (pluginState.danmakuTimeOffsetSec || 0);
     if (sec < 0) sec = 0;
     try {
@@ -1783,15 +1710,11 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("request-state", function () {
-    // 主进程在视频/弹幕切换时维护状态;侧栏懒加载只拉取快照,不能重建并覆盖会话文件列表。
+    // Lazy sidebar initialization reads the existing session without rediscovering sources.
     sidebarPostMessage('danmaku-state', stateSnapshot());
     sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
     sendDanmakuFilterInfo();
     ddpSyncState();
-  });
-
-  sidebarOnMessage("sidebar-log", function (data) {
-    console.log('[sidebar] ' + data.msg);
   });
 
   sidebarOnMessage("select-danmaku-file", function (data) {
@@ -1886,8 +1809,7 @@ function registerSidebarHandlers() {
     }
   });
 
-  // 过滤 tab: sidebar 懒加载,只能由 sidebar 主动拉取弹幕列表;watch 控制播放时间推送
-  sidebarOnMessage("danmaku-browser-request", function (data) {
+  sidebarOnMessage("danmaku-browser-request", function () {
     if (pluginState.danmakuBrowserVisible) {
       sendDanmakuBrowserData(buildDanmakuBrowserList());
     } else {
@@ -1900,8 +1822,7 @@ function registerSidebarHandlers() {
     danmakuBrowserWatch = data.watch;
     if (danmakuBrowserWatch) {
       var t = mpv.getNumber("time-pos");
-      // force: 播种锚点必须送达——若被 300ms 节流吞掉,暂停播放时不再有
-      // time-pos 事件,sidebar 的 browserVpos 保持 -1,列表永不锚定
+      // Bypass throttling to seed the anchor; paused video may send no further time updates.
       if (t !== undefined && t !== null) pushBrowserTime(t, true);
     }
   });
@@ -1957,12 +1878,8 @@ event.on('mpv.idle-active.changed', function (idle) {
   if (idle && awaitingFileLoaded && core.status.idle) awaitingFileLoaded = false;
 });
 
-// IINA observes plugin-requested properties as MPV_FORMAT_DOUBLE. `seeking` is
-// a flag, so mpv cannot convert it and IINA hands the callback 0: a
-// `mpv.seeking.changed` listener never sees `true`. mpv's own events bracket a
-// seek reliably instead: `seek` is sent after the target is set, and
-// `playback-restart` after the landing frame's time is published, both ahead
-// of the matching time-pos change.
+// IINA observes properties as doubles, so the seeking flag cannot report true.
+// Native seek/playback-restart events bracket target and landing times reliably.
 event.on("mpv.seek", function () {
   if (videoSeekInProgress) videoSeekRepeated = true;
   videoSeekInProgress = true;
@@ -1997,7 +1914,7 @@ event.on("iina.window-fs.changed", function (fullscreen) {
 
 function registerOverlayHandlers() {
   // IINA replaces listeners by name; re-register after every overlay navigation.
-  overlayOnMessage("overlay-ready", function (data) {
+  overlayOnMessage("overlay-ready", function () {
     markOverlayReady();
   });
 
@@ -2010,7 +1927,7 @@ function registerOverlayHandlers() {
   });
 
   overlayOnMessage("danmaku-load-result", function (data) {
-    if (!data || data.loadId !== overlayLoadId) return;
+    if (data.loadId !== overlayLoadId) return;
     if (!data.success) {
       let path = pluginState.danmakuFileList.selectedPaths[0];
       // A failed candidate remains in the list for an explicit retry, but is
@@ -2049,7 +1966,7 @@ function registerOverlayHandlers() {
   });
 
   overlayOnMessage("danmaku-reveal-ready", function (data) {
-    if (data && Number.isSafeInteger(data.revealId)) finishOverlayReveal(data.revealId);
+    if (Number.isSafeInteger(data.revealId)) finishOverlayReveal(data.revealId);
   });
 
   overlayOnMessage("seek-disable", function () { core.osd(t('seek_disable')); });

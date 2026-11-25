@@ -25,8 +25,8 @@ let strokeWidth = 0;
 let cssTextShadowBlur = 2;
 let commentLimit = 0;
 let scrollSpeed = 1.0;
-// 固定弹幕(顶部/底部)渐进合并开关(= main 的去重开关): 投影不预合并固定弹幕,
-// 引擎 fixedCombo 在屏上把仍在显示中的同文本弹幕接成链(x2→x3,宿主生命周期延长)。
+// Projection leaves fixed comments unmerged; the engine grows their counts
+// and extends overlapping display windows progressively.
 let fixedComboEnabled = false;
 let danmakuTimeOffsetSec = 0;
 let danmakuFontFamily = "";
@@ -129,7 +129,6 @@ function createDomEmojiRenderer(container) {
     const padEm = padY / rasterFontSize;
     const tile = {
       image: 'url("' + canvas.toDataURL() + '")',
-      lineHeight: lineHeight,
       padEm: padEm,
       tileHeightEm: lineHeight + padEm * 2,
     };
@@ -215,7 +214,7 @@ const canvasEventHandlers = {
   seekEnable: () => iina.postMessage("seek-enable", {}),
   jump: (e) => {
     if (e.targetVpos !== null && e.targetVpos !== undefined) {
-      iina.postMessage("jump", { targetSec: e.targetVpos / 100, message: e.message, to: e.to });
+      iina.postMessage("jump", { targetSec: e.targetVpos / 100, message: e.message });
     } else if (e.to) {
       iina.postMessage("jump-video", { videoId: e.to, message: e.message });
     }
@@ -267,9 +266,9 @@ function disposeCanvasRenderer() {
 }
 
 var DEFAULT_DANMAKU_FONT_STACKS = {
-  gothic: { font: '"游ゴシック体", "游ゴシック", "Yu Gothic", YuGothic, yugothic, YuGo-Medium, "Hiragino Sans", HiraginoSans', offset: -0.04, weight: 400 },
-  mincho: { font: '"游明朝体", "游明朝", "Yu Mincho", YuMincho, yumincho, YuMin-Medium, "Hiragino Mincho ProN", HiraMinProN, "Hiragino Mincho ProN W3", HiraMinProN-W3', offset: -0.01, weight: 400 },
-  defont: { font: '"Hiragino Sans", "ヒラギノ角ゴシック", HiraginoSans', offset: -0.05, weight: 600 },
+  gothic: { font: '"游ゴシック体", "游ゴシック", "Yu Gothic", YuGothic, yugothic, YuGo-Medium, "Hiragino Sans", HiraginoSans', offset: -0.04 },
+  mincho: { font: '"游明朝体", "游明朝", "Yu Mincho", YuMincho, yumincho, YuMin-Medium, "Hiragino Mincho ProN", HiraMinProN, "Hiragino Mincho ProN W3", HiraMinProN-W3', offset: -0.01 },
+  defont: { font: '"Hiragino Sans", "ヒラギノ角ゴシック", HiraginoSans', offset: -0.05 },
 };
 
 function buildDanmakuFontConfig() {
@@ -432,7 +431,7 @@ function initCanvasRenderer(data) {
   if (!canvas || typeof NiconiComments === 'undefined') return;
   const useCssMode = canvasNicoMode === 'css';
   canvas.style.opacity = useCssMode ? 0 : canvasOpacity;
-  canvas.style.display = danmakuVisible ? '' : 'none';
+  canvas.style.display = '';
   disposeCanvasRenderer();
   const viewportSize = updateCanvasViewport();
   niconiComments = new NiconiComments(canvas, data, {
@@ -452,15 +451,13 @@ function initCanvasRenderer(data) {
       fonts: buildDanmakuFontConfig(),
       scrollSpeed: scrollSpeed,
       fixedCombo: fixedComboEnabled,
-      nakaDedupeWindow: 0, // 滚动弹幕由投影静态合并,引擎不再二次去重
+      nakaDedupeWindow: 0, // Projection already merges scrolling comments.
     },
   });
-  formattedComments = data;
   if (useCssMode) {
     updateCanvasViewport();
     domEmojiRenderer = createDomEmojiRenderer(document.querySelector('[data-dm-css-container]'));
   }
-  // 初始化时同步当前播放速度(CSS 模式滚动动画时长按倍率缩放)
   if (danmakuVisible && niconiComments && niconiComments.setPlaybackSpeed) {
     niconiComments.setPlaybackSpeed(playbackSpeed);
   }
@@ -537,7 +534,6 @@ function applyOpacityToDom() {
   if (cssContainer) cssContainer.style.opacity = canvasOpacity;
 }
 
-// load-danmaku 共用的逐字段幂等设置应用(重复携带无副作用)
 function applyOverlaySettings(data) {
   if (data.fullscreen !== undefined) videoFullscreen = !!data.fullscreen;
   if (data.videoAspectRatio !== undefined) {
@@ -616,12 +612,9 @@ onPluginMessage("load-danmaku", (data) => {
     applyOverlaySettings(data);
     if (data.playback) syncPlaybackState(data.playback);
     if (!Array.isArray(data.comments)) throw new Error('Invalid formatted comment list');
-    formattedComments = data.comments;
-    if (formattedComments) {
-      canvasIsPlaying = !isPaused;
-      initCanvasRenderer(formattedComments);
-      startCanvasLoop();
-    }
+    canvasIsPlaying = !isPaused;
+    initCanvasRenderer(data.comments);
+    startCanvasLoop();
   } catch (error) { reportCanvasError(error); }
 });
 
@@ -703,8 +696,8 @@ onPluginMessage("toggle-danmaku", (data) => {
     catch (error) { reportCanvasError(error); }
   } else {
     startCanvasLoop();
-    // 暂停中重开: rAF loop 不会启动(shouldRunCanvasLoop 要求正在播放),
-    // 且关闭分支已 clear() 清空内容——必须强制重绘一次,否则画面空白直到恢复播放
+    // Disabling cleared the renderer. Redraw now because paused playback
+    // has no running loop to restore the comments.
     drawCanvasAtVpos((getVideoTimeSec() + danmakuTimeOffsetSec) * 100, true);
   }
   if (data.enabled && Number.isSafeInteger(data.revealId)) acknowledgeReveal(data.revealId);
@@ -786,8 +779,7 @@ onPluginMessage("set-danmaku-offset", (data) => {
     danmakuTimeOffsetSec = Number(data.offset) || 0;
   }
   if (danmakuVisible && formattedComments && niconiComments) {
-    // 偏移变化等同于时间轴跳转。CSSRenderer 使用增量 DOM，
-    // 必须先清空，否则旧时间点的弹幕会与新时间点的弹幕叠加。
+    // An offset change is a seek: clear old CSS nodes before drawing the new time.
     niconiComments.clear();
     drawCanvasAtVpos((getVideoTimeSec() + danmakuTimeOffsetSec) * 100, true);
   }

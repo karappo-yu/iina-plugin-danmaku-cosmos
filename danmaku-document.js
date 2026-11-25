@@ -187,7 +187,7 @@ function parseDanmakuSource(rawContent, path, sourceHint) {
       } else {
         const p = (attrs.p || '').split(','), time = Number(p[0]), mode = Number(p[1]), size = Number(p[2]);
         if (!p[0].trim() || !Number.isInteger(mode) || mode < 1 || mode > 6) continue;
-        // niconicomments (read-only) only supports global @逆 NicoScript reversal, not per-comment reverse commands; map mode 6 to naka.
+        // The engine supports only global reversal, so mode 6 uses scrolling layout.
         const commands = [mode === 4 ? 'shita' : mode === 5 ? 'ue' : 'naka'];
         if (size >= 36) commands.push('big'); else if (size > 0 && size <= 15) commands.push('small');
         const color = Number.isFinite(Number(p[3])) ? (Number(p[3]) >>> 0) & 0xFFFFFF : 0xFFFFFF;
@@ -233,11 +233,8 @@ function selectDensity(comments, density) {
   return comments.filter(function (c) { return keep.has(c); });
 }
 
-// Shared static policy: greedy earliest host, inclusive window, same text AND
-// position, owners excluded, blocked groups kept separate. The screen feed
-// applies it to scrolling comments only — fixed (ue/shita) comments stay
-// individual so the engine's fixedCombo can chain them progressively — while
-// the list applies it to every position to keep duplicate rows compact.
+// Merge greedily from the earliest host within an inclusive window, matching
+// text, position and blocked state. Owners never merge.
 function mergeProjectedComments(items, windowVpos) {
   if (!(windowVpos > 0)) return items;
   const hosts = new Map(), result = [];
@@ -277,11 +274,8 @@ function projectDanmaku(doc, settings) {
     return {comment: c, text: text, blocked: !c.isOwner && !!(settings.isBlocked && settings.isBlocked(text, c.pos)), count: 1};
   });
   const listMerged = mergeProjectedComments(items, settings.dedupeWindow);
-  // Screen feed: static merge for scrolling (naka) comments only. Fixed
-  // comments pass through unmerged; the overlay engine's fixedCombo rebuilds
-  // them into progressive chains (count grows as duplicates arrive, host
-  // lifetime extends), which a static projection cannot express. Without a
-  // dedupe window nothing merges and the source order is kept as is.
+  // Keep fixed comments individual on screen so the engine can grow their
+  // counts and extend their lifetimes as duplicates arrive.
   const screenMerged = settings.dedupeWindow > 0
     ? mergeProjectedComments(items.filter(function (item) {
       return item.comment.pos === 'naka';
@@ -294,7 +288,7 @@ function projectDanmaku(doc, settings) {
   listMerged.forEach(function (item) {
     const c = item.comment;
     browserItems.push({id: c.id, t: c.vpos, text: item.text + (item.count > 1 ? 'x' + item.count : ''),
-      blocked: item.blocked, count: item.count, _fixed: c.pos !== 'naka', _owner: c.isOwner});
+      blocked: item.blocked, _owner: c.isOwner});
   });
   browserItems.sort(function (a, b) { return a.t - b.t || a.id - b.id; });
   screenMerged.forEach(function (item) {
@@ -307,9 +301,8 @@ function projectDanmaku(doc, settings) {
       comboSuffixColor: item.count > 1 ? suffixColors[c.id % suffixColors.length] : undefined});
   });
   return {formatted: formatted, items: browserItems, totalCount: doc.comments.length, sourceTotalCount: sliced.length,
-    filteredCount: kept.length, dateSlicedCount: sliced.length, densityKeptCount: kept.length};
+    filteredCount: kept.length};
 }
 
-module.exports = {parseDanmakuSource: parseDanmakuSource, projectDanmaku: projectDanmaku, emptyDateInfo: emptyDateInfo,
-  getCommentPosition: getCommentPosition, decodeXmlText: decodeXmlText, mergeProjectedComments: mergeProjectedComments,
-  canSimplifySource: canSimplifySource};
+module.exports = {parseDanmakuSource: parseDanmakuSource, projectDanmaku: projectDanmaku,
+  emptyDateInfo: emptyDateInfo, canSimplifySource: canSimplifySource};

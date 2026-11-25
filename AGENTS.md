@@ -292,7 +292,6 @@ Based on the `niconicomments` third-party library. All sources arrive as the sam
 - **No verbose debug logging in production code.** Only log errors and one-time initialization messages.
 - **Never** use `console.log` in high-frequency callbacks (especially `time-update` / `canvasRenderLoop`).
 - Error logs in `catch` blocks are acceptable (e.g., `console.log('[ddp] saveVideoCache error: ' + e)`).
-- The sidebar relays its debug output via `iina.postMessage("sidebar-log", ...)` to `main.js`, gated by a `DEBUG_LOG` flag (default `false`).
 - When debugging is needed, temporarily add logs and remove them before committing — do not leave trace-level logging in shipped code.
 
 ## Known Limitations

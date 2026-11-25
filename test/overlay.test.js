@@ -51,7 +51,7 @@ function harness() {
 }
 
 const comment = (text, commands, owner = false, user = 'u') => ({t: 100, text, _commands: commands, _isOwner: owner, _dateSec: 1767196800, _userId: user});
-const load = (h, data) => h.send('load-danmaku', {danmakuType: 'dandanplay', comments: formatted(data), canvasMode: 'css'});
+const load = (h, data) => h.send('load-danmaku', {comments: formatted(data), canvasMode: 'css'});
 const loadResults = h => h.messages.filter(message => message.name === 'danmaku-load-result');
 const successes = h => loadResults(h).filter(message => message.data.success);
 
@@ -437,7 +437,7 @@ test('an enable reveal acknowledgment follows the draw by two frames and a later
 
 test('invalid formatted input reports a correlated load error instead of escaping the message handler', () => {
   const h = harness();
-  assert.doesNotThrow(() => h.send('load-danmaku', {loadId:7,danmakuType:'nico-json',comments: 'invalid'}));
+  assert.doesNotThrow(() => h.send('load-danmaku', {loadId:7,comments: 'invalid'}));
   const result = h.messages.findLast(m => m.name === 'danmaku-load-result').data;
   assert.equal(result.loadId,7);
   assert.equal(result.success,false);
@@ -445,7 +445,7 @@ test('invalid formatted input reports a correlated load error instead of escapin
 
 test('4:3 video uses full height and keeps hidden CSS canvas at 1x1 while allocating Canvas mode buffer', () => {
   const h = harness();
-  h.send('load-danmaku', {loadId: 1, danmakuType: 'dandanplay', comments: formatted([comment('test', [])]), videoAspectRatio: 4 / 3});
+  h.send('load-danmaku', {loadId: 1, comments: formatted([comment('test', [])]), videoAspectRatio: 4 / 3});
   assert.equal(h.canvas.width, 1);
   assert.equal(h.canvas.height, 1);
   assert.deepEqual({...h.instances[0].options.viewportSize}, {width: 1440, height: 1080});
@@ -509,7 +509,7 @@ test('fullscreen expands 4:3 output across pillarboxes without changing video he
 
 test('fullscreen startup and resize use the full width, including ultrawide displays', () => {
   const h = harness();
-  h.send('load-danmaku', {danmakuType: 'dandanplay', comments: formatted([comment('test', [])]), videoAspectRatio: 4 / 3, fullscreen: true});
+  h.send('load-danmaku', {comments: formatted([comment('test', [])]), videoAspectRatio: 4 / 3, fullscreen: true});
   assert.equal(h.canvas.width, 1);
   assert.deepEqual(h.instances[0].size, {width: 1920, height: 1080});
   h.context.window.innerWidth = 1680;
@@ -718,7 +718,7 @@ test('overlay keeps CA layers and passes the fixedCombo flag through to the engi
   assert.equal(h.instances[0].options.dedupeCA, false);
   assert.equal(h.instances[0].options.config.fixedCombo, false);
   assert.equal(h.instances[0].options.config.nakaDedupeWindow, 0);
-  h.send('load-danmaku', {danmakuType: 'dandanplay', comments: formatted([comment('fixed', ['ue'])]), canvasMode: 'css', fixedCombo: true});
+  h.send('load-danmaku', {comments: formatted([comment('fixed', ['ue'])]), canvasMode: 'css', fixedCombo: true});
   assert.equal(h.instances[1].options.config.fixedCombo, true);
 });
 

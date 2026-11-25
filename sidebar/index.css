@@ -1,9 +1,4 @@
-/*
- * Danmaku Cosmos Sidebar — aligned with IINA 1.5 native sidebar design system.
- * Derived from IINA 1.5.1 SidebarPane / SidebarTrackSelector / SidebarSliderView /
- * LayoutValue (sidebarMargin 16, containerPadding 12, stackSpacing 16, cornerRadius 8)
- * and adaptive Dark / Light appearance tokens (SidebarContainerBorder, SidebarTabBtnBorder).
- */
+/* Sidebar appearance follows IINA 1.5.1 native controls and light/dark tokens. */
 
 * {
   box-sizing: border-box;
@@ -136,7 +131,6 @@ body::-webkit-scrollbar {
   display: none;
 }
 
-/* ========== Tab bar (IINA 1.5 / macOS 26 capsule pill) ========== */
 .tabbar {
   display: flex;
   align-items: center;
@@ -187,7 +181,6 @@ body::-webkit-scrollbar {
   flex-shrink: 0;
 }
 
-/* ========== Pane stack & IINA 1.5 Container Cards ========== */
 .pane-stack {
   display: flex;
   flex-direction: column;
@@ -227,7 +220,6 @@ body::-webkit-scrollbar {
   gap: 6px;
 }
 
-/* ========== Typography ========== */
 .section-header {
   display: flex;
   align-items: baseline;
@@ -269,7 +261,7 @@ body::-webkit-scrollbar {
 .value-text {
   font-size: 12px;
   font-weight: 400;
-  /* Fixed width keeps flex:1 slider track length stable across label widths ("500 /min" vs "Unlimited") */
+  /* Keep slider tracks stable when localized value labels change width. */
   width: 60px;
   flex-shrink: 0;
   text-align: right;
@@ -277,7 +269,6 @@ body::-webkit-scrollbar {
   font-variant-numeric: tabular-nums;
 }
 
-/* ========== Rows ========== */
 .section {
   margin-bottom: 0;
 }
@@ -316,7 +307,6 @@ body::-webkit-scrollbar {
   min-width: 150px;
 }
 
-/* ========== Switch (macOS 26 Tahoe NSSwitch capsule thumb) ========== */
 .switch {
   position: relative;
   display: inline-block;
@@ -366,15 +356,6 @@ body::-webkit-scrollbar {
   transform: translateX(12px);
 }
 
-.switch input:disabled {
-  cursor: not-allowed;
-}
-
-.switch input:disabled + .switch-slider {
-  opacity: 0.4;
-}
-
-/* ========== Grouped toggle card ========== */
 .toggle-group .toggle-row {
   padding: 8px var(--card-padding);
   min-height: 36px;
@@ -389,7 +370,6 @@ body::-webkit-scrollbar {
   border-top: 1px solid var(--separator);
 }
 
-/* ========== Slider (macOS 26 Tahoe NSSlider capsule thumb) ========== */
 .slider {
   flex: 1;
   min-width: 0;
@@ -426,23 +406,6 @@ body::-webkit-scrollbar {
   transform: scale(1.06);
 }
 
-.slider::-moz-range-track {
-  height: 4px;
-  background: var(--track);
-  border-radius: var(--radius-pill);
-}
-
-.slider::-moz-range-thumb {
-  width: 19px;
-  height: 12px;
-  border-radius: var(--radius-pill);
-  background: var(--thumb);
-  border: 0.5px solid var(--thumb-border);
-  box-shadow: var(--thumb-shadow);
-  cursor: pointer;
-}
-
-/* ========== Select / Inputs / ColorWell (IINA 1.5 AppKit controls) ========== */
 select {
   -webkit-appearance: none;
   appearance: none;
@@ -527,9 +490,7 @@ input[type="color"]::-webkit-color-swatch {
   border-radius: 4px;
 }
 
-/* ========== Buttons (AppKit push button style) ========== */
-.danmaku-file-action-btn,
-.btn {
+.danmaku-file-action-btn {
   padding: 4px 10px;
   min-height: 24px;
   font-size: 12px;
@@ -545,17 +506,14 @@ input[type="color"]::-webkit-color-swatch {
   transition: background 0.12s ease, border-color 0.12s ease;
 }
 
-.danmaku-file-action-btn:hover,
-.btn:hover {
+.danmaku-file-action-btn:hover {
   background: var(--control-bg-hover);
 }
 
-.danmaku-file-action-btn:active,
-.btn:active {
+.danmaku-file-action-btn:active {
   background: var(--control-bg-active);
 }
 
-/* ========== Segmented control (IINA 1.5 flush NSSegmentedControl) ========== */
 .segmented {
   display: flex;
   background: var(--seg-track);
@@ -615,7 +573,6 @@ input[type="color"]::-webkit-color-swatch {
   display: none;
 }
 
-/* ========== Danmaku track section (1:1 IINA 1.5 SidebarSubtitlesPane) ========== */
 .danmaku-track-section {
   display: flex;
   flex-direction: column;
@@ -690,7 +647,6 @@ input[type="color"]::-webkit-color-swatch {
   color: var(--secondary-label);
 }
 
-/* Track-style row matching SidebarTrackSelector (26px height, 4px left accent bar, 11px right tag) */
 .danmaku-file-item {
   display: flex;
   align-items: center;
@@ -710,7 +666,6 @@ input[type="color"]::-webkit-color-swatch {
   border-top: 1px solid var(--separator);
 }
 
-/* Left accent pill indicator (4px x 16px, cornerRadius 2px, matching TrackSelector.CellView) */
 .danmaku-file-selector {
   width: 4px;
   height: 16px;
@@ -759,11 +714,6 @@ input[type="color"]::-webkit-color-swatch {
   letter-spacing: 0.02em;
 }
 
-.danmaku-file-item.disabled {
-  opacity: 0.45;
-  pointer-events: none;
-}
-
 .danmaku-file-item-error {
   font-size: 10px;
   color: var(--danger);
@@ -778,7 +728,6 @@ input[type="color"]::-webkit-color-swatch {
   color: var(--tertiary-label);
 }
 
-/* ========== Range selector (Date Slice) ========== */
 .range-selector {
   position: relative;
   width: 100%;
@@ -858,7 +807,6 @@ input[type="color"]::-webkit-color-swatch {
   color: var(--secondary-label);
 }
 
-/* ========== DanDanPlay section ========== */
 .dandanplay-error {
   margin-top: 8px;
   padding: 6px 9px;
@@ -946,7 +894,6 @@ input[type="color"]::-webkit-color-swatch {
   user-select: none;
 }
 
-/* ========== Filter tab: virtualized danmaku browser & blocklist ========== */
 .browser-total {
   font-size: 11px;
   font-variant-numeric: tabular-nums;

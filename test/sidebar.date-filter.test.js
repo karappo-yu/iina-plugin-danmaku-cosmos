@@ -110,7 +110,7 @@ function createSidebar() {
   };
   function emit(name, data) { handlers.get(name)(data); }
   function filterInfo(extra = {}) {
-    emit('danmaku-filter-info', { fileType: 'nico-json', totalCount: 97, dateInfo, filterStartDay: null, filterEndDay: null, ...extra });
+    emit('danmaku-filter-info', { fileType: 'nico-json', dateInfo, filterStartDay: null, filterEndDay: null, ...extra });
   }
   emit('danmaku-state', { enabled: true, danmakuLoaded: true, danmakuFileType: 'nico-json' });
   filterInfo();
@@ -192,10 +192,10 @@ test('source changes cancel pending day edits; a one-day source works and undate
   h.emit('danmaku-file-list', { selectedPaths: ['/new.json'], jsonFiles: [], xmlFiles: [] });
   h.flush();
   assert.equal(h.filterMessages().length, 0);
-  h.filterInfo({ totalCount: 1, dateInfo: { firstDay, lastDay: firstDay, dayCounts: [[firstDay, 1]], undatedCount: 0 } });
+  h.filterInfo({ dateInfo: { firstDay, lastDay: firstDay, dayCounts: [[firstDay, 1]], undatedCount: 0 } });
   assert.equal(h.elements.get('filter-coverage').style.width, '100%');
   assert.equal(h.elements.get('filter-count').textContent, '1');
-  h.filterInfo({ totalCount: 1, dateInfo: { firstDay: null, lastDay: null, dayCounts: [], undatedCount: 1 } });
+  h.filterInfo({ dateInfo: { firstDay: null, lastDay: null, dayCounts: [], undatedCount: 1 } });
   assert.equal(h.elements.get('danmaku-filter-section').style.display, 'none');
 });
 
