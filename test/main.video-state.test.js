@@ -1800,6 +1800,21 @@ test('IPC envelopes prevent template interpolation while preserving the string',
   assert.equal(JSON.parse(decodeURIComponent(h.overlayMessages.at(-1).wire.__encoded)).fontFamily, '`' + text);
 });
 
+test('an escaped field keeps the rest of a large IPC message compact and lossless', () => {
+  const {postSafeMessage} = require('../ipc-transport.js');
+  const comments = Array.from({length: 2000}, (_, id) => ({id, content: '普通の弾幕😀'}));
+  comments[100].content = '“100%” %FF %20 % ${word} ` \ud800';
+  const data = {comments};
+  let wire;
+  postSafeMessage({postMessage(key, value) { wire = value; }}, 'load-danmaku', data);
+  const serialized = JSON.stringify(wire);
+  const bytes = Buffer.byteLength(serialized);
+  assert.ok(bytes < Buffer.byteLength(JSON.stringify(data)) * 1.2, 'one quoted comment should not inflate the whole feed');
+  assert.ok(wire.__encoded.includes('普通の弾幕😀'));
+  const received = JSON.parse(vm.runInNewContext('String.raw`' + serialized + '`'));
+  assert.deepEqual(JSON.parse(decodeURIComponent(received.__encoded)), data);
+});
+
 test('IPC preserves paths, regexes, quotes, backslashes and Unicode through the real template boundary', () => {
   const h = createHarness(true);
   const word = '`‘’“”\\w+${text} 😀';
@@ -1818,13 +1833,35 @@ test('IPC preserves paths, regexes, quotes, backslashes and Unicode through the 
 
 test('automatic local loading prioritizes exact JSON and retries unreadable candidates', () => {
   const h = createHarness(true);
-  h.setFile('/videos/A.json', '[{"fork":"main","comments":[]}]');
+  h.setFile('/videos/A.json', '[{"fork":"main","comments":[{"body":"A","vposMs":1000}]}]');
   h.readyOverlay();
   h.setVideo('file:///videos/A.mp4');
   assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['/videos/A.json']);
   h.failRead('/videos/A.json');
   h.setVideo('file:///videos/A.mp4');
   assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['/videos/A.xml']);
+});
+
+test('automatic discovery skips unrelated and empty candidates without displacing a usable source', () => {
+  for (const candidate of ['[{"chapter":1}]', '[{"fork":"main","comments":[]}]',
+    '[{"chat":{"deleted":1,"vpos":1,"content":"removed"}}]']) {
+    const h = createHarness(true);
+    h.readyOverlay();
+    h.setFile('/videos/A.json', candidate);
+    h.setVideo('file:///videos/A.mp4');
+    assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['/videos/A.xml']);
+    assert.deepEqual(h.overlayMessages.filter(m => m.name === 'load-danmaku').map(m => m.data.comments.length), [1]);
+    h.ackLoad();
+    h.emitSidebar('select-danmaku-file', {path: '/videos/A.json'});
+    const selected = h.context.pluginState.danmakuFileList.selectedPaths[0];
+    if (candidate.includes('chapter')) {
+      assert.equal(selected, '/videos/A.xml');
+      assert.equal(h.context.pluginState.currentDanmakuStatus.isLoaded, true);
+    } else {
+      assert.equal(selected, '/videos/A.json', 'an explicit selection can load a recognized empty source');
+      assert.deepEqual(h.overlayMessages.findLast(m => m.name === 'load-danmaku').data.comments, []);
+    }
+  }
 });
 
 test('episode 1 does not prefix-match episode 10', () => {
@@ -1939,6 +1976,130 @@ test('fresh cache bypasses matching and malformed DDP rows do not discard valid 
   const list=h.context.ddpConvertComments([null,{p:4,m:'bad'}, {p:'Infinity,1,16777215,id',m:'bad'}, {p:'1,1,16777215,abc123',m:'ok'}]);
   assert.equal(list.comments.length,1);
   assert.equal(list.comments[0].userId,'abc123');
+});
+
+test('network replays reuse the fresh cache in either priority mode without a directory scan', async () => {
+  for (const autoNetwork of [false, true]) {
+    const h = createHarness(true, autoNetwork);
+    const url = 'https://example.com/episode-7.m3u8';
+    const cacheFile = ddpCacheFile(url);
+    h.setNetworkResource(true);
+    h.setFile(cacheFile, JSON.stringify({episodeId: 7, cachedAt: Date.now(), comments: [{t: 100, text: 'cached'}]}));
+    h.readyOverlay();
+    h.setVideo(url);
+    await flushMicrotasks();
+    assert.deepEqual(h.fileReads, [cacheFile]);
+    assert.deepEqual(h.directoryReads, []);
+    assert.deepEqual(h.httpRequests, []);
+    assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.jsonFiles, file => file.path), ['dandanplay://7']);
+    assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['dandanplay://7']);
+    assert.match(loadedComments(h.overlayMessages).at(-1), /cached/);
+  }
+});
+
+test('enabling after discovery and falling back after expiry share one parsed cache per video', async t => {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  let clock = now;
+  t.mock.method(Date, 'now', () => clock);
+  for (const network of [false, true]) {
+    for (const expires of [false, true]) {
+      clock = now;
+      const h = createHarness(false, true);
+      const url = network ? 'https://example.com/episode-7.m3u8' : 'file:///videos/C.mp4';
+      const cacheFile = ddpCacheFile(url);
+      h.setNetworkResource(network);
+      h.setFile(cacheFile, JSON.stringify({episodeId: 7, cachedAt: now - day + 1, comments: [{t: 100, text: 'cached'}]}));
+      h.readyOverlay();
+      h.setVideo(url);
+      assert.deepEqual(h.fileReads, [cacheFile]);
+      assert.equal(loadedComments(h.overlayMessages).length, 0);
+      assert.deepEqual(h.httpRequests, []);
+      if (expires) clock++;
+      h.toggleDanmaku();
+      await flushMicrotasks();
+      assert.equal(h.httpRequests.length, expires ? 1 : 0);
+      if (expires) {
+        assert.equal(loadedComments(h.overlayMessages).length, 0);
+        assert.match(h.context.pluginState.danmakuFileList.jsonFiles[0].filename, /old/i);
+        h.rejectNextHttp(new Error('offline'));
+        await flushMicrotasks();
+      }
+      assert.match(loadedComments(h.overlayMessages).at(-1), /cached/);
+      assert.deepEqual(h.fileReads, [cacheFile]);
+    }
+  }
+});
+
+test('a successful refresh replaces the session cache even if the old file remains on disk', async () => {
+  const url = 'file:///videos/C.mp4';
+  const cacheFile = ddpCacheFile(url);
+  const h = createHarness(true, true);
+  h.setFile(cacheFile, JSON.stringify({episodeId: 7, cachedAt: Date.now() - 86400000, comments: [{t: 100, text: 'old'}]}));
+  h.readyOverlay();
+  h.setVideo(url);
+  await flushMicrotasks();
+  h.resolveNextHttp({statusCode: 200, data: {isMatched: true, matches: [{episodeId: 8}]}});
+  await flushMicrotasks();
+  h.resolveNextHttp({statusCode: 200, data: {comments: [{p: '1,1,16777215,u', m: 'fresh episode eight'}]}});
+  await flushMicrotasks();
+  assert.match(loadedComments(h.overlayMessages).at(-1), /fresh episode eight/);
+  assert.equal(h.fileWrites.length, 0, 'fixture mkdir failed so the old disk file is still present');
+
+  // The failed renderer clears its selection. A later enable must rediscover a
+  // playable source and evaluate the timestamp of the successful download.
+  h.ackLoad(false);
+  h.toggleDanmaku();
+  h.toggleDanmaku();
+  await flushMicrotasks();
+  assert.equal(h.httpRequests.length, 2);
+  assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['dandanplay://8']);
+  assert.deepEqual(h.fileReads, [cacheFile]);
+});
+
+test('choosing any cached episode from the file list supersedes a pending download', async () => {
+  for (const priorEpisode of [7, 9]) {
+    const h = createHarness(true);
+    const url = 'file:///videos/C.mp4';
+    h.setFile(ddpCacheFile(url), JSON.stringify({episodeId: 7, cachedAt: Date.now(), comments: [{t: 100, text: 'keep seven'}]}));
+    h.readyOverlay();
+    h.setVideo(url);
+    h.ackLoad();
+    if (priorEpisode !== 7) {
+      h.emitSidebar('dandanplay-select-episode', {episodeId: priorEpisode});
+      h.resolveNextHttp({statusCode: 200, data: {comments: [{p: '1,1,16777215,u', m: 'nine'}]}});
+      await flushMicrotasks();
+      h.ackLoad();
+    }
+    h.emitSidebar('dandanplay-select-episode', {episodeId: 8});
+    h.emitSidebar('select-danmaku-file', {path: 'dandanplay://7'});
+    const loadsAfterClick = loadedComments(h.overlayMessages);
+    const writesAfterClick = h.fileWrites.length;
+    h.resolveNextHttp({statusCode: 200, data: {comments: [{p: '1,1,16777215,u', m: 'old download'}]}});
+    await flushMicrotasks();
+    assert.match(loadsAfterClick.at(-1), /keep seven/);
+    assert.deepEqual(loadedComments(h.overlayMessages), loadsAfterClick);
+    assert.deepEqual(Array.from(h.context.pluginState.danmakuFileList.selectedPaths), ['dandanplay://7']);
+    assert.equal(h.fileWrites.length, writesAfterClick);
+  }
+});
+
+test('obsolete file hashes cannot start a matching request for a previous video', async () => {
+  const h = createHarness(true, true);
+  const hashes = new Map();
+  h.setExec((command, args) => new Promise(resolve => hashes.set(args.at(-1), resolve)));
+  h.readyOverlay();
+  for (const name of ['A', 'B', 'C']) h.setVideo('file:///videos/' + name + '.mp4');
+  assert.equal(hashes.size, 3);
+  const result = {status: 0, stdout: '0123456789abcdef0123456789abcdef 3000'};
+  hashes.get('/videos/A.mp4')(result);
+  hashes.get('/videos/B.mp4')({status: 1});
+  await flushMicrotasks();
+  assert.deepEqual(h.httpRequests, []);
+  hashes.get('/videos/C.mp4')(result);
+  await flushMicrotasks();
+  assert.equal(h.httpRequests.length, 1);
+  assert.match(h.httpRequests[0].url, /\/api\/v2\/match$/);
 });
 
 test('XML scans skip comments and self-closing elements without consuming the next danmaku', () => {
@@ -2279,7 +2440,7 @@ test('a failed explicit file refresh keeps the cached active document', async ()
 });
 
 test('completed mpv seeks explicitly synchronize even sub-threshold forward movement', () => {
-  const h = createHarness(true); h.readyOverlay();
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
   h.overlayMessages.length = 0;
   h.emitEvent('mpv.playback-restart');
   assert.equal(h.overlayMessages.length, 0);
@@ -2293,7 +2454,7 @@ test('completed mpv seeks explicitly synchronize even sub-threshold forward move
 });
 
 test('paused seeks forward only the landing frame time, not the seek target', () => {
-  const h = createHarness(true); h.readyOverlay();
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
   h.setPaused(true);
   h.overlayMessages.length = 0;
   const timeUpdates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => ({time: m.data.time, seek: m.data.seek}));
@@ -2312,7 +2473,7 @@ test('paused seeks forward only the landing frame time, not the seek target', ()
 });
 
 test('dragging while paused follows each seek target live and lands on the real frame', () => {
-  const h = createHarness(true); h.readyOverlay();
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
   h.setPaused(true);
   h.overlayMessages.length = 0;
   const timeUpdates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => ({time: m.data.time, seek: m.data.seek}));
@@ -2338,7 +2499,7 @@ test('dragging while paused follows each seek target live and lands on the real 
 });
 
 test('seeks during playback keep forwarding time-pos', () => {
-  const h = createHarness(true); h.readyOverlay();
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
   h.setPaused(false);
   h.overlayMessages.length = 0;
   h.emitEvent('mpv.seek');
@@ -2350,7 +2511,7 @@ test('seeks during playback keep forwarding time-pos', () => {
 });
 
 test('a busy overlay receives one time evaluation and then only the latest pending progress', () => {
-  const h = createHarness(true); h.readyOverlay();
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
   h.overlayMessages.length = 0;
   const updates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => m.data);
   for (let time = 0; time <= 1000; time++) h.emitEvent('mpv.time-pos.changed', time);
@@ -2366,7 +2527,7 @@ test('a busy overlay receives one time evaluation and then only the latest pendi
 });
 
 test('coalescing retains a seek until the latest anchor is delivered', () => {
-  const h = createHarness(true); h.readyOverlay();
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
   h.overlayMessages.length = 0;
   const updates = () => h.overlayMessages.filter(m => m.name === 'time-update').map(m => m.data);
   h.emitEvent('mpv.time-pos.changed', 10);
@@ -2384,7 +2545,7 @@ test('coalescing retains a seek until the latest anchor is delivered', () => {
 });
 
 test('returning to the in-flight time replaces an intermediate pending seek', () => {
-  const h = createHarness(true); h.readyOverlay();
+  const h = createHarness(true); h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
   h.overlayMessages.length = 0;
   h.emitEvent('mpv.time-pos.changed', 10);
   h.emitEvent('mpv.seek');
@@ -2451,7 +2612,12 @@ test('source replacement, disabling and render failure invalidate pending time',
     const old = h.overlayMessages.findLast(m => m.name === 'time-update').data;
     if (transition === 'source') await h.loadFromMenu('/videos/B.xml');
     else if (transition === 'disable') { h.toggleDanmaku(); h.toggleDanmaku(); }
-    else if (transition === 'failure') h.emitOverlay('danmaku-load-result', {loadId, success: false});
+    else if (transition === 'failure') {
+      h.emitOverlay('danmaku-load-result', {loadId, success: false});
+      h.emitEvent('mpv.time-pos.changed', 1);
+      assert.equal(h.overlayMessages.findLast(m => m.name === 'time-update').data.timeId, old.timeId);
+      h.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
+    }
     else { h.emitEvent('iina.window-loaded'); h.readyOverlay(); }
     h.emitEvent('mpv.time-pos.changed', 2);
     h.emitEvent('mpv.time-pos.changed', 3);
@@ -2469,7 +2635,7 @@ test('time delivery rejects invalid values and remains idle until overlay readin
   const h = createHarness(true);
   h.context.queueOverlayTimeUpdate(10, true);
   assert.equal(h.overlayMessages.filter(m => m.name === 'time-update').length, 0);
-  h.readyOverlay();
+  h.readyOverlay(); h.setVideo('file:///videos/A.mp4');
   h.overlayMessages.length = 0;
   for (const value of [NaN, Infinity, -Infinity, '10', null, undefined]) h.emitEvent('mpv.time-pos.changed', value);
   assert.equal(h.overlayMessages.filter(m => m.name === 'time-update').length, 0);

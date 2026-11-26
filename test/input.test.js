@@ -48,6 +48,20 @@ test('IINA package modules initialize without Node exports, WebView paths, or ca
   assert.equal(opencc.Converter({from: 'tw', to: 'cn'})('繁體著急'), '繁体着急');
 });
 
+test('JSON detection rejects unrelated arrays and preserves recognizable empty exports', () => {
+  assert.throws(() => parse('[{"chapter":1}]'), /Unsupported danmaku source/);
+  for (const [source, type] of [
+    [[], 'nico-json-legacy'],
+    [[{thread: {resultcode: 0}}], 'nico-json-legacy'],
+    [[{fork: 'main', duration: 100, comments: []}], 'nico-json-v1'],
+    [{source: 'dandanplay', comments: []}, 'dandanplay'],
+  ]) {
+    const doc = parseDanmakuSource(JSON.stringify(source));
+    assert.equal(doc.sourceType, type);
+    assert.equal(doc.comments.length, 0);
+  }
+});
+
 test('XML format detection reads the root after the prolog, never comment body markup', () => {
   const prolog = '\uFEFF \n<?xml version="1.0"?>\n<!-- <packet><chat>fake</chat></packet> -->\n';
   for (const body of ['literal <chat', '<![CDATA[<packet><chat>literal</chat></packet>]]>', '<!-- <chat>ignored</chat> -->real']) {

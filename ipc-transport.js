@@ -1,6 +1,8 @@
 // Lossless IPC transport boundary for IINA WebViews.
-// Payloads containing template syntax, curly quotes, or lone UTF-16 surrogates
-// travel inside a URI-encoded JSON envelope; ordinary payloads stay plain objects.
+// Both WebViews decode the envelope with decodeURIComponent followed by JSON.parse.
+// Leave ordinary JSON and Unicode literal, even when one field needs an envelope.
+
+const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 function escapeLoneSurrogates(text) {
   return text.replace(/[\uD800-\uDFFF]/g, function (unit, index) {
@@ -14,7 +16,7 @@ function escapeLoneSurrogates(text) {
 
 function needsIPCEnvelope(value) {
   if (typeof value === 'string') {
-    return /[`\u2018-\u201D]|\$\{/.test(value) || escapeLoneSurrogates(value) !== value;
+    return /[`\u2018-\u201D]|\$\{/.test(value) || loneSurrogate.test(value);
   }
   if (!value || typeof value !== 'object') return false;
   return Object.keys(value).some(function (key) {
@@ -27,8 +29,10 @@ function postSafeMessage(target, key, data) {
   if (needsIPCEnvelope(payload)) {
     // Older JavaScriptCore versions may stringify lone surrogates literally.
     // JSON Unicode escapes preserve the original code units and are URI-safe.
-    let json = escapeLoneSurrogates(JSON.stringify(payload));
-    payload = { __encoded: encodeURIComponent(json) };
+    let json = JSON.stringify(payload);
+    if (loneSurrogate.test(json)) json = escapeLoneSurrogates(json);
+    // A literal percent must also survive the receiver's single URI decode.
+    payload = { __encoded: json.replace(/[%`\u2018-\u201D]|\$(?=\{)/g, encodeURIComponent) };
   }
   target.postMessage(key, payload);
 }
