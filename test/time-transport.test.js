@@ -78,6 +78,46 @@ function emitCacheState(h, percent, time) {
   h.main.emitEvent('mpv.cache-buffering-state.changed', percent);
 }
 
+test('progress subscribes only for a dispatched source or a visible watching sidebar', () => {
+  const h = connectedHarness(false, false, 'file:///videos/WithoutDanmaku.mp4');
+  assert.equal(h.main.context.timePosListenerID, null);
+  assert.equal(h.overlay.instances.length, 0);
+  const timeMessages = () => h.main.overlayMessages.filter(m => m.name === 'time-update');
+  for (let i = 1; i <= 600; i++) {
+    h.main.emitEvent('mpv.time-pos.changed', i / 10);
+    h.drainMessages();
+  }
+  h.main.emitEvent('mpv.seek');
+  h.main.emitEvent('mpv.playback-restart');
+  assert.equal(timeMessages().length, 0);
+
+  h.main.emitSidebar('danmaku-browser-watch', {watch: true});
+  assert.notEqual(h.main.context.timePosListenerID, null);
+  h.main.context.lastBrowserTimeSent = 0;
+  h.main.emitEvent('mpv.time-pos.changed', 61);
+  assert.equal(h.main.sidebarMessages.findLast(m => m.name === 'danmaku-visible-time').data.time, 61);
+  assert.equal(timeMessages().length, 0);
+  h.main.emitSidebar('danmaku-browser-vis-set', {visible: false});
+  assert.equal(h.main.context.timePosListenerID, null);
+  h.main.setMpv('time-pos', 61.5);
+  h.main.setPaused(true);
+  h.main.emitSidebar('danmaku-browser-vis-set', {visible: true});
+  assert.equal(h.main.sidebarMessages.findLast(m => m.name === 'danmaku-visible-time').data.time, 61.5);
+  h.main.emitSidebar('danmaku-browser-watch', {watch: false});
+  assert.equal(h.main.context.timePosListenerID, null);
+
+  h.main.setMpv('time-pos', 62.5);
+  h.main.emitSidebar('select-danmaku-file', {path: '/videos/A.xml'});
+  assert.equal(h.toOverlay.find(m => m.name === 'load-danmaku').data.playback.time, 62.5);
+  h.drainMessages();
+  assert.equal(h.overlay.context.getVideoTimeSec(), 62.5);
+  h.main.emitEvent('mpv.time-pos.changed', 63);
+  h.drainMessages();
+  h.main.emitEvent('mpv.time-pos.changed', 64);
+  h.drainMessages();
+  assert.deepEqual(Array.from(timeMessages(), m => m.data.time), [63, 64]);
+});
+
 for (const paused of [true, false]) {
   test(`a two-sided seek burst delivers the latest landing on one frame (paused=${paused})`, () => {
     const h = connectedHarness(paused);

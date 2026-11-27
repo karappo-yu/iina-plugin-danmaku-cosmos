@@ -40,6 +40,12 @@ function ddpCacheFile(videoPath) {
   return '@data/danmaku-cache/' + ddpPathHash(videoPath) + '.json';
 }
 
+function isDdpCacheStale(cachedAt) {
+  let timestamp = Number(cachedAt);
+  let age = Date.now() - timestamp;
+  return !Number.isFinite(timestamp) || timestamp <= 0 || age < 0 || age >= 24 * 60 * 60 * 1000;
+}
+
 function projectMatches(matches) {
   if (!matches) return null;
   let result = new Array(matches.length);
@@ -121,9 +127,10 @@ function createDdpClient(deps) {
     }
   }
 
-  function matchVideo(fileName, filePath) {
+  function matchVideo(fileName, filePath, isCurrent) {
     let nameWithoutExt = fileName.replace(/\.[^.]+$/, '');
     return calcFileHash(filePath).then(function (hashInfo) {
+      if (isCurrent && !isCurrent()) return null;
       if (hashInfo) {
         return request('POST', '/api/v2/match', null, {
           fileName: nameWithoutExt,
@@ -193,14 +200,14 @@ function createDdpClient(deps) {
     }
   }
 
-  function saveVideoCache(videoPath, episodeId, animeTitle, episodeTitle, comments) {
+  function saveVideoCache(videoPath, episodeId, animeTitle, episodeTitle, comments, cachedAt) {
     if (!videoPath || !episodeId) return Promise.resolve(false);
     let content = JSON.stringify({
       videoPath: videoPath,
       episodeId: episodeId,
       animeTitle: animeTitle || '',
       episodeTitle: episodeTitle || '',
-      cachedAt: Date.now(),
+      cachedAt: cachedAt === undefined ? Date.now() : cachedAt,
       schemaVersion: 2,
       comments: comments && comments.sourceType ? comments.comments : comments || []
     });
@@ -225,11 +232,7 @@ function createDdpClient(deps) {
       let data = JSON.parse(content);
       if (!data || !data.episodeId || !Array.isArray(data.comments)) return null;
       if (data.videoPath && data.videoPath !== videoPath) return null;
-      let cachedAt = Number(data.cachedAt);
-      let age = Date.now() - cachedAt;
-      if (!isFinite(cachedAt) || cachedAt <= 0 || age < 0 || age >= 24 * 60 * 60 * 1000) {
-        data.stale = true;
-      }
+      data.stale = isDdpCacheStale(data.cachedAt);
       data.document = parseDanmakuSource(data.comments, '', 'dandanplay');
       data.comments = data.document.comments;
       return data;
@@ -256,6 +259,7 @@ module.exports = {
   ddpParseBody: ddpParseBody,
   ddpErrStr: ddpErrStr,
   ddpCacheFile: ddpCacheFile,
+  isDdpCacheStale: isDdpCacheStale,
   projectMatches: projectMatches,
   createDdpClient: createDdpClient
 };

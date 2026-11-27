@@ -141,6 +141,29 @@ test('a pending style rebuild invalidates the old success despite retaining its 
   assert.deepEqual(successes(h).map(message => message.data.loadId), [1]);
 });
 
+test('CSS defers a substantial future Bilibili/DDP tail and rechecks it on style rebuild', () => {
+  const h = harness();
+  const ordinary = {content: 'hello', date: 1767196800, mail: ['naka', '#ffffff']};
+  // Source order is independent of the engine's time-sorted layout.
+  const comments = Array.from({length: 1024}, (_, i) => ({...ordinary, vpos: i % 2 ? 0 : 6000}));
+  function render(fileType, time = 0, data = comments, canvasMode = 'css') {
+    h.send('load-danmaku', {comments: data, fileType, canvasMode, playback: {enabled: true, time, paused: true, speed: 1}});
+    return h.instances.at(-1).options.lazy;
+  }
+  assert.equal(render('bilibili-xml'), true);
+  assert.equal(render('dandanplay'), true);
+  h.send('set-fontscale', {scale: 0.7}); h.flush();
+  assert.equal(h.instances.at(-1).options.lazy, true);
+  assert.equal(render('bilibili-xml', 60), false);
+  assert.equal(render('bilibili-xml', 0, comments.slice(1)), false, '511 future rows');
+  assert.equal(render('bilibili-xml', 0, comments.concat({...ordinary, vpos: 0})), false, 'majority already near playhead');
+  assert.equal(render('bilibili-xml', 0, comments, 'default'), false);
+  for (const type of ['nico-json', 'nico-xml', undefined]) assert.equal(render(type), false);
+  for (const change of [{owner: true}, {mail: ['ca']}, {content: 'two\nlines'}, {date: 1400000000}]) {
+    assert.equal(render('dandanplay', 0, [{...comments[0], ...change}].concat(comments.slice(1))), false);
+  }
+});
+
 test('bundled CSS measurement renderer keeps pixels small while resizing its logical viewport', () => {
   const previousDocument = global.document;
   const canvases = [];

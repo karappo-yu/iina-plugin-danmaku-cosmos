@@ -97,7 +97,16 @@ function parseDanmakuSource(rawContent, path, sourceHint) {
   if (source && source.source === 'dandanplay') { sourceType = 'dandanplay'; source = source.comments; }
   if (typeof source !== 'string' && !Array.isArray(source)) throw new Error('Invalid danmaku source');
   if (!sourceType || sourceType === 'nico-json') {
-    sourceType = source.some(function (entry) { return entry && Array.isArray(entry.comments); }) ? 'nico-json-v1' : 'nico-json-legacy';
+    if (source.some(function (entry) { return entry && Array.isArray(entry.comments); })) {
+      sourceType = 'nico-json-v1';
+    } else if (!source.length || source.some(function (entry) {
+      return entry && [entry.chat, entry.thread, entry.ping, entry.chat_result, entry.global_num_res, entry.leaf]
+        .some(function (record) { return record && typeof record === 'object' && !Array.isArray(record); });
+    })) {
+      sourceType = 'nico-json-legacy';
+    } else {
+      throw new Error('Unsupported danmaku source');
+    }
   }
   const comments = [], counts = new Map(), dateInfo = emptyDateInfo();
   let durationSec = null, ordinal = 0;

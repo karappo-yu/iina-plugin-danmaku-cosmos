@@ -140,6 +140,8 @@ let overlayRevealId = 0;
 let overlayRevealTimer = null;
 const OVERLAY_REVEAL_TIMEOUT_MS = 500;
 let videoDiscoveryTimer = null;
+// Undefined until discovery. A missing entry is cached as null for this video.
+let currentDdpCache;
 let ddpRequestGeneration = 0;
 let ddpSearchGeneration = 0;
 let videoSeekInProgress = false;
@@ -359,7 +361,7 @@ function applyDanmakuOffset(offsetSec) {
   if (!isFinite(nextOffset)) return;
   nextOffset = clampDanmakuOffset(nextOffset);
   commitState({danmakuTimeOffsetSec: nextOffset});
-  if (danmakuBrowserWatch) pushBrowserTime(mpv.getNumber("time-pos"), true);
+  if (browserNeedsTime()) pushBrowserTime(mpv.getNumber("time-pos"), true);
 }
 
 function applyDanmakuFont(fontFamily, fontWeight) {
@@ -475,6 +477,7 @@ function buildLoadDanmakuPayload(comments) {
   return {
     loadId: ++overlayLoadId,
     playback: playbackSnapshot(),
+    fileType: pluginState.currentDanmakuStatus.fileType,
     comments: comments,
     canvasMode: pluginState.currentCanvasMode,
     videoAspectRatio: getVideoAspectRatio(),
@@ -890,7 +893,7 @@ function localDanmakuCandidates() {
 function loadFirstLocalDanmaku() {
   let files = localDanmakuCandidates();
   for (let i = 0; i < files.length; i++) {
-    if (loadDanmakuFile(files[i].path)) return true;
+    if (loadDanmakuFile(files[i].path, {requireComments: true})) return true;
   }
   return false;
 }
@@ -949,8 +952,11 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
   }});
   ddpSyncState();
 
-  ddpMatchVideo(fileName, path).then(function(res) {
-    if (url !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
+  let isCurrent = function () {
+    return url === currentVideoUrl && loadGeneration === danmakuLoadGeneration && requestGeneration === ddpRequestGeneration;
+  };
+  ddpMatchVideo(fileName, path, isCurrent).then(function(res) {
+    if (!isCurrent()) return;
     if (!isManual && !pluginState.danmakuEnabled) { ddpResetState(); return; }
     var data = ddpParseBody(res);
     var isHttpError = res && typeof res.statusCode === 'number' && (res.statusCode < 200 || res.statusCode >= 300);
@@ -994,7 +1000,7 @@ function ddpAutoMatchAndLoad(url, origin, loadGeneration) {
       ddpFallbackToLocal();
     }
   }).catch(function(err) {
-    if (url !== currentVideoUrl || loadGeneration !== danmakuLoadGeneration || requestGeneration !== ddpRequestGeneration) return;
+    if (!isCurrent()) return;
     commitDdpState({status: 'error', error: ddpErrStr(err)});
     ddpSyncState();
     core.osd(t('ddp_network_error'));
@@ -1011,7 +1017,7 @@ function ddpUpsertFileListEntry(episodeId, animeTitle, episodeTitle, converted, 
   let files = pluginState.danmakuFileList.jsonFiles;
   let existing = files.find(function (entry) { return entry.path === virtualPath; });
   let next = existing ? files.map(function (entry) {
-    return entry === existing && fresh ? Object.assign({}, entry, {filename: displayName}) : entry;
+    return entry === existing ? Object.assign({}, entry, {filename: displayName}) : entry;
   }) : files.concat({path: virtualPath, filename: displayName, relativePath: 'DanDanPlay #' + episodeId, type: 'DDP'});
   commitState({danmakuFileList: Object.assign({}, pluginState.danmakuFileList, {jsonFiles: next})}, false);
   return virtualPath;
@@ -1076,7 +1082,10 @@ function ddpLoadComments(episodeId, animeTitle, episodeTitle, forceLoad, origin,
       return;
     }
 
-    ddpSaveVideoCache(videoUrl, episodeId, animeTitle, episodeTitle, converted);
+    let cachedAt = Date.now();
+    currentDdpCache = {episodeId: episodeId, animeTitle: animeTitle, episodeTitle: episodeTitle,
+      cachedAt: cachedAt, stale: false, document: converted};
+    ddpSaveVideoCache(videoUrl, episodeId, animeTitle, episodeTitle, converted, cachedAt);
 
     commitDdpState({status: 'loaded'});
     ddpSyncState();
@@ -1095,16 +1104,27 @@ function ddpFallbackToLocal(allowStale) {
   if (!pluginState.dandanplayAutoNetwork || !pluginState.danmakuEnabled) return;
   if (pluginState.currentDanmakuStatus.isLoaded) return;
   if (loadFirstLocalDanmaku()) return;
-  // Stale cache is a download-failure fallback only; successful refreshes overwrite it.
-  if (!allowStale) return;
-  var cached = ddpReadVideoCache(currentVideoUrl);
-  if (cached && cached.stale && cached.comments && cached.comments.length > 0) {
-    ddpAddToFileListAndLoad(cached.episodeId, cached.animeTitle, cached.episodeTitle, cached.document, true, false);
+  let cached = getCurrentDdpCache();
+  if (cached && (!cached.stale || allowStale)) {
+    ddpAddToFileListAndLoad(cached.episodeId, cached.animeTitle, cached.episodeTitle, cached.document, true, !cached.stale);
   }
 }
 
-function addDDPToFileList(episodeId, animeTitle, episodeTitle, comments, stale) {
-  ddpUpsertFileListEntry(episodeId, animeTitle, episodeTitle, comments, !stale);
+function getCurrentDdpCache() {
+  if (currentDdpCache === undefined) {
+    let stored = ddpReadVideoCache(currentVideoUrl);
+    currentDdpCache = stored && stored.document.comments.length ? stored : null;
+  }
+  if (currentDdpCache) {
+    let stale = ddpClientModule.isDdpCacheStale(currentDdpCache.cachedAt);
+    if (stale !== currentDdpCache.stale) {
+      currentDdpCache.stale = stale;
+      ddpUpsertFileListEntry(currentDdpCache.episodeId, currentDdpCache.animeTitle, currentDdpCache.episodeTitle,
+        currentDdpCache.document, !stale);
+      sidebarPostMessage('danmaku-file-list', pluginState.danmakuFileList);
+    }
+  }
+  return currentDdpCache;
 }
 
 function updateOverlayOpacity() {
@@ -1155,7 +1175,6 @@ function hideOverlayForUser() {
 }
 
 function beginVideoReset(resetOffset, skipOverlayClear) {
-  setObserver(false);
   if (videoDiscoveryTimer !== null) clearTimeout(videoDiscoveryTimer);
   videoDiscoveryTimer = null;
   overlayLoadId += 1;
@@ -1166,9 +1185,11 @@ function beginVideoReset(resetOffset, skipOverlayClear) {
   videoSeekInProgress = false;
   videoSeekRepeated = false;
   danmakuCache = Object.create(null);
+  currentDdpCache = undefined;
   projectionCache = null;
   lastOverlayProjection = null;
   currentVideoUrl = null;
+  syncPlaybackObservers();
   pendingDanmaku = null;
   pendingLoadNotice = null;
   loadedDanmakuVideoUrl = null;
@@ -1204,71 +1225,51 @@ function loadDanmakuForVideo(url, resetOffset) {
       if (status === 'error' || status === 'matched' || status === 'no-match') ddpFallbackToLocal(status === 'error');
     }
     if (overlayReady && loadedDanmakuVideoUrl !== currentVideoUrl) overlayPostMessage('toggle-danmaku', toggleSnapshot());
-    setObserver(true);
+    syncPlaybackObservers();
   }, 0);
 }
 
 function discoverDanmakuForVideo(url, loadGeneration, activate) {
   postVideoAspect();
 
+  let current = pluginState.danmakuFileList;
   if (core.status.isNetworkResource) {
     core.osd(t('network_skip_local'));
-    sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
-    sendDanmakuFilterInfo();
-    notifyBrowserDataChanged();
-    if (activate !== false && pluginState.danmakuEnabled && pluginState.dandanplayAutoNetwork) ddpAutoMatchAndLoad(url, DDP_LOAD_ORIGIN.AUTO, loadGeneration);
-    return;
+  } else {
+    let discovered = findDanmakuByEpisode(url);
+    let mergeFiles = function (found, existing) {
+      let paths = new Set(found.map(function (item) { return item.path; }));
+      return found.concat(existing.filter(function (item) { return !paths.has(item.path); }));
+    };
+    commitState({danmakuFileList: {
+      xmlFiles: mergeFiles(discovered.xmlFiles, current.xmlFiles),
+      jsonFiles: mergeFiles(discovered.jsonFiles, current.jsonFiles),
+      selectedPaths: current.selectedPaths
+    }});
   }
 
-  var discovered = findDanmakuByEpisode(url);
-  let current = pluginState.danmakuFileList;
-  let mergeFiles = function (found, existing) {
-    let paths = new Set(found.map(function (item) { return item.path; }));
-    return found.concat(existing.filter(function (item) { return !paths.has(item.path); }));
-  };
-
-  commitState({danmakuFileList: {
-    xmlFiles: mergeFiles(discovered.xmlFiles, current.xmlFiles),
-    jsonFiles: mergeFiles(discovered.jsonFiles, current.jsonFiles),
-    selectedPaths: current.selectedPaths
-  }});
-
-  var ddpCached = ddpReadVideoCache(url);
-  var hasDDPCache = ddpCached && ddpCached.comments && ddpCached.comments.length > 0;
-  if (hasDDPCache && current.selectedPaths[0] !== 'dandanplay://' + ddpCached.episodeId) {
-    addDDPToFileList(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.document, ddpCached.stale);
+  let cached = getCurrentDdpCache();
+  if (cached && current.selectedPaths[0] !== 'dandanplay://' + cached.episodeId) {
+    ddpUpsertFileListEntry(cached.episodeId, cached.animeTitle, cached.episodeTitle, cached.document, !cached.stale);
   }
 
   sidebarPostMessage("danmaku-file-list", pluginState.danmakuFileList);
   sendDanmakuFilterInfo();
   notifyBrowserDataChanged();
 
-  if (activate !== false) autoLoadDiscoveredDanmaku(url, loadGeneration, ddpCached);
+  if (activate !== false) autoLoadDiscoveredDanmaku(url, loadGeneration);
 }
 
-function autoLoadDiscoveredDanmaku(url, loadGeneration, ddpCached) {
+function autoLoadDiscoveredDanmaku(url, loadGeneration) {
   if (!pluginState.danmakuEnabled) return;
-  if (core.status.isNetworkResource) {
-    if (pluginState.dandanplayAutoNetwork) ddpAutoMatchAndLoad(url, DDP_LOAD_ORIGIN.AUTO, loadGeneration);
-    return;
-  }
-  if (ddpCached === undefined) ddpCached = ddpReadVideoCache(url);
-  let hasFreshDDPCache = ddpCached && !ddpCached.stale && ddpCached.comments && ddpCached.comments.length > 0;
-
-  if (pluginState.dandanplayAutoNetwork) {
-    // Fresh cache skips hashing and API requests until expiry or an explicit manual match.
-    if (hasFreshDDPCache) {
-      ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.document, true, true);
-    } else {
-      ddpAutoMatchAndLoad(url, DDP_LOAD_ORIGIN.AUTO, loadGeneration);
-    }
+  let cached = getCurrentDdpCache();
+  if (!pluginState.dandanplayAutoNetwork && loadFirstLocalDanmaku()) return;
+  if (cached && !cached.stale) {
+    ddpAddToFileListAndLoad(cached.episodeId, cached.animeTitle, cached.episodeTitle, cached.document, true, true);
+  } else if (pluginState.dandanplayAutoNetwork) {
+    ddpAutoMatchAndLoad(url, DDP_LOAD_ORIGIN.AUTO, loadGeneration);
   } else {
-    if (loadFirstLocalDanmaku()) return;
-    if (hasFreshDDPCache) {
-      ddpAddToFileListAndLoad(ddpCached.episodeId, ddpCached.animeTitle, ddpCached.episodeTitle, ddpCached.document, true, true);
-    } else {
-      danmakuNotFound();
-    }
+    danmakuNotFound();
   }
 }
 
@@ -1319,9 +1320,11 @@ function loadDanmakuFile(path, options) {
     core.osd(t('content_unavailable'));
     return;
   }
+  if (options.requireComments && doc.comments.length === 0) return false;
 
-  // A manual local selection invalidates earlier background matching and downloads.
-  if (enableDanmaku && path.indexOf('dandanplay://') !== 0) ddpResetState();
+  // A successful user selection supersedes both matching and downloading,
+  // including when the user reselects the currently active cached episode.
+  if (options.userSelection) ddpResetState();
 
   // An active or in-flight source can be reused without resetting its date
   // slice, load acknowledgment or success notice. Explicit refreshes bypass it.
@@ -1331,7 +1334,7 @@ function loadDanmakuFile(path, options) {
     if (enableDanmaku) ensureDanmakuEnabled(true);
     if (overlayReady && pluginState.danmakuEnabled) {
       if (!sendCurrentDanmaku(false) && !wasEnabled) overlayPostMessage('toggle-danmaku', toggleSnapshot());
-      if (!timePosListenerID) setObserver(true);
+      syncPlaybackObservers();
     }
     return true;
   }
@@ -1355,7 +1358,7 @@ function loadDanmakuFile(path, options) {
     pendingDanmaku = {};
     core.osd(t('queued'));
   }
-  if (overlayReady) setObserver(true);
+  if (overlayReady) syncPlaybackObservers();
   return true;
 }
 
@@ -1397,9 +1400,17 @@ function resetOverlayTimeUpdates() {
   overlayTimePending = null;
 }
 
+function overlayNeedsTime() {
+  return overlayReady && pluginState.danmakuEnabled && !awaitingFileLoaded && lastOverlayProjection !== null;
+}
+
+function browserNeedsTime() {
+  return danmakuBrowserWatch && pluginState.danmakuBrowserVisible && !awaitingFileLoaded && currentVideoUrl !== null;
+}
+
 function flushOverlayTimeUpdate() {
   if (overlayTimeInFlight || !overlayTimePending) return;
-  if (!overlayReady || !pluginState.danmakuEnabled || awaitingFileLoaded) {
+  if (!overlayNeedsTime()) {
     resetOverlayTimeUpdates();
     return;
   }
@@ -1417,7 +1428,7 @@ function flushOverlayTimeUpdate() {
 }
 
 function queueOverlayTimeUpdate(time, seek) {
-  if (!isFiniteNumber(time) || !overlayReady || !pluginState.danmakuEnabled || awaitingFileLoaded) return;
+  if (!isFiniteNumber(time) || !overlayNeedsTime()) return;
   if (!overlayTimePending && overlayTimeInFlight &&
       overlayTimeInFlight.sourceId === overlayLoadId && overlayTimeInFlight.time === time && !seek) return;
   // A seek remains necessary even if ordinary progress replaces its target
@@ -1435,24 +1446,17 @@ function markOverlayReady() {
   if (pendingDanmaku) {
     if (!sendCurrentDanmaku(true)) overlayPostMessage("toggle-danmaku", toggleSnapshot());
     pendingDanmaku = null;
-    setObserver(true);
   } else if (!awaitingFileLoaded && !videoHasEnded && pluginState.danmakuEnabled && !core.status.idle && !currentVideoUrl && core.status.url) {
     loadDanmakuForVideo(core.status.url);
-    setObserver(true);
   } else {
     overlayPostMessage("toggle-danmaku", toggleSnapshot());
-    setObserver(true);
   }
+  syncPlaybackObservers();
 }
 
-function setObserver(start) {
-  if (!start) resetOverlayTimeUpdates();
-  if (timePosListenerID) { event.off("mpv.time-pos.changed", timePosListenerID); timePosListenerID = null; }
-  if (windowScaleListenerID) { event.off("mpv.window-scale.changed", windowScaleListenerID); windowScaleListenerID = null; }
-  if (speedListenerID) { event.off("mpv.speed.changed", speedListenerID); speedListenerID = null; }
-  if (cachePauseListenerID) { event.off("mpv.cache-buffering-state.changed", cachePauseListenerID); cachePauseListenerID = null; }
-
-  if (start && !awaitingFileLoaded && overlayReady && pluginState.danmakuEnabled) {
+function syncTimeObserver() {
+  const needed = overlayNeedsTime() || browserNeedsTime();
+  if (needed && timePosListenerID === null) {
     timePosListenerID = event.on("mpv.time-pos.changed", function (t) {
       // While paused, defer a lone seek until playback-restart provides the
       // landing frame time, avoiding a second visible correction. Repeated
@@ -1460,8 +1464,22 @@ function setObserver(start) {
       if (!(videoSeekInProgress && !videoSeekRepeated && core.status.paused)) {
         queueOverlayTimeUpdate(t, videoSeekInProgress);
       }
-      if (danmakuBrowserWatch) pushBrowserTime(t);
+      if (browserNeedsTime()) pushBrowserTime(t);
     });
+  } else if (!needed && timePosListenerID !== null) {
+    event.off("mpv.time-pos.changed", timePosListenerID);
+    timePosListenerID = null;
+  }
+}
+
+function syncPlaybackObservers() {
+  syncTimeObserver();
+  if (!overlayNeedsTime()) {
+    resetOverlayTimeUpdates();
+    if (windowScaleListenerID !== null) { event.off("mpv.window-scale.changed", windowScaleListenerID); windowScaleListenerID = null; }
+    if (speedListenerID !== null) { event.off("mpv.speed.changed", speedListenerID); speedListenerID = null; }
+    if (cachePauseListenerID !== null) { event.off("mpv.cache-buffering-state.changed", cachePauseListenerID); cachePauseListenerID = null; }
+  } else if (windowScaleListenerID === null) {
     windowScaleListenerID = event.on("mpv.window-scale.changed", function () {
       postVideoAspect();
     });
@@ -1504,21 +1522,19 @@ function setDanmakuEnabled(enabled, options) {
     let selectedPath = pluginState.danmakuFileList.selectedPaths[0];
     if (selectedPath && danmakuCache[selectedPath]) {
       if (!sendCurrentDanmaku(false) && overlayReady) overlayPostMessage('toggle-danmaku', toggleSnapshot());
-      setObserver(true);
     } else if (currentVideoUrl && loadedDanmakuVideoUrl !== currentVideoUrl) {
       autoLoadDiscoveredDanmaku(currentVideoUrl, danmakuLoadGeneration);
       if (overlayReady && loadedDanmakuVideoUrl !== currentVideoUrl) overlayPostMessage('toggle-danmaku', toggleSnapshot());
-      setObserver(true);
     } else {
       if (overlayReady) overlayPostMessage('toggle-danmaku', toggleSnapshot());
-      setObserver(true);
     }
+    syncPlaybackObservers();
     if (options.osd !== false) core.osd(t('danmaku_on'));
   } else {
     cancelOverlayReveal();
     updateOverlayOpacity();
     if (overlayReady) overlayPostMessage('toggle-danmaku', playbackSnapshot());
-    setObserver(false);
+    syncPlaybackObservers();
     if (options.hideOverlay) hideOverlayForUser();
     if (options.osd !== false) core.osd(t('danmaku_off'));
   }
@@ -1537,7 +1553,7 @@ function ensureDanmakuEnabled(deferPlayback) {
   updateOverlayOpacity();
   if (!deferPlayback) {
     if (overlayReady) overlayPostMessage('toggle-danmaku', toggleSnapshot());
-    setObserver(true);
+    syncPlaybackObservers();
   }
 }
 
@@ -1545,7 +1561,7 @@ function chooseDanmakuFile() {
   let generation = danmakuLoadGeneration;
   iina.utils.chooseFile(t('choose_file_title'), { allowedFileTypes: ["json", "xml"] }).then(function (path) {
     if (generation !== danmakuLoadGeneration) return;
-    loadDanmakuFile(path, { enableDanmaku: true, reload: true });
+    loadDanmakuFile(path, { enableDanmaku: true, reload: true, userSelection: true });
   });
 }
 
@@ -1700,11 +1716,15 @@ function registerSidebarHandlers() {
 
   sidebarOnMessage("danmaku-browser-vis-set", function (data) {
     if (typeof data.visible === 'boolean') {
+      let wasVisible = pluginState.danmakuBrowserVisible;
       commitState({danmakuBrowserVisible: data.visible});
+      syncTimeObserver();
 
       if (pluginState.danmakuBrowserVisible && browserDataPending) {
         browserDataPending = false;
         sendDanmakuBrowserData(buildDanmakuBrowserList());
+      } else if (!wasVisible && browserNeedsTime()) {
+        pushBrowserTime(mpv.getNumber('time-pos'), true);
       }
     }
   });
@@ -1718,7 +1738,7 @@ function registerSidebarHandlers() {
   });
 
   sidebarOnMessage("select-danmaku-file", function (data) {
-    if (typeof data.path === 'string' && data.path) loadDanmakuFile(data.path, { enableDanmaku: true });
+    if (typeof data.path === 'string' && data.path) loadDanmakuFile(data.path, { enableDanmaku: true, userSelection: true });
   });
 
   sidebarOnMessage("danmaku-file-add", chooseDanmakuFile);
@@ -1820,7 +1840,8 @@ function registerSidebarHandlers() {
   sidebarOnMessage("danmaku-browser-watch", function (data) {
     if (typeof data.watch !== 'boolean') return;
     danmakuBrowserWatch = data.watch;
-    if (danmakuBrowserWatch) {
+    syncTimeObserver();
+    if (browserNeedsTime()) {
       var t = mpv.getNumber("time-pos");
       // Bypass throttling to seed the anchor; paused video may send no further time updates.
       if (t !== undefined && t !== null) pushBrowserTime(t, true);
@@ -1829,14 +1850,15 @@ function registerSidebarHandlers() {
 }
 
 event.on("iina.window-loaded", function () {
-  resetOverlayTimeUpdates();
   overlayReady = false;
+  danmakuBrowserWatch = false;
   overlayLoadId += 1;
   overlayAwaitingVideoRender = true;
   cancelOverlayReveal();
   overlay.setOpacity(0);
   updateDanmakuStatus({fileType: pluginState.currentDanmakuStatus.fileType, isLoaded: false});
   lastOverlayProjection = null;
+  syncPlaybackObservers();
   if (pluginState.danmakuFileList.selectedPaths.length) pendingDanmaku = {};
   overlay.loadFile("overlay/index.html");
   sidebar.loadFile("sidebar/index.html");
@@ -1893,7 +1915,7 @@ event.on("mpv.playback-restart", function () {
 });
 
 event.on("mpv.pause.changed", function () {
-  if (!overlayReady) return;
+  if (!overlayNeedsTime()) return;
   const pausedForCache = mpv.getFlag('paused-for-cache');
   const data = {paused: !!core.status.paused || pausedForCache, sourceId: overlayLoadId};
   if (pausedForCache !== overlayPausedForCache) {
@@ -1932,12 +1954,12 @@ function registerOverlayHandlers() {
       let path = pluginState.danmakuFileList.selectedPaths[0];
       // A failed candidate remains in the list for an explicit retry, but is
       // no longer an active selection. Invalidate later replies from this load.
-      resetOverlayTimeUpdates();
       overlayLoadId += 1;
       overlayAwaitingVideoRender = true;
       cancelOverlayReveal();
       overlay.setOpacity(0);
       lastOverlayProjection = null;
+      syncPlaybackObservers();
       projectionCache = null;
       loadedDanmakuVideoUrl = null;
       pendingLoadNotice = null;

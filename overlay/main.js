@@ -35,6 +35,7 @@ let danmakuFontWeight = "";
 let niconiComments = null;
 let domEmojiRenderer = null;
 let formattedComments = null;
+let formattedFileType = null;
 let canvasRafId = null;
 let canvasLoopGeneration = 0;
 let canvasForceDrawPending = false;
@@ -420,6 +421,28 @@ if (typeof window.addEventListener === 'function') {
   });
 }
 
+// Ordinary Bilibili/DDP rows use a small set of rendering commands. Keep
+// owner scripts, CA, legacy formatting and Canvas on their established layout.
+function shouldDeferCommentLayout(comments) {
+  const minimumDeferred = Math.max(512, Math.ceil(comments.length / 2));
+  if (canvasNicoMode !== 'css' || comments.length < minimumDeferred ||
+      (formattedFileType !== 'bilibili-xml' && formattedFileType !== 'dandanplay')) return false;
+
+  // The engine looks ahead about 22 s at 1x in the normal viewport. Require
+  // a substantial tail beyond 30 s before trading seek work for a faster load.
+  const currentVpos = (getVideoTimeSec() + danmakuTimeOffsetSec) * 100;
+  const horizon = currentVpos + 3000 / scrollSpeed;
+  let deferred = 0;
+  const ordinaryCommand = /^(?:naka|ue|shita|small|medium|big|#[0-9a-f]{6})$/i;
+  for (const comment of comments) {
+    if (!comment || comment.owner || comment.date < 1499871600 ||
+        /[\r\n]/.test(comment.content) || !Array.isArray(comment.mail) ||
+        comment.mail.some(command => !ordinaryCommand.test(command))) return false;
+    if (comment.vpos > horizon) deferred++;
+  }
+  return deferred >= minimumDeferred;
+}
+
 function initCanvasRenderer(data) {
   cancelLoadSuccess();
   if (canvasRebuildTimer !== null) clearTimeout(canvasRebuildTimer);
@@ -437,6 +460,7 @@ function initCanvasRenderer(data) {
   niconiComments = new NiconiComments(canvas, data, {
     format: 'formatted',
     mode: canvasNicoMode,
+    lazy: shouldDeferCommentLayout(data),
     viewportSize: useCssMode && viewportSize ? viewportSize : undefined,
     keepCA: true,
     dedupeCA: false, // Projection owns merging; retain CA layers without deleting comments.
@@ -613,6 +637,7 @@ onPluginMessage("load-danmaku", (data) => {
     if (data.playback) syncPlaybackState(data.playback);
     if (!Array.isArray(data.comments)) throw new Error('Invalid formatted comment list');
     canvasIsPlaying = !isPaused;
+    formattedFileType = data.fileType;
     initCanvasRenderer(data.comments);
     startCanvasLoop();
   } catch (error) { reportCanvasError(error); }
@@ -810,6 +835,7 @@ onPluginMessage("clear-danmaku", (data) => {
   canvasSystemAnchorTime = 0;
   canvasIsPlaying = false;
   formattedComments = null;
+  formattedFileType = null;
   disposeCanvasRenderer();
 });
 
